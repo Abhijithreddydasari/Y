@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Phase 0 primitive tag protocol",
+  "description": "The 7 core primitives the LLM is allowed to emit. Single source of truth: the backend prompt template, the server-side parser, the frontend renderer, and the validator all read this file. DO NOT extend in Phase 0; new primitives belong to Phase 1.",
+  "version": "0.1.0",
+  "tag_syntax": {
+    "shape": "[<name>: <arg>=<value> ...]",
+    "rules": [
+      "One tag per line.",
+      "Tags that span multiple lines are rejected.",
+      "Argument values are bare (no spaces) or double-quoted.",
+      "Coordinates are optional. Omit when the layout engine should place automatically.",
+      "All emitted elements are placed in canvas regions not already occupied by the student's content.",
+      "Text outside tags is treated as narration (TTS) AND placed on the board as a small text element near its corresponding primitive."
+    ]
+  },
+  "id_rules": {
+    "scope": "Local to one lesson.",
+    "format": "Short uppercase token (A, B, C, F1).",
+    "referenced_by": ["arrow.from", "arrow.to"]
+  },
+  "primitives": {
+    "title": {
+      "summary": "Large heading drawn once at top of the answer region.",
+      "args": {
+        "text": { "type": "string", "required": true, "description": "The heading text." }
+      },
+      "example": "[title: \"Newton's Second Law\"]"
+    },
+    "text": {
+      "summary": "Narrated paragraph. Spoken via TTS AND placed on board as a small text element near its corresponding primitive.",
+      "args": {
+        "content": { "type": "string", "required": true, "description": "Narrative sentence(s)." }
+      },
+      "example": "[text: \"Let's start by recalling Newton's second law.\"]"
+    },
+    "equation": {
+      "summary": "LaTeX equation rendered via KaTeX to SVG and embedded as an Excalidraw image element.",
+      "args": {
+        "latex": { "type": "string", "required": true, "description": "LaTeX source. Backslashes must be doubled in plain text (e.g. \\\\, for thin space)." },
+        "align": { "type": "enum", "values": ["left", "center", "right"], "default": "center", "required": false }
+      },
+      "example": "[equation: \"F = m a\" align=center]"
+    },
+    "box": {
+      "summary": "Labeled rectangle.",
+      "args": {
+        "id": { "type": "id", "required": true },
+        "label": { "type": "string", "required": false, "default": "" },
+        "x": { "type": "number", "required": false },
+        "y": { "type": "number", "required": false },
+        "w": { "type": "number", "required": false, "default": 120 },
+        "h": { "type": "number", "required": false, "default": 60 }
+      },
+      "example": "[box: id=A label=\"Block\" x=100 y=200 w=80 h=80]"
+    },
+    "node": {
+      "summary": "Labeled circle / ellipse. Used for graph nodes, state-machine states, etc.",
+      "args": {
+        "id": { "type": "id", "required": true },
+        "label": { "type": "string", "required": false, "default": "" },
+        "x": { "type": "number", "required": false },
+        "y": { "type": "number", "required": false },
+        "r": { "type": "number", "required": false, "default": 30 }
+      },
+      "example": "[node: id=A label=\"0.6\" x=200 y=300 r=30]"
+    },
+    "arrow": {
+      "summary": "Arrow connecting two named ids. Optional midpoint label.",
+      "args": {
+        "from": { "type": "id", "required": true, "description": "Source primitive id." },
+        "to": { "type": "id", "required": true, "description": "Target primitive id." },
+        "label": { "type": "string", "required": false, "default": "" }
+      },
+      "example": "[arrow: from=A to=B label=\"0.5\"]"
+    },
+    "line": {
+      "summary": "Raw line segment with optional label. Used for free vectors not anchored to nodes.",
+      "args": {
+        "x1": { "type": "number", "required": true },
+        "y1": { "type": "number", "required": true },
+        "x2": { "type": "number", "required": true },
+        "y2": { "type": "number", "required": true },
+        "label": { "type": "string", "required": false, "default": "" }
+      },
+      "example": "[line: x1=100 y1=200 x2=300 y2=200 label=\"v\"]"
+    }
+  },
+  "hard_rules": [
+    "No primitive types beyond the 7 listed.",
+    "If a concept needs a primitive not listed, fall back to [text: ...] narration.",
+    "Maximum 30 primitives per lesson; truncate the tail gracefully if exceeded."
+  ]
+}

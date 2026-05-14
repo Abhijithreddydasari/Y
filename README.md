@@ -1,4 +1,4 @@
-# Y - AI Learning Companion
+# Y - an AI Learning Companion
 
 A pedagogical AI that reads the student's whiteboard, finds the part marked
 with `?`, and explains the answer by drawing on the same canvas while

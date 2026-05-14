@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Local-only references
+research/
+starvector_test/
+plan.md
+start-all.ps1
+
+# IDE / tooling
+.cursor/
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs and OS
+*.log
+.DS_Store
+Thumbs.db
+*.bak
+
+# Model artifacts (local only)
+models/
+*.safetensors
+*.gguf
+*.bin

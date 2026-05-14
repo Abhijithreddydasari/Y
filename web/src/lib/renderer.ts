@@ -17,13 +17,15 @@ export interface RenderResult {
   skeletons: ExcalidrawElementSkeleton[];
   files?: BinaryFiles;
   /**
-   * If set, the player should mutate the element with this id (one of the
-   * skeletons above) to progressively reveal `revealText` in lockstep with
-   * TTS. Used for title/text primitives. Bounds are pre-computed at full
-   * text size so the element does not jump as it fills in.
+   * If set, the player should mutate the element with this id to
+   * progressively reveal `revealText` in lockstep with TTS.
+   * `revealWidth`/`revealHeight` MUST be included in every mutation patch
+   * to prevent Excalidraw from auto-resizing the element as text grows.
    */
   revealId?: string;
   revealText?: string;
+  revealWidth?: number;
+  revealHeight?: number;
 }
 
 const COL_WIDTH = 740;
@@ -119,10 +121,9 @@ export class LessonRenderer {
     if (!text) return { skeletons: [] };
     const id = makeRevealId();
     const lines = Math.max(1, text.split("\n").length);
-    const height = TITLE_FONT * TITLE_LINE_H * lines;
-    // Width is generous enough that mutating the text shorter never reflows
-    // the element. Excalidraw uses our explicit width/height as the bounds.
-    const width = Math.max(220, Math.ceil(text.length * TITLE_FONT * 0.6));
+    const height = Math.ceil(TITLE_FONT * TITLE_LINE_H * lines) + 8;
+    // Virgil (fontFamily 1) averages ~0.75 em per char at this size.
+    const width = Math.max(COL_WIDTH, Math.ceil(text.length * TITLE_FONT * 0.75));
     const skel: ExcalidrawElementSkeleton = {
       type: "text",
       id,
@@ -134,9 +135,10 @@ export class LessonRenderer {
       strokeColor: STROKE,
       width,
       height,
-    };
+      autoResize: false,
+    } as ExcalidrawElementSkeleton;
     this.advanceNarration(height + 12);
-    return { skeletons: [skel], revealId: id, revealText: text };
+    return { skeletons: [skel], revealId: id, revealText: text, revealWidth: width, revealHeight: height };
   }
 
   private renderText(text: string): RenderResult {
@@ -144,7 +146,7 @@ export class LessonRenderer {
     const wrapped = wrapText(text, 60);
     const lines = wrapped.split("\n").length;
     const id = makeRevealId();
-    const height = Math.ceil(NARRATION_FONT * NARRATION_LINE_H * lines);
+    const height = Math.ceil(NARRATION_FONT * NARRATION_LINE_H * lines) + 4;
     const skel: ExcalidrawElementSkeleton = {
       type: "text",
       id,
@@ -156,9 +158,10 @@ export class LessonRenderer {
       strokeColor: STROKE,
       width: COL_WIDTH,
       height,
-    };
+      autoResize: false,
+    } as ExcalidrawElementSkeleton;
     this.advanceNarration(height);
-    return { skeletons: [skel], revealId: id, revealText: wrapped };
+    return { skeletons: [skel], revealId: id, revealText: wrapped, revealWidth: COL_WIDTH, revealHeight: height };
   }
 
   private async renderEquation(latex: string): Promise<RenderResult> {

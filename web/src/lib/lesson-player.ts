@@ -153,7 +153,7 @@ export class LessonPlayer {
     try {
       const cleanTag = sanitizeTag(tag);
 
-      const { skeletons, files, revealId, revealText } =
+      const { skeletons, files, revealId, revealText, revealWidth, revealHeight } =
         await this.renderer.render(cleanTag);
       if (skeletons.length === 0) return;
 
@@ -169,14 +169,24 @@ export class LessonPlayer {
       const hasReveal = !!revealText && !!revealId;
       const willSpeak = hasReveal && this.opts.ttsEnabled && ttsAvailable();
 
+      // Build a mutation helper that always pins width/height so Excalidraw
+      // never auto-resizes the element as partial text is shorter than final.
+      const dimPatch: Record<string, unknown> = {};
+      if (revealWidth != null) dimPatch.width = revealWidth;
+      if (revealHeight != null) dimPatch.height = revealHeight;
+
+      const mutate = hasReveal
+        ? (partial: string) =>
+            this.opts.handle.mutateElement(revealId!, {
+              text: partial,
+              originalText: partial,
+              ...dimPatch,
+            })
+        : undefined;
+
       // Blank the element immediately so the user never sees the full text
       // flash before the tutor starts "writing".
-      if (hasReveal) {
-        this.opts.handle.mutateElement(revealId!, {
-          text: " ",
-          originalText: " ",
-        });
-      }
+      if (hasReveal) mutate!(" ");
 
       if (willSpeak) {
         // --- TTS on: character reveal synced to speech ---
@@ -184,27 +194,19 @@ export class LessonPlayer {
         if (this.opts.signal?.aborted) return;
         this.speaks += 1;
         const fullText = revealText!;
-        const mutate = (partial: string) =>
-          this.opts.handle.mutateElement(revealId!, {
-            text: partial,
-            originalText: partial,
-          });
-        // ~45ms/char ≈ 22 chars/sec, roughly matching 150 wpm speech pace.
-        const revealer = new TextRevealer(fullText, mutate, 45, this.opts.signal);
+        const revealer = new TextRevealer(fullText, mutate!, 45, this.opts.signal);
         revealer.start();
         await speak(fullText, {
           onProgress: (chars) => revealer.setTarget(chars),
         });
         revealer.finish();
+        // Small gap so the speech engine fully stops before the next
+        // primitive's TTS starts (prevents audio clipping between sections).
+        await sleep(120);
       } else if (hasReveal) {
         // --- TTS off: character reveal at a brisk reading pace ---
         const fullText = revealText!;
-        const mutate = (partial: string) =>
-          this.opts.handle.mutateElement(revealId!, {
-            text: partial,
-            originalText: partial,
-          });
-        const revealer = new TextRevealer(fullText, mutate, 30, this.opts.signal);
+        const revealer = new TextRevealer(fullText, mutate!, 30, this.opts.signal);
         revealer.start();
         await revealer.revealAll();
         revealer.finish();

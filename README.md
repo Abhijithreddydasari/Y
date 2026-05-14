@@ -9,6 +9,10 @@ F=10N, a = ?`), clicks **Solve**, and watches the AI tutor draw a clean
 explanation - title, narration, equations, diagrams - in a free region of the
 canvas, speaking each step out loud.
 
+## Demo
+
+<video src="assets/Demo.mp4" controls width="100%"></video>
+
 ## Architecture
 
 ```

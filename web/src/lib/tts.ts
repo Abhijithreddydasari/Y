@@ -114,9 +114,17 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
         boundaryFired = true;
         stopFallback();
         if (e.name === "word" || e.name === undefined) {
-          const charLen = (e as SpeechSynthesisEvent & { charLength?: number })
+          const idx = e.charIndex ?? 0;
+          // charLength is non-standard; when missing, scan forward to the
+          // next whitespace to find the end of the current word.
+          let charLen = (e as SpeechSynthesisEvent & { charLength?: number })
             .charLength ?? 0;
-          reveal((e.charIndex ?? 0) + charLen);
+          if (charLen === 0) {
+            let end = idx;
+            while (end < text.length && !/\s/.test(text[end])) end++;
+            charLen = end - idx;
+          }
+          reveal(idx + charLen);
         }
       };
       // Roughly 12.5 chars/sec at rate=1.0 (≈150 wpm, ≈5 chars/word).
@@ -133,23 +141,43 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
         }, TICK_MS);
       }, 600);
     }
+
+    // Chrome/Edge silently kill long utterances after ~15s. A periodic
+    // pause+resume keeps the engine alive without audible artefacts.
+    let keepaliveId: number | undefined;
+    if (/Chrome|Edg/i.test(navigator.userAgent)) {
+      keepaliveId = window.setInterval(() => {
+        if (!window.speechSynthesis.speaking) return;
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }, 10_000);
+    }
+    const stopKeepalive = () => {
+      if (keepaliveId !== undefined) {
+        window.clearInterval(keepaliveId);
+        keepaliveId = undefined;
+      }
+    };
     // --- end reveal plumbing ---
 
     const timer = window.setTimeout(() => {
       try { window.speechSynthesis.cancel(); } catch { /* ignored */ }
       stopFallback();
+      stopKeepalive();
       reveal(text.length);
       resolve();
     }, maxMs);
     u.onend = () => {
       window.clearTimeout(timer);
       stopFallback();
+      stopKeepalive();
       reveal(text.length);
       resolve();
     };
     u.onerror = () => {
       window.clearTimeout(timer);
       stopFallback();
+      stopKeepalive();
       reveal(text.length);
       resolve();
     };

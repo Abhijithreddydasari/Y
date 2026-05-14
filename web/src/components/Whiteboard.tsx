@@ -19,6 +19,12 @@ const Excalidraw = dynamic(
 export interface WhiteboardHandle {
   exportPng: () => Promise<Blob | null>;
   appendElements: (els: readonly ExcalidrawElement[]) => void;
+  /**
+   * Patch a single existing element in place. Used by the lesson player to
+   * progressively reveal a text element word-by-word in lockstep with TTS.
+   * No-ops if no element with the given id is on the canvas.
+   */
+  mutateElement: (id: string, patch: Record<string, unknown>) => void;
   addFiles: (files: BinaryFiles) => void;
   clearAll: () => void;
   getElements: () => readonly ExcalidrawElement[];
@@ -53,6 +59,25 @@ export default function Whiteboard({ onReady }: Props) {
       if (!api) return;
       const current = api.getSceneElements();
       api.updateScene({ elements: [...current, ...els] });
+    },
+    mutateElement(id, patch) {
+      const api = apiRef.current;
+      if (!api) return;
+      const current = api.getSceneElements();
+      let touched = false;
+      const next = current.map((el) => {
+        if (el.id !== id) return el;
+        touched = true;
+        return {
+          ...el,
+          ...patch,
+          version: (el.version ?? 0) + 1,
+          versionNonce: Math.floor(Math.random() * 0x7fffffff),
+          updated: Date.now(),
+        } as typeof el;
+      });
+      if (!touched) return;
+      api.updateScene({ elements: next });
     },
     addFiles(files) {
       const api = apiRef.current;

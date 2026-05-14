@@ -7,6 +7,13 @@ export interface SpeakOptions {
   rate?: number;
   pitch?: number;
   voiceName?: string;
+  /**
+   * Called as the synthesizer advances through the text. `charsSpoken` is the
+   * length (in original-text characters) the engine has progressed through so
+   * far. Used by the lesson player to write the text element word-by-word in
+   * lockstep with the voice. Monotonic; never moves backward.
+   */
+  onProgress?: (charsSpoken: number) => void;
 }
 
 let cachedVoice: SpeechSynthesisVoice | null = null;
@@ -74,12 +81,78 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
     // Hard upper bound: even at ~150 wpm a 200-word utterance is ~80s. Cap at
     // 60s so a stuck speech-synth never blocks the lesson pipeline.
     const maxMs = Math.min(60_000, 1500 + text.length * 80);
+
+    // --- progressive reveal plumbing ---
+    // Two paths feed the same monotonic counter:
+    //   1. Real `onboundary` events from the engine (Chrome/Edge: word-level).
+    //   2. A timer estimate that engages only if no boundary fires for ~600ms,
+    //      so Safari (which historically ignores boundary for some voices)
+    //      still gets a smooth reveal instead of a single-shot at the end.
+    let revealed = 0;
+    const reveal = (n: number) => {
+      if (!opts.onProgress) return;
+      const clamped = Math.min(text.length, Math.max(0, Math.floor(n)));
+      if (clamped <= revealed) return;
+      revealed = clamped;
+      opts.onProgress(revealed);
+    };
+    let boundaryFired = false;
+    let fallbackInterval: number | undefined;
+    let fallbackKickoff: number | undefined;
+    const stopFallback = () => {
+      if (fallbackKickoff !== undefined) {
+        window.clearTimeout(fallbackKickoff);
+        fallbackKickoff = undefined;
+      }
+      if (fallbackInterval !== undefined) {
+        window.clearInterval(fallbackInterval);
+        fallbackInterval = undefined;
+      }
+    };
+    if (opts.onProgress) {
+      u.onboundary = (e: SpeechSynthesisEvent) => {
+        boundaryFired = true;
+        stopFallback();
+        if (e.name === "word" || e.name === undefined) {
+          const charLen = (e as SpeechSynthesisEvent & { charLength?: number })
+            .charLength ?? 0;
+          reveal((e.charIndex ?? 0) + charLen);
+        }
+      };
+      // Roughly 12.5 chars/sec at rate=1.0 (≈150 wpm, ≈5 chars/word).
+      const charsPerMs = 0.0125 * (opts.rate ?? 1.05);
+      const TICK_MS = 80;
+      fallbackKickoff = window.setTimeout(() => {
+        if (boundaryFired) return;
+        let lastTick = Date.now();
+        fallbackInterval = window.setInterval(() => {
+          const now = Date.now();
+          const dt = now - lastTick;
+          lastTick = now;
+          reveal(revealed + Math.max(1, Math.round(dt * charsPerMs)));
+        }, TICK_MS);
+      }, 600);
+    }
+    // --- end reveal plumbing ---
+
     const timer = window.setTimeout(() => {
       try { window.speechSynthesis.cancel(); } catch { /* ignored */ }
+      stopFallback();
+      reveal(text.length);
       resolve();
     }, maxMs);
-    u.onend = () => { window.clearTimeout(timer); resolve(); };
-    u.onerror = () => { window.clearTimeout(timer); resolve(); };
+    u.onend = () => {
+      window.clearTimeout(timer);
+      stopFallback();
+      reveal(text.length);
+      resolve();
+    };
+    u.onerror = () => {
+      window.clearTimeout(timer);
+      stopFallback();
+      reveal(text.length);
+      resolve();
+    };
     window.speechSynthesis.speak(u);
   });
 }

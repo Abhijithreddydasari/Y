@@ -90,6 +90,18 @@ def main() -> int:
             [{"tag": "equation", "args": {"latex": "F = m a", "align": "center"}}],
             "alias eq -> equation",
         ),
+        # Single-backslash LaTeX (model forgot to double-escape): backslash
+        # must survive so KaTeX receives a valid command.
+        (
+            '[equation: "\\frac{u^3}{3} - u"]',
+            [{"tag": "equation", "args": {"latex": "\\frac{u^3}{3} - u", "align": "center"}}],
+            "single-backslash LaTeX preserved (\\frac)",
+        ),
+        (
+            '[equation: "\\int_0^\\pi \\cos x \\, dx"]',
+            [{"tag": "equation", "args": {"latex": "\\int_0^\\pi \\cos x \\, dx", "align": "center"}}],
+            "single-backslash LaTeX preserved (\\int, \\pi, \\cos)",
+        ),
     ]
 
     for raw, want, label in cases:

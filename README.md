@@ -11,7 +11,7 @@ canvas, speaking each step out loud.
 
 ## Demo
 
-<video src="assets/Demo.mp4" controls width="100%"></video>
+[Demo](https://github.com/user-attachments/assets/f047e52c-9d8d-4463-a7cc-f260963f3fca)
 
 ## Architecture
 

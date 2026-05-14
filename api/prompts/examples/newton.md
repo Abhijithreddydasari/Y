@@ -6,11 +6,9 @@ Expected output:
 
 ```
 [title: "Newton's Second Law"]
-[text: "You wrote F equals m times a, with m equal to 2 kilograms and F equal to 10 newtons."]
-[text: "Solving for a, we divide both sides by m:"]
+[text: "Given m = 2 kg, F = 10 N. Solve for a."]
 [equation: "a = F / m"]
-[text: "Substituting the values you gave:"]
 [equation: "a = 10 / 2"]
 [equation: "a = 5 \\, m/s^2"]
-[text: "So the block accelerates at 5 meters per second squared."]
+[text: "The block accelerates at 5 meters per second squared."]
 ```

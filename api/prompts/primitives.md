@@ -16,3 +16,4 @@ Hard rules:
 - IDs are short uppercase tokens (A, B, F1) and only referenced by `arrow.from` / `arrow.to`.
 - `equation.latex` requires LaTeX. Double-escape backslashes when used inside double-quoted args (e.g. `"\\,"` for a thin space, `"\\frac{a}{b}"` for a fraction).
 - Anything that is not one of these 7 tags must be plain text narration.
+- `[text: ...]` and `[title: ...]` content is plain prose. NO markdown (`**bold**`, `_italic_`, backticks, headers, bullets) and NO inline math (`$...$`, `\(...\)`). Math always goes in `[equation: ...]`.

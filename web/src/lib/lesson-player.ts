@@ -4,8 +4,99 @@
 
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import { LessonRenderer } from "./renderer";
+import { stripMarkdown } from "./sanitize";
 import { cancelSpeech, sleep, speak, ttsAvailable } from "./tts";
 import type { PrimitiveTag } from "./types";
+
+// Cache the dynamic Excalidraw import at module scope. Without this every
+// primitive triggers its own `await import("@excalidraw/excalidraw")`, which
+// in Turbopack dev mode produces a flood of "Unexpected import of module ...
+// deleted by an HMR update" warnings whenever a lesson is in flight while
+// any file is edited. With the cache, it's exactly one import per session.
+let _excalidrawModule: Promise<typeof import("@excalidraw/excalidraw")> | null = null;
+function loadExcalidraw() {
+  if (!_excalidrawModule) {
+    _excalidrawModule = import("@excalidraw/excalidraw");
+  }
+  return _excalidrawModule;
+}
+
+/**
+ * Smooth character-by-character text reveal. A setInterval loop advances one
+ * character per tick toward a `target` position that the caller updates (e.g.
+ * from TTS word-boundary events). The result: text "writes itself" on the
+ * board in lockstep with the narrator's voice.
+ */
+class TextRevealer {
+  private current = 0;
+  private target = 0;
+  private intervalId: number | undefined;
+  private completionCb: (() => void) | null = null;
+
+  constructor(
+    private readonly fullText: string,
+    private readonly onReveal: (partial: string) => void,
+    private readonly charMs: number,
+    private readonly signal?: AbortSignal,
+  ) {}
+
+  start(): void {
+    this.intervalId = window.setInterval(() => this.tick(), this.charMs);
+  }
+
+  setTarget(chars: number): void {
+    this.target = Math.min(this.fullText.length, Math.max(0, Math.floor(chars)));
+  }
+
+  /** Snap to full text and stop. */
+  finish(): void {
+    this.stop();
+    if (this.current < this.fullText.length) {
+      this.current = this.fullText.length;
+      this.paint();
+    }
+  }
+
+  /** Set target to end and return a Promise that resolves when the reveal
+   *  interval naturally reaches the last character. */
+  revealAll(): Promise<void> {
+    this.target = this.fullText.length;
+    if (this.current >= this.fullText.length) {
+      this.stop();
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      this.completionCb = resolve;
+    });
+  }
+
+  private tick(): void {
+    if (this.signal?.aborted) {
+      this.stop();
+      this.completionCb?.();
+      return;
+    }
+    if (this.current < this.target) {
+      this.current++;
+      this.paint();
+      if (this.current >= this.fullText.length) {
+        this.stop();
+        this.completionCb?.();
+      }
+    }
+  }
+
+  private paint(): void {
+    this.onReveal(this.fullText.slice(0, this.current) || " ");
+  }
+
+  private stop(): void {
+    if (this.intervalId !== undefined) {
+      window.clearInterval(this.intervalId);
+      this.intervalId = undefined;
+    }
+  }
+}
 
 interface PlayerOptions {
   origin: { x: number; y: number };
@@ -60,25 +151,65 @@ export class LessonPlayer {
   private async playOne(tag: PrimitiveTag): Promise<void> {
     if (this.opts.signal?.aborted) return;
     try {
-      const { skeletons, files } = await this.renderer.render(tag);
-      if (skeletons.length > 0) {
-        const { convertToExcalidrawElements } = await import("@excalidraw/excalidraw");
-        const els = convertToExcalidrawElements(skeletons, { regenerateIds: false });
-        if (files) this.opts.handle.addFiles(files);
-        this.opts.handle.appendElements(els as unknown as Parameters<
-          WhiteboardHandle["appendElements"]
-        >[0]);
-        this.rendered += 1;
-        this.report(`Drew ${this.rendered} element(s). Last: ${tag.tag}`);
+      const cleanTag = sanitizeTag(tag);
+
+      const { skeletons, files, revealId, revealText } =
+        await this.renderer.render(cleanTag);
+      if (skeletons.length === 0) return;
+
+      const { convertToExcalidrawElements } = await loadExcalidraw();
+      const els = convertToExcalidrawElements(skeletons, { regenerateIds: false });
+      if (files) this.opts.handle.addFiles(files);
+      this.opts.handle.appendElements(els as unknown as Parameters<
+        WhiteboardHandle["appendElements"]
+      >[0]);
+      this.rendered += 1;
+      this.report(`Drew ${this.rendered} element(s). Last: ${cleanTag.tag}`);
+
+      const hasReveal = !!revealText && !!revealId;
+      const willSpeak = hasReveal && this.opts.ttsEnabled && ttsAvailable();
+
+      // Blank the element immediately so the user never sees the full text
+      // flash before the tutor starts "writing".
+      if (hasReveal) {
+        this.opts.handle.mutateElement(revealId!, {
+          text: " ",
+          originalText: " ",
+        });
       }
-      const narratable = textOf(tag);
-      if (narratable && this.opts.ttsEnabled && ttsAvailable()) {
+
+      if (willSpeak) {
+        // --- TTS on: character reveal synced to speech ---
         await sleep(this.opts.speakHeadStartMs);
+        if (this.opts.signal?.aborted) return;
         this.speaks += 1;
-        await speak(narratable);
-      } else if (skeletons.length > 0) {
-        // Visual-only pause so a flurry of equations / boxes doesn't snap
-        // into existence instantly.
+        const fullText = revealText!;
+        const mutate = (partial: string) =>
+          this.opts.handle.mutateElement(revealId!, {
+            text: partial,
+            originalText: partial,
+          });
+        // ~45ms/char ≈ 22 chars/sec, roughly matching 150 wpm speech pace.
+        const revealer = new TextRevealer(fullText, mutate, 45, this.opts.signal);
+        revealer.start();
+        await speak(fullText, {
+          onProgress: (chars) => revealer.setTarget(chars),
+        });
+        revealer.finish();
+      } else if (hasReveal) {
+        // --- TTS off: character reveal at a brisk reading pace ---
+        const fullText = revealText!;
+        const mutate = (partial: string) =>
+          this.opts.handle.mutateElement(revealId!, {
+            text: partial,
+            originalText: partial,
+          });
+        const revealer = new TextRevealer(fullText, mutate, 30, this.opts.signal);
+        revealer.start();
+        await revealer.revealAll();
+        revealer.finish();
+      } else {
+        // Diagram primitive (equation / box / node / arrow / line).
         await sleep(this.opts.visualGapMs);
       }
     } catch (exc) {
@@ -91,9 +222,19 @@ export class LessonPlayer {
   }
 }
 
-function textOf(tag: PrimitiveTag): string {
+function sanitizeTag(tag: PrimitiveTag): PrimitiveTag {
   const a = tag.args ?? {};
-  if (tag.tag === "title") return String(a.text ?? "");
-  if (tag.tag === "text") return String(a.content ?? "");
-  return "";
+  if (tag.tag === "text") {
+    return {
+      ...tag,
+      args: { ...a, content: stripMarkdown(String(a.content ?? "")) },
+    };
+  }
+  if (tag.tag === "title") {
+    return {
+      ...tag,
+      args: { ...a, text: stripMarkdown(String(a.text ?? "")) },
+    };
+  }
+  return tag;
 }

@@ -34,11 +34,15 @@ POSITIONAL_FIRST_ARG: dict[str, str] = {
 
 
 def _unescape(s: str) -> str:
-    """JSON-style escape unescaping for quoted string values.
+    """Unescape quoted string values.
 
-    Handle \\\\ first so we don't accidentally un-escape a sequence the user
-    wanted to keep doubled. Single-pass; we do NOT loop because the model is
-    instructed to write only the JSON-style single layer (e.g. \\\\frac means \\frac).
+    Recognises the standard JSON-style sequences (\\\\, \\", \\n, \\t, \\r).
+    Everything else — crucially LaTeX commands like \\frac, \\int, \\sum — is
+    left intact (backslash preserved). This means both single-escaped and
+    double-escaped LaTeX survive:
+        \\frac  →  \\  →  \\   (known escape, produces single \\)
+        \frac   →  \\f  →  \\f (unknown escape, keeps both chars)
+    Either way the downstream KaTeX call receives a valid \\frac.
     """
     out: list[str] = []
     i = 0
@@ -57,7 +61,7 @@ def _unescape(s: str) -> str:
             elif nxt == "r":
                 out.append("\r")
             else:
-                # unknown escape: drop the backslash, keep the char (most LLM-friendly)
+                out.append("\\")
                 out.append(nxt)
             i += 2
             continue

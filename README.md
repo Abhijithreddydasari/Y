@@ -1,58 +1,44 @@
 # Y - an AI Learning Companion
 
+> Most AI tutors are chat boxes. This one writes on your whiteboard.
+
 A pedagogical AI that reads the student's whiteboard, finds the part marked
 with `?`, and explains the answer by drawing on the same canvas while
 narrating aloud.
 
-The student writes a question on an Excalidraw whiteboard (`F = m * a, m=2kg,
-F=10N, a = ?`), clicks **Solve**, and watches the AI tutor draw a clean
-explanation - title, narration, equations, diagrams - in a free region of the
-canvas, speaking each step out loud.
+The student writes a question (`F = m * a, m=2kg, F=10N, a = ?`), clicks
+**Solve**, and watches the tutor draw a clean explanation — title, narration,
+equations, diagrams — in a free region of the canvas. Each character of the
+on-canvas text appears in lockstep with the speech synthesizer's word-boundary
+events, so the writing literally writes itself at the speed the voice is
+reading it.
+
+**Stack:** Next.js 16, React 19, FastAPI, Ollama (`gemma4:e4b`), Excalidraw,
+KaTeX, Web Speech API.
 
 ## Demo
 
 [Demo](https://github.com/user-attachments/assets/f047e52c-9d8d-4463-a7cc-f260963f3fca)
 
-## Architecture
+## How it works
 
-```
-                            +---------------------+
-                            |  Excalidraw canvas  |
-                            |  (Next.js 16 + TS)  |
-                            +----------+----------+
-                                       |
-                                  PNG export
-                                       v
-                            +----------+----------+
-                            |    /lesson SSE      |
-                            |  FastAPI backend    |
-                            +----------+----------+
-                                       |
-                          system prompt + 3 few-shots
-                                       v
-                            +----------+----------+
-                            |   Ollama gemma4:e4b |
-                            |     (multimodal)    |
-                            +----------+----------+
-                                       |
-                              streamed tokens
-                                       v
-                  +--------------------+-------------------+
-                  | Incremental parser -> validator/repair |
-                  +--------------------+-------------------+
-                                       |
-                              `primitive` SSE events
-                                       v
-                  +--------------------+-------------------+
-                  | LessonPlayer queues primitives,        |
-                  | renders each (KaTeX -> PNG for math),  |
-                  | appends Excalidraw elements, and       |
-                  | speaks narration via Web Speech API    |
-                  +----------------------------------------+
+```mermaid
+flowchart TD
+    A([Student writes question, marks '?']) --> B[Export PNG + pick answer region]
+    B -->|POST| C[FastAPI /lesson]
+    C -->|prompt + image| D[Ollama gemma4:e4b multimodal stream]
+    D -->|raw tokens| E[Parser + validator + repair]
+    E -->|SSE primitives| F[LessonPlayer]
+    F -->|equation| G[KaTeX]
+    F -->|shape| H[Excalidraw element]
+    F -->|text| I[TTS + char reveal]
+    G --> J([Lesson drawn on canvas])
+    H --> J
+    I --> J
 ```
 
-**Primitive protocol (7 tags).** The LLM only emits a vocabulary defined in
-[`schema/primitives.json`](./schema/primitives.json):
+The LLM is constrained to a vocabulary of 7 primitives
+([`schema/primitives.json`](./schema/primitives.json)):
 
 | Tag | Purpose | Example |
 | --- | --- | --- |
@@ -64,16 +50,16 @@ canvas, speaking each step out loud.
 | `arrow` | Connect two ids | `[arrow: from=A to=B label="step"]` |
 | `line` | Free segment | `[line: x1=0 y1=0 x2=200 y2=0 label="v"]` |
 
-Coordinates are optional. Anything else the model writes is plain narration.
+A small deterministic renderer translates each primitive into Excalidraw
+elements. The bet: a tiny structured language is easier to teach an LLM (and
+easier to repair) than free-form SVG.
 
-## Why this design
-
-The deterministic renderer is the model's "hand". The LLM only generates a
-small structured language; the renderer translates each primitive into
-Excalidraw. The natural next step is to replace individual primitives with
-calls to a fine-tuned [StarVector](https://github.com/joanrod/star-vector)-style
-model that emits native SVG, expanding the vocabulary without retraining the
-narrative behavior.
+**How it stays robust.** The validator aliases sloppy names
+(`heading→title`, `eq→equation`, `rect→box`), salvages unquoted positional
+args, coerces numbers, and falls back to `[text]` narration on anything
+unrepairable — so prompt drift never silently drops content. The answer
+region is computed from the bounding box of the student's existing elements,
+so the lesson never overlaps what they already wrote.
 
 ## Quick start
 
@@ -102,9 +88,8 @@ npm install
 npm run dev
 ```
 
-Open <http://localhost:3000>. Either click **Sample** to insert a Newton's-law
-question, or write your own with the pen tool and mark the unknown with `?`.
-Then click **Solve**.
+Open <http://localhost:3000>. Click **Sample** for a Newton's-law question, or
+write your own with the pen tool and mark the unknown with `?`. Then **Solve**.
 
 ## Smoke tests
 
@@ -153,11 +138,10 @@ Y/
 +- .gitignore
 ```
 
-## Roadmap
+## Future
 
 - Replace the deterministic renderer's `box/node/arrow` paths with the
-  StarVector-style decoder mentioned above so diagrams render as hand-drawn
-  SVG.
+  StarVector-style decoder so diagrams render as hand-drawn SVG.
 - Expand the primitive vocabulary (graphs with axes, animations, geometric
   constructions, code blocks with syntax highlighting).
 - Collect stroke-order data from live sessions to train a "draw like a human"

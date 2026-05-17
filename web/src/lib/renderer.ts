@@ -86,6 +86,15 @@ function asStr(v: string | number | undefined, fallback = ""): string {
   return String(v);
 }
 
+interface DiagramSession {
+  viewBox: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  partsSoFar: number;
+}
+
 export class LessonRenderer {
   private readonly origin: Origin;
   // Vertical cursor for the narration column (title / text / equation).
@@ -98,6 +107,12 @@ export class LessonRenderer {
   private graphRow = 0;
   // Local-id -> Excalidraw element id (we keep them identical via regenerateIds:false).
   private readonly idMap = new Map<string, string>();
+  // When the model emits a sequence of [draw_part] blocks with a shared
+  // viewBox we keep them at the same x/y so each part's image stacks on top
+  // of the previous (rendered with transparent background) and the diagram
+  // builds up as the teacher narrates. The session resets when (a) the next
+  // primitive is not a draw_part, or (b) the viewBox changes.
+  private diagramSession: DiagramSession | null = null;
 
   constructor(origin: Origin) {
     this.origin = origin;
@@ -109,6 +124,10 @@ export class LessonRenderer {
   }
 
   async render(tag: PrimitiveTag): Promise<RenderResult> {
+    if (tag.tag !== "draw_part") {
+      // Any non-part primitive ends the current composing diagram.
+      this.diagramSession = null;
+    }
     switch (tag.tag) {
       case "title":
         return this.renderTitle(asStr(tag.args.text));
@@ -126,6 +145,8 @@ export class LessonRenderer {
         return this.renderLine(tag.args);
       case "draw":
         return this.renderDraw(tag.args);
+      case "draw_part":
+        return this.renderDrawPart(tag.args);
       default:
         return { skeletons: [] };
     }
@@ -299,11 +320,111 @@ export class LessonRenderer {
     if (!innerSvg) return { skeletons: [] };
     const viewBoxStr = asStr(args.viewBox, "0 0 400 300");
     const w = Math.min(asNum(args.w) ?? 400, COL_WIDTH);
+    const caption = asStr(args.caption);
+    return this.renderInlineSvg(innerSvg, viewBoxStr, w, caption);
+  }
+
+  /**
+   * `draw_part` is a single named part of a larger diagram. Consecutive
+   * [draw_part] blocks with the same viewBox compose into one cumulative
+   * diagram: each part image is rasterised with a transparent background and
+   * stacked at the same on-canvas position, so the user sees strokes appear
+   * one stroke-set at a time exactly as a teacher would draw on a board.
+   * `name` is spoken aloud by the player so the student hears "now the bonds"
+   * as the bond strokes fill in.
+   */
+  private async renderDrawPart(args: Record<string, string | number>): Promise<RenderResult> {
+    const innerSvg = asStr(args.svg);
+    if (!innerSvg) return { skeletons: [] };
+    const viewBoxStr = asStr(args.viewBox, "0 0 400 300");
+    const requestedW = Math.min(asNum(args.w) ?? 400, COL_WIDTH);
+    const partName = asStr(args.name);
+
+    const parsed = parseSvg(innerSvg, viewBoxStr);
+
+    let session = this.diagramSession;
+    let isFirstPart = false;
+    if (!session || session.viewBox !== viewBoxStr) {
+      const [, , vbW, vbH] = parsed.viewBox;
+      const aspect = vbH / Math.max(1, vbW);
+      const h = Math.max(60, Math.round(requestedW * aspect));
+      const offsetX = (COL_WIDTH - requestedW) / 2;
+      session = {
+        viewBox: viewBoxStr,
+        x: this.narrationX + offsetX,
+        y: this.narrationY,
+        width: requestedW,
+        height: h,
+        partsSoFar: 0,
+      };
+      this.diagramSession = session;
+      isFirstPart = true;
+    }
+
+    let raster;
+    try {
+      raster = await rasterSvgToPng(parsed.outerSvg, session.width, session.height);
+    } catch (exc) {
+      console.warn("[renderer] draw_part raster failed", exc);
+      return this.renderText(partName || "(diagram)");
+    }
+
+    const fileId = makeFileId();
+    const imageId = makeRevealId();
+    const imageSkel: ExcalidrawElementSkeleton = {
+      type: "image",
+      id: imageId,
+      fileId,
+      x: session.x,
+      y: session.y,
+      width: session.width,
+      height: session.height,
+    } as ExcalidrawElementSkeleton;
+    const fileData: BinaryFileData = {
+      id: fileId,
+      mimeType: "image/png",
+      dataURL: raster.dataURL as DataURL,
+      created: Date.now(),
+    };
+    const files: BinaryFiles = { [fileId]: fileData };
+    session.partsSoFar += 1;
+
+    // Only the FIRST part of a diagram session pushes the narration cursor
+    // down. Subsequent parts overlay at the saved y so they compose on top.
+    if (isFirstPart) {
+      this.advanceNarration(session.height);
+    }
+
+    return {
+      skeletons: [imageSkel],
+      files,
+      drawAnimation: {
+        parsedSvg: parsed,
+        imageId,
+        x: session.x,
+        y: session.y,
+        width: session.width,
+        height: session.height,
+        caption: partName,
+      },
+    };
+  }
+
+  /**
+   * Shared SVG -> PNG -> Excalidraw image element pipeline used by both
+   * `[draw]` and `[draw_part]`. Returns drawAnimation metadata so the player
+   * can stroke-reveal each <path> before the rasterised image swaps in.
+   */
+  private async renderInlineSvg(
+    innerSvg: string,
+    viewBoxStr: string,
+    w: number,
+    caption: string,
+  ): Promise<RenderResult> {
     const parsed = parseSvg(innerSvg, viewBoxStr);
     const [, , vbW, vbH] = parsed.viewBox;
     const aspect = vbH / Math.max(1, vbW);
     const h = Math.max(60, Math.round(w * aspect));
-    const caption = asStr(args.caption);
 
     let raster;
     try {

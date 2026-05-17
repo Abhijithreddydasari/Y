@@ -28,6 +28,13 @@ export interface WhiteboardHandle {
   addFiles: (files: BinaryFiles) => void;
   clearAll: () => void;
   getElements: () => readonly ExcalidrawElement[];
+  /**
+   * Compute the on-screen (viewport) rect for a scene element. Used by the
+   * stroke-by-stroke draw animation to position an overlay SVG exactly on
+   * top of the image element while it animates. Returns null if the element
+   * can't be found or the canvas isn't mounted.
+   */
+  getElementScreenRect: (id: string) => DOMRect | null;
 }
 
 interface Props {
@@ -36,6 +43,7 @@ interface Props {
 
 export default function Whiteboard({ onReady }: Props) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
 
   const buildHandle = useCallback((): WhiteboardHandle => ({
@@ -93,6 +101,24 @@ export default function Whiteboard({ onReady }: Props) {
       const api = apiRef.current;
       return api ? api.getSceneElements() : [];
     },
+    getElementScreenRect(id) {
+      const api = apiRef.current;
+      const container = containerRef.current;
+      if (!api || !container) return null;
+      const el = api.getSceneElements().find((e) => e.id === id);
+      if (!el) return null;
+      const appState = api.getAppState();
+      const containerRect = container.getBoundingClientRect();
+      const z = appState.zoom?.value ?? 1;
+      const sx = appState.scrollX ?? 0;
+      const sy = appState.scrollY ?? 0;
+      // Excalidraw scene -> viewport: (scene_xy + scroll) * zoom + container offset.
+      const x = (el.x + sx) * z + containerRect.left;
+      const y = (el.y + sy) * z + containerRect.top;
+      const w = el.width * z;
+      const h = el.height * z;
+      return new DOMRect(x, y, w, h);
+    },
   }), []);
 
   useEffect(() => {
@@ -102,7 +128,7 @@ export default function Whiteboard({ onReady }: Props) {
   }, [ready, onReady, buildHandle]);
 
   return (
-    <div className="absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0">
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;

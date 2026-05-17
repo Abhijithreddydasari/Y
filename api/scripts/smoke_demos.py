@@ -1,22 +1,26 @@
-"""Smoke test all three demo scenarios through the running /lesson endpoint.
+"""Smoke test all 5 subject demos through the running /lesson endpoint.
 
-Generates synthetic 'whiteboard' images for:
-  1. Newton's 2nd law
-  2. Vector addition
-  3. Binary search
+Generates synthetic 'whiteboard' images for math, physics, chemistry, biology,
+and computer science, POSTs each to FastAPI, and reports primitive counts.
 
-POSTs each to FastAPI and reports primitive counts so we can see whether the
-model latches onto the few-shot examples.
+By default runs once per subject against the model_choice you pass on the
+command line (default "edge"). Pass `--all-models` to fan out across edge /
+edge-ft / cloud and emit a 5x3 results matrix - the standard P10 sweep.
 
 Run with the dev server up:
     .\\.venv\\Scripts\\python.exe scripts\\smoke_demos.py
+    .\\.venv\\Scripts\\python.exe scripts\\smoke_demos.py --model edge-ft
+    .\\.venv\\Scripts\\python.exe scripts\\smoke_demos.py --all-models
 """
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import sys
 import time
+from dataclasses import dataclass
+from typing import Callable
 
 import httpx
 from PIL import Image, ImageDraw, ImageFont
@@ -29,66 +33,131 @@ def _font(size: int) -> ImageFont.ImageFont:
         return ImageFont.load_default()
 
 
-def newton_png() -> bytes:
+def math_png() -> bytes:
     img = Image.new("RGB", (900, 600), "white")
     d = ImageDraw.Draw(img)
-    d.text((40, 30), "Physics homework", fill="#222", font=_font(28))
-    d.line([(40, 75), (320, 75)], fill="#222", width=2)
-    d.text((80, 140), "F = m * a", fill="#222", font=_font(36))
-    d.text((80, 210), "m = 2 kg", fill="#222", font=_font(36))
-    d.text((80, 280), "F = 10 N", fill="#222", font=_font(36))
-    d.text((80, 350), "a = ?", fill="#c00", font=_font(36))
+    d.text((40, 30), "Geometry", fill="#222", font=_font(28))
+    d.line([(40, 75), (200, 75)], fill="#222", width=2)
+    d.line([(160, 280), (160, 420)], fill="#222", width=3)  # vertical leg
+    d.line([(160, 420), (380, 420)], fill="#222", width=3)  # horizontal leg
+    d.line([(160, 280), (380, 420)], fill="#222", width=3)  # hypotenuse
+    d.text((90, 340), "3", fill="#222", font=_font(28))
+    d.text((250, 430), "4", fill="#222", font=_font(28))
+    d.text((280, 320), "?", fill="#c00", font=_font(40))
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
 
 
-def vector_png() -> bytes:
+def physics_png() -> bytes:
     img = Image.new("RGB", (900, 600), "white")
     d = ImageDraw.Draw(img)
-    d.text((40, 30), "Vector addition", fill="#222", font=_font(28))
-    d.line([(40, 75), (320, 75)], fill="#222", width=2)
-    # vector u (right)
-    d.line([(120, 350), (380, 350)], fill="#222", width=3)
-    d.polygon([(380, 350), (368, 342), (368, 358)], fill="#222")
-    d.text((230, 360), "u", fill="#222", font=_font(28))
-    # vector v (up-right)
-    d.line([(120, 350), (310, 200)], fill="#0a0", width=3)
-    d.polygon([(310, 200), (302, 215), (318, 213)], fill="#0a0")
-    d.text((200, 250), "v", fill="#0a0", font=_font(28))
-    d.text((500, 250), "u + v = ?", fill="#c00", font=_font(34))
+    d.text((40, 30), "Mechanics", fill="#222", font=_font(28))
+    d.line([(40, 75), (220, 75)], fill="#222", width=2)
+    # incline
+    d.line([(120, 460), (560, 200)], fill="#222", width=3)
+    d.line([(120, 460), (560, 460)], fill="#222", width=3)
+    d.line([(560, 200), (560, 460)], fill="#222", width=3)
+    d.text((300, 470), "30 deg", fill="#222", font=_font(24))
+    # block
+    d.rectangle([(360, 270), (440, 330)], outline="#222", width=3)
+    d.text((375, 285), "m", fill="#222", font=_font(28))
+    d.text((80, 200), "frictionless", fill="#222", font=_font(24))
+    d.text((80, 240), "a = ?", fill="#c00", font=_font(34))
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
 
 
-def binary_search_png() -> bytes:
-    img = Image.new("RGB", (900, 500), "white")
+def chem_png() -> bytes:
+    img = Image.new("RGB", (900, 600), "white")
+    d = ImageDraw.Draw(img)
+    d.text((40, 30), "Organic chem", fill="#222", font=_font(28))
+    d.line([(40, 75), (240, 75)], fill="#222", width=2)
+    d.text((80, 200), "Draw the structure of benzene?", fill="#222", font=_font(28))
+    d.text((80, 260), "C6H6", fill="#222", font=_font(28))
+    d.text((80, 330), "structure = ?", fill="#c00", font=_font(34))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def bio_png() -> bytes:
+    img = Image.new("RGB", (900, 600), "white")
+    d = ImageDraw.Draw(img)
+    d.text((40, 30), "Cell biology", fill="#222", font=_font(28))
+    d.line([(40, 75), (220, 75)], fill="#222", width=2)
+    d.text((80, 130), "Label parts of an animal cell?", fill="#222", font=_font(28))
+    # crude cell sketch
+    d.ellipse([(360, 200), (760, 480)], outline="#222", width=3)
+    d.ellipse([(500, 280), (620, 380)], outline="#222", width=3)
+    d.text((80, 200), "?", fill="#c00", font=_font(60))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def cs_png() -> bytes:
+    img = Image.new("RGB", (900, 600), "white")
     d = ImageDraw.Draw(img)
     d.text((40, 30), "Algorithms", fill="#222", font=_font(28))
     d.line([(40, 75), (220, 75)], fill="#222", width=2)
-    arr = [1, 3, 5, 7, 9, 11]
-    x = 80
-    for n in arr:
-        d.rectangle([(x, 160), (x + 90, 240)], outline="#222", width=2)
-        d.text((x + 30, 175), str(n), fill="#222", font=_font(28))
-        x += 110
-    d.text((80, 320), "find 7 ?", fill="#c00", font=_font(36))
+    d.text((80, 130), "DFS visit order on this rooted tree?", fill="#222", font=_font(28))
+    # tree
+    nodes = {
+        "A": (480, 200),
+        "B": (380, 300),
+        "C": (580, 300),
+        "D": (320, 420),
+        "E": (440, 420),
+        "F": (540, 420),
+        "G": (640, 420),
+    }
+    edges = [("A", "B"), ("A", "C"), ("B", "D"), ("B", "E"), ("C", "F"), ("C", "G")]
+    for a, b in edges:
+        d.line([nodes[a], nodes[b]], fill="#222", width=2)
+    for name, (x, y) in nodes.items():
+        d.ellipse([(x - 24, y - 24), (x + 24, y + 24)], outline="#222", width=2)
+        d.text((x - 8, y - 14), name, fill="#222", font=_font(24))
+    d.text((80, 200), "?", fill="#c00", font=_font(60))
     buf = io.BytesIO()
     img.save(buf, "PNG")
     return buf.getvalue()
 
 
-def run(label: str, png: bytes) -> tuple[int, int, bool]:
+@dataclass
+class Result:
+    label: str
+    model: str
+    prim: int
+    tok: int
+    err: bool
+    elapsed: float
+
+
+def run(
+    label: str,
+    png: bytes,
+    *,
+    base: str,
+    model: str,
+    teacher_mode: bool = False,
+    timeout: float = 300.0,
+) -> Result:
     files = {"image": ("canvas.png", png, "image/png")}
+    data = {
+        "model_choice": model,
+        "teacher_mode": "true" if teacher_mode else "false",
+        "user_id": "smoke",
+    }
     t0 = time.time()
     prim = tok = 0
     err = False
-    with httpx.Client(timeout=300.0) as c:
-        with c.stream("POST", "http://127.0.0.1:8000/lesson", files=files) as r:
+    with httpx.Client(timeout=timeout) as c:
+        with c.stream("POST", f"{base}/lesson", files=files, data=data) as r:
             if r.status_code != 200:
                 print(f"  HTTP {r.status_code}: {r.text}")
-                return (0, 0, True)
+                return Result(label, model, 0, 0, True, time.time() - t0)
             event = "message"
             buf: list[str] = []
 
@@ -107,7 +176,7 @@ def run(label: str, png: bytes) -> tuple[int, int, bool]:
                     tok += 1
                 elif event == "error":
                     err = True
-                    print(f"  ERROR: {payload}")
+                    print(f"  ERROR ({model}/{label}): {payload}")
                 event, buf = "message", []
 
             for line in r.iter_lines():
@@ -120,23 +189,56 @@ def run(label: str, png: bytes) -> tuple[int, int, bool]:
             flush()
     elapsed = time.time() - t0
     status = "FAIL" if err or prim == 0 else "OK"
-    print(f"  [{status}] {label}: {prim} primitives, {tok} tokens, {elapsed:.1f}s")
-    return (prim, tok, err)
+    print(f"  [{status}] {model:9s} {label:18s} {prim:>3} prim, {tok:>4} tok, {elapsed:5.1f}s")
+    return Result(label, model, prim, tok, err, elapsed)
+
+
+SUBJECTS: list[tuple[str, Callable[[], bytes]]] = [
+    ("Math (Pythagoras)", math_png),
+    ("Physics (incline)", physics_png),
+    ("Chem (benzene)", chem_png),
+    ("Bio (cell)", bio_png),
+    ("CS (DFS tree)", cs_png),
+]
 
 
 def main() -> int:
-    results = []
-    for label, gen in [
-        ("Newton's 2nd law", newton_png),
-        ("Vector addition", vector_png),
-        ("Binary search", binary_search_png),
-    ]:
-        print(f"[demo] {label}")
-        results.append((label, *run(label, gen())))
-    print()
-    ok = sum(1 for _, p, _, e in results if not e and p > 0)
-    print(f"Passing demos: {ok}/3")
-    return 0 if ok == 3 else 1
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base", default="http://127.0.0.1:8000", help="API base URL")
+    ap.add_argument("--model", default="edge", help="model_choice (edge|edge-ft|cloud)")
+    ap.add_argument("--all-models", action="store_true", help="sweep edge / edge-ft / cloud")
+    ap.add_argument("--teacher-mode", action="store_true")
+    args = ap.parse_args()
+
+    models = ["edge", "edge-ft", "cloud"] if args.all_models else [args.model]
+    rows: list[Result] = []
+    for model in models:
+        print(f"[demo] model={model}")
+        for label, gen in SUBJECTS:
+            rows.append(run(label, gen(), base=args.base, model=model, teacher_mode=args.teacher_mode))
+        print()
+
+    # Summary matrix.
+    print("=" * 64)
+    print(f"{'subject':<22} | " + " | ".join(f"{m:>9}" for m in models))
+    print("-" * 64)
+    for label, _ in SUBJECTS:
+        cells = []
+        for m in models:
+            r = next((x for x in rows if x.label == label and x.model == m), None)
+            if r is None:
+                cells.append("    -    ")
+            elif r.err or r.prim == 0:
+                cells.append("   FAIL  ")
+            else:
+                cells.append(f"{r.prim:>3}p {r.elapsed:>4.1f}s")
+        print(f"{label:<22} | " + " | ".join(cells))
+    print("=" * 64)
+
+    failures = sum(1 for r in rows if r.err or r.prim == 0)
+    total = len(rows)
+    print(f"Passing: {total - failures}/{total}")
+    return 0 if failures == 0 else 1
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
 // arriving from SSE) and the replay button (primitives cached in memory).
 
 import type { WhiteboardHandle } from "@/components/Whiteboard";
-import { LessonRenderer } from "./renderer";
+import { LessonRenderer, type RenderResult } from "./renderer";
 import { stripMarkdown } from "./sanitize";
 import { cancelSpeech, sleep, speak, ttsAvailable } from "./tts";
 import type { PrimitiveTag } from "./types";
@@ -153,18 +153,37 @@ export class LessonPlayer {
     try {
       const cleanTag = sanitizeTag(tag);
 
-      const { skeletons, files, revealId, revealText, revealWidth, revealHeight } =
-        await this.renderer.render(cleanTag);
+      const result = await this.renderer.render(cleanTag);
+      const { skeletons, files, revealId, revealText, revealWidth, revealHeight, drawAnimation } = result;
       if (skeletons.length === 0) return;
 
       const { convertToExcalidrawElements } = await loadExcalidraw();
       const els = convertToExcalidrawElements(skeletons, { regenerateIds: false });
       if (files) this.opts.handle.addFiles(files);
+
+      // For draw / draw_part: hide the image element initially so the
+      // overlay animation can paint the strokes from scratch. The image
+      // fades in once the animation completes.
+      if (drawAnimation) {
+        for (const el of els as unknown as Array<Record<string, unknown>>) {
+          if (el.id === drawAnimation.imageId) {
+            (el as Record<string, unknown>).opacity = 0;
+          }
+        }
+      }
+
       this.opts.handle.appendElements(els as unknown as Parameters<
         WhiteboardHandle["appendElements"]
       >[0]);
       this.rendered += 1;
       this.report(`Drew ${this.rendered} element(s). Last: ${cleanTag.tag}`);
+
+      // If this primitive had an animatable diagram, run the stroke-by-
+      // stroke reveal BEFORE we move on (or in parallel with the caption TTS
+      // when the part has a name).
+      if (drawAnimation) {
+        await this.playStrokeAnimation(result);
+      }
 
       const hasReveal = !!revealText && !!revealId;
       const willSpeak = hasReveal && this.opts.ttsEnabled && ttsAvailable();
@@ -216,6 +235,116 @@ export class LessonPlayer {
       }
     } catch (exc) {
       console.warn("[player] failed primitive", tag, exc);
+    }
+  }
+
+  /**
+   * Stroke-by-stroke draw of a draw / draw_part primitive's SVG. Mounts an
+   * absolutely-positioned overlay over the image element's screen rect,
+   * animates each <path>'s stroke-dashoffset from full length down to 0
+   * sequentially, and (optionally) speaks the part's caption in parallel.
+   * Once the animation completes, the underlying image element fades in and
+   * the overlay is removed.
+   *
+   * Sized in viewport coordinates so it tracks Excalidraw zoom at the
+   * moment of capture; if the user zooms during the animation the overlay
+   * will drift -- acceptable for a 2-3s reveal.
+   */
+  private async playStrokeAnimation(result: RenderResult): Promise<void> {
+    if (this.opts.signal?.aborted) return;
+    if (!result.drawAnimation) return;
+    const { parsedSvg, imageId, caption } = result.drawAnimation;
+    const paths = parsedSvg.paths;
+    if (!paths.length) {
+      // Nothing to animate (e.g. draw_part with only <text> elements).
+      // Just fade the image in and bail.
+      this.opts.handle.mutateElement(imageId, { opacity: 100 });
+      return;
+    }
+
+    // Wait one frame so the image element is committed to the DOM and we
+    // can read its screen-space rect.
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+
+    const rect = this.opts.handle.getElementScreenRect(imageId);
+    if (!rect) {
+      // Whiteboard not ready / element missing. Fade-in fallback.
+      this.opts.handle.mutateElement(imageId, { opacity: 100 });
+      return;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.left = `${rect.left}px`;
+    overlay.style.top = `${rect.top}px`;
+    overlay.style.width = `${rect.width}px`;
+    overlay.style.height = `${rect.height}px`;
+    overlay.style.pointerEvents = "none";
+    overlay.style.zIndex = "1000";
+    overlay.style.transition = "opacity 280ms ease-out";
+    overlay.style.opacity = "1";
+    overlay.innerHTML = parsedSvg.outerSvg;
+
+    // Force the inner SVG to fill the overlay box exactly.
+    const svg = overlay.querySelector("svg");
+    if (svg) {
+      svg.setAttribute("width", "100%");
+      svg.setAttribute("height", "100%");
+      svg.style.display = "block";
+    }
+
+    document.body.appendChild(overlay);
+
+    try {
+      const pathEls = svg ? Array.from(svg.querySelectorAll("path")) as SVGPathElement[] : [];
+      // Initial state: every path invisible (offset = length, dasharray = length).
+      const lengths: number[] = [];
+      for (const p of pathEls) {
+        let len = 0;
+        try { len = p.getTotalLength(); } catch { len = 100; }
+        if (!Number.isFinite(len) || len <= 0) len = 100;
+        lengths.push(len);
+        p.style.strokeDasharray = String(len);
+        p.style.strokeDashoffset = String(len);
+        p.style.transition = "none";
+      }
+      // Force a paint of the initial state.
+      // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+      svg && svg.getBoundingClientRect();
+
+      // Pace the animation: total ~1.6s baseline, longer if many paths.
+      const totalMs = Math.min(2400, Math.max(900, 240 + 110 * pathEls.length));
+      const perPathMs = totalMs / Math.max(1, pathEls.length);
+
+      // Speak the part name in parallel (best effort) while strokes appear.
+      const speakPromise: Promise<void> = (caption && this.opts.ttsEnabled && ttsAvailable())
+        ? (async () => {
+            await sleep(40);
+            try { await speak(caption, {}); } catch { /* swallow */ }
+          })()
+        : Promise.resolve();
+
+      // Animate each path sequentially: kick off transition, wait for it.
+      for (let i = 0; i < pathEls.length; i++) {
+        if (this.opts.signal?.aborted) break;
+        const p = pathEls[i];
+        p.style.transition = `stroke-dashoffset ${perPathMs}ms ease-out`;
+        // Reading offsetWidth flushes the transition setter so the next
+        // assignment actually animates rather than snapping.
+        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+        p.getBoundingClientRect();
+        p.style.strokeDashoffset = "0";
+        await sleep(perPathMs);
+      }
+
+      await speakPromise;
+    } finally {
+      // Fade in the underlying rasterised image and fade out the overlay
+      // simultaneously to mask the swap.
+      this.opts.handle.mutateElement(imageId, { opacity: 100 });
+      overlay.style.opacity = "0";
+      await sleep(300);
+      overlay.remove();
     }
   }
 

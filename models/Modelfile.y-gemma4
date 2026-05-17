@@ -1,0 +1,39 @@
+# Y · Modelfile for the fine-tuned edge tutor (Gemma-3n-E2B + ControlSketch LoRA)
+#
+# Build the GGUF artefact first via the Unsloth Kaggle notebook
+# (`training/unsloth_train.ipynb` step 8), drop it next to this file, then run:
+#
+#     ollama create y-gemma4 -f models/Modelfile.y-gemma4
+#
+# After this, the API will be able to serve the fine-tuned tutor by setting
+# `model_choice=edge-ft` on the /lesson endpoint (or selecting "Edge
+# fine-tuned (E2B+LoRA)" in the toolbar).
+#
+# If GGUF conversion failed, swap the FROM line to `FROM gemma3n:e2b` to keep
+# the demo functional with the *base* E2B model and ship the LoRA on HF as a
+# separate Unsloth-track artefact.
+
+FROM ./y-gemma3n-svg-q4_k_m.gguf
+
+# Decoding settings recommended by the Gemma-3n team (Unsloth docs).
+PARAMETER temperature 0.4
+PARAMETER top_k 64
+PARAMETER top_p 0.95
+PARAMETER min_p 0.0
+PARAMETER repeat_penalty 1.0
+PARAMETER num_ctx 4096
+PARAMETER num_predict 2048
+
+TEMPLATE """{{ if .System }}<start_of_turn>user
+{{ .System }}{{ end }}{{ if .Prompt }}
+{{ .Prompt }}{{ end }}<end_of_turn>
+<start_of_turn>model
+{{ .Response }}<end_of_turn>
+"""
+
+# Bake in a thin system message so even a bare `ollama run y-gemma4` echos
+# the project's whiteboard-tutor identity. The full system prompt (with the
+# 9-tool registry and exemplars) is injected by api/teacher.py at request
+# time, so this is just the elevator pitch -- keeps prompt budget free for
+# the actual tools and few-shots.
+SYSTEM """You are Y, a multi-tool whiteboard tutor. You teach by writing on the same board the student is using, exactly the way a human teacher does. Use the 9 tools (title, text, equation, box, node, arrow, line, draw, draw_part) defined by the host application's system prompt. Prefer [draw_part] blocks for any diagram whose shape matters; decompose into 2-5 named pedagogical parts."""

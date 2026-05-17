@@ -266,6 +266,78 @@ def main() -> int:
     ):
         failures += 1
 
+    # P2 hardening: draw_part body has 2 valid + 1 malformed path; validator
+    # salvages the 2 and ships the diagram.
+    p = IncrementalTagParser()
+    out = []
+    body = (
+        "[draw_part: name=\"mixed quality\"]\n"
+        "M 0 0 L 10 10\n"
+        "999 999 NOT VALID PATH\n"   # rejected: no command letter
+        "M 20 20 L 30 30\n"
+        "[/draw_part]"
+    )
+    out.extend(list(p.feed(body)))
+    out.extend(list(p.flush()))
+    prim = [e for e in out if e["event"] == "primitive"]
+    salvage_ok = False
+    if prim and prim[0]["tag"]["tag"] == "draw_part":
+        ok, t = validate_and_repair(prim[0]["tag"])
+        if ok:
+            svg_inner = t["args"].get("svg", "")
+            n_paths = svg_inner.count("<path ")
+            salvage_ok = n_paths == 2
+    if not assert_eq(salvage_ok, True, "draw_part: salvage 2 of 3 paths"):
+        failures += 1
+
+    # P2 hardening: draw_part with all-malformed body -> downgrade to text.
+    p = IncrementalTagParser()
+    out = []
+    out.extend(list(p.feed("[draw_part: name=\"junk\"]\nthis is not path data\n[/draw_part]")))
+    out.extend(list(p.flush()))
+    prim = [e for e in out if e["event"] == "primitive"]
+    fallback_ok = False
+    if prim:
+        ok, t = validate_and_repair(prim[0]["tag"])
+        fallback_ok = (not ok) and t["tag"] == "text"
+    if not assert_eq(fallback_ok, True, "draw_part: all-junk body -> text fallback"):
+        failures += 1
+
+    # P2 hardening: draw_part rejects coordinates beyond hard cap.
+    p = IncrementalTagParser()
+    out = []
+    out.extend(list(p.feed("[draw_part: name=\"huge\"]\nM 0 0 L 999999 999999\n[/draw_part]")))
+    out.extend(list(p.flush()))
+    prim = [e for e in out if e["event"] == "primitive"]
+    huge_ok = False
+    if prim:
+        ok, t = validate_and_repair(prim[0]["tag"])
+        # No valid paths -> downgrade to text.
+        huge_ok = (not ok) and t["tag"] == "text"
+    if not assert_eq(huge_ok, True, "draw_part: hard-cap coords -> text fallback"):
+        failures += 1
+
+    # P2 hardening: draw_part rejects malformed XML element line.
+    p = IncrementalTagParser()
+    out = []
+    body = (
+        "[draw_part: name=\"bad xml\"]\n"
+        "<text x='10' y='10'>missing close\n"  # rejected: no </text>
+        "M 0 0 L 10 10\n"
+        "[/draw_part]"
+    )
+    out.extend(list(p.feed(body)))
+    out.extend(list(p.flush()))
+    prim = [e for e in out if e["event"] == "primitive"]
+    xml_ok = False
+    if prim:
+        ok, t = validate_and_repair(prim[0]["tag"])
+        if ok:
+            svg_inner = t["args"].get("svg", "")
+            xml_ok = "<text" not in svg_inner and "<path" in svg_inner
+    if not assert_eq(xml_ok, True, "draw_part: malformed XML element dropped, path kept"):
+        failures += 1
+
     # SVG sanitizer: scripts, foreignObject, event handlers, javascript: URLs all stripped.
     sanitize_cases = [
         (

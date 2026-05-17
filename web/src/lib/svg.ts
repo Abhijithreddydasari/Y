@@ -6,11 +6,17 @@
 // We also expose `parseSvgPaths` for the player so it can animate each <path>
 // stroke-by-stroke before swapping in the rasterised image.
 
+import { roughifyInnerSvg } from "./rough-svg";
+
 interface RasterResult {
   dataURL: string;
   width: number;
   height: number;
 }
+
+// Toggle: pass every inner-SVG through roughjs before parsing/rasterising so
+// shapes look hand-drawn. Turning this off is useful for tests / debug.
+const ROUGHIFY = true;
 
 const DPR = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 2;
 
@@ -62,9 +68,14 @@ export function wrapInnerSvg(innerSvg: string, viewBox: string): string {
  * Parse an inner-SVG fragment into a ParsedSvg by mounting it inside an
  * offscreen <svg> and walking its DOM. Done in the browser to avoid pulling
  * in a server-side XML parser.
+ *
+ * If `ROUGHIFY` is enabled the inner SVG is first re-rendered through
+ * rough.js so each shape looks hand-drawn before we measure stroke lengths
+ * (which is what the player uses to pace stroke-by-stroke reveals).
  */
 export function parseSvg(innerSvg: string, viewBox: string): ParsedSvg {
-  const outerSvg = wrapInnerSvg(innerSvg, viewBox);
+  const styled = ROUGHIFY ? roughifyInnerSvg(innerSvg, viewBox) : innerSvg;
+  const outerSvg = wrapInnerSvg(styled, viewBox);
   const vb = parseViewBox(viewBox);
 
   if (typeof window === "undefined") {

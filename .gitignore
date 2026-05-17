@@ -36,8 +36,18 @@ start-all.ps1
 Thumbs.db
 *.bak
 
-# Model artifacts (local only)
-models/
+# Model artifacts (local only) -- but keep Modelfile manifests in git
+models/*
+!models/*.Modelfile
+!models/Modelfile.*
+!models/README.md
 *.safetensors
 *.gguf
 *.bin
+
+# Training caches and prepared datasets (push to HF instead of git)
+training/data/*.jsonl
+api/scripts/smoke_out/
+
+# Local learner store (per-user state)
+data/learners/

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import xml.etree.ElementTree as ET
 from functools import lru_cache
 from pathlib import Path
 
@@ -126,6 +127,57 @@ _DRAW_PART_ALLOWED_ELEMENTS = {
     "ellipse", "text", "tspan", "g",
 }
 _LEADING_ELEMENT_NAME = re.compile(r"^<\s*([a-zA-Z][a-zA-Z0-9_-]*)")
+# Valid SVG path command letters. Used to confirm a line that passed the
+# character-class test actually contains at least one path operator (rejects
+# all-digit garbage like a bare "1234 5678").
+_PATH_COMMAND_LETTER = re.compile(r"[MmLlHhVvCcSsQqTtAaZz]")
+# Numeric token in path data. Pull each one and clamp to a sane range so a
+# stray "M 999999 999999" doesn't blow up the viewBox.
+_PATH_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+# Outer cap: anything outside this is almost certainly a model glitch. We
+# clamp to viewBox in renderer; here we just refuse pathological values.
+_COORD_HARD_CAP = 1e5
+
+
+def _path_data_is_sane(d: str) -> bool:
+    """Return True if a path-d string contains at least one command letter
+    and no numeric coordinate exceeds _COORD_HARD_CAP in magnitude.
+
+    This catches two failure modes:
+    1. The model wrote a comment-shaped line like "the body" that happens to
+       only contain letters/digits/spaces/commas (would pass the char filter
+       but is not real path data).
+    2. The model emitted exploded coordinates like 1e9 that would create an
+       enormous SVG.
+    """
+    if not _PATH_COMMAND_LETTER.search(d):
+        return False
+    for tok in _PATH_NUMBER.findall(d):
+        try:
+            v = float(tok)
+        except ValueError:
+            return False
+        if v != v or abs(v) > _COORD_HARD_CAP:  # NaN -> v != v
+            return False
+    return True
+
+
+def _validate_xml_element(line: str) -> bool:
+    """Return True if `line` is a single, well-formed XML element using a
+    whitelisted tag. Uses stdlib ElementTree so we don't take a lxml
+    dependency. Self-closing elements and elements with text content are
+    both accepted, as long as the element name is in the allow-list and the
+    parser can parse the line cleanly.
+    """
+    try:
+        # Pin a fake xmlns so attributes like xlink:href etc. fail-parse fast.
+        elem = ET.fromstring(line)
+    except ET.ParseError:
+        return False
+    name = elem.tag.split("}")[-1].lower() if "}" in elem.tag else elem.tag.lower()
+    if name not in _DRAW_PART_ALLOWED_ELEMENTS:
+        return False
+    return True
 
 
 def _process_draw_part_body(body: str) -> str:
@@ -138,10 +190,15 @@ def _process_draw_part_body(body: str) -> str:
     Lines that match neither are dropped. The output is run through
     `_sanitize_svg` as a final safety pass so script-style attributes never
     leak even if the model embedded them inline.
+
+    Salvage policy: if at least one path / element line parses, the diagram
+    is rendered with whatever survives. The validator only fails-soft (returns
+    "") when zero lines survive.
     """
     if not body:
         return ""
     pieces: list[str] = []
+    rejected = 0
     for raw_line in body.splitlines():
         line = raw_line.strip()
         if not line:
@@ -149,21 +206,29 @@ def _process_draw_part_body(body: str) -> str:
         if line.startswith("<"):
             m = _LEADING_ELEMENT_NAME.match(line)
             if not m:
+                rejected += 1
                 continue
             elem_name = m.group(1).lower()
             if elem_name not in _DRAW_PART_ALLOWED_ELEMENTS:
+                rejected += 1
+                continue
+            if not _validate_xml_element(line):
+                # Malformed XML (missing closing tag, bad attribute syntax) -
+                # drop and let the salvage policy keep the rest.
+                rejected += 1
                 continue
             pieces.append(line)
             continue
         # Treat as raw path-data; reject anything with non-path chars
-        # (defensive: prevents the model from sneaking script-y text).
-        if _PATH_DATA_LINE.match(line):
-            # Escape double-quotes inside the d attribute; though path data
-            # shouldn't have quotes, we belt-and-brace.
-            d_attr = line.replace('"', "&quot;")
-            pieces.append(
-                f'<path d="{d_attr}" stroke="#111" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
-            )
+        # (defensive: prevents the model from sneaking script-y text) and
+        # anything where the data isn't actually SVG path syntax.
+        if not _PATH_DATA_LINE.match(line) or not _path_data_is_sane(line):
+            rejected += 1
+            continue
+        d_attr = line.replace('"', "&quot;")
+        pieces.append(
+            f'<path d="{d_attr}" stroke="#111" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+        )
     if not pieces:
         return ""
     inner = "\n".join(pieces)

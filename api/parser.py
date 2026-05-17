@@ -5,8 +5,11 @@ narrative and primitive events for complete tags - without ever losing a tag
 that happens to be split across two chunks.
 
 State machine:
-  NARR       reading narrative text; '[' transitions to TAG_OPEN
-  TAG_OPEN   inside [...]; ']' closes the tag (unless we're inside a quote)
+  NARR           reading narrative text; '[' transitions to TAG_OPEN
+  TAG_OPEN       inside [...]; ']' closes the tag (unless we're inside a quote)
+  IN_DRAW_PART   inside a [draw_part: ...] ... [/draw_part] block, accumulating
+                 raw body content until the closing marker is seen. The body
+                 may contain newlines, brackets, and SVG/path text verbatim.
 """
 from __future__ import annotations
 
@@ -30,6 +33,13 @@ POSITIONAL_FIRST_ARG: dict[str, str] = {
     "title": "text",
     "text": "content",
     "equation": "latex",
+}
+
+# Block primitives have a body and a closing tag. Opening syntax is the same
+# `[name: args]` shape; the parser switches to body-collection mode after the
+# opening tag is consumed and stops at the matching closing tag.
+BLOCK_PRIMITIVES: dict[str, str] = {
+    "draw_part": "[/draw_part]",
 }
 
 
@@ -110,17 +120,27 @@ class IncrementalTagParser:
         # can distinguish "[" mid-text from the start of a tag once the next
         # token arrives.
         self._narr_pending = ""
+        # IN_DRAW_PART state: when we see a [draw_part: ...] opening tag we
+        # switch into body-collection mode. Body is accumulated as a list of
+        # chars so we can cheaply detect the closing marker via a sliding tail
+        # comparison without re-scanning the whole buffer per char.
+        self._block_open: dict | None = None  # {tag, args, raw_body, close_marker}
+        self._block_body: list[str] = []
 
     def feed(self, chunk: str) -> Iterator[dict]:
         for ch in chunk:
-            if self._in_tag:
+            if self._block_open is not None:
+                yield from self._consume_block_char(ch)
+            elif self._in_tag:
                 yield from self._consume_tag_char(ch)
             else:
                 yield from self._consume_narr_char(ch)
 
     def flush(self) -> Iterator[dict]:
         """Called at end of stream. Emits any buffered narrative as a token event;
-        drops any half-finished tag silently (it would just be an LLM truncation).
+        emits a half-finished draw_part block with whatever body it has so the
+        lesson never silently drops a partial diagram; drops half-finished
+        single-line tags (they would just be an LLM truncation).
         """
         if self._narr_pending:
             yield {"event": "token", "text": self._narr_pending}
@@ -128,6 +148,16 @@ class IncrementalTagParser:
         if self._buf:
             yield {"event": "token", "text": "".join(self._buf)}
             self._buf.clear()
+        if self._block_open is not None:
+            block = {
+                "tag": self._block_open["tag"],
+                "args": self._block_open["args"],
+                "raw_body": self._block_open["raw_body"],
+                "body": "".join(self._block_body),
+            }
+            self._block_open = None
+            self._block_body = []
+            yield {"event": "primitive", "tag": block}
 
     def _consume_narr_char(self, ch: str) -> Iterator[dict]:
         if ch == "[":
@@ -175,11 +205,23 @@ class IncrementalTagParser:
             self._in_tag = False
             self._tag_buf = []
             parsed = self._parse_tag_body(tag_text)
-            if parsed is not None:
-                yield {"event": "primitive", "tag": parsed}
-            else:
+            if parsed is None:
                 # malformed; emit as text so we don't silently lose content
                 yield {"event": "token", "text": f"[{tag_text}]"}
+                return
+            close_marker = BLOCK_PRIMITIVES.get(parsed["tag"])
+            if close_marker is not None:
+                # Enter block-collection mode. The opening tag's args and
+                # raw_body are stashed; body chars stream in until close_marker.
+                self._block_open = {
+                    "tag": parsed["tag"],
+                    "args": parsed["args"],
+                    "raw_body": parsed.get("raw_body", ""),
+                    "close_marker": close_marker,
+                }
+                self._block_body = []
+                return
+            yield {"event": "primitive", "tag": parsed}
             return
         if ch == "\n" and not self._in_quote:
             # Tag must be single-line. Treat newline mid-tag as abort -> narrative.
@@ -189,6 +231,27 @@ class IncrementalTagParser:
             yield {"event": "token", "text": text}
             return
         self._tag_buf.append(ch)
+
+    def _consume_block_char(self, ch: str) -> Iterator[dict]:
+        """Stream chars into the active block body; detect close marker by tail compare."""
+        assert self._block_open is not None
+        self._block_body.append(ch)
+        marker = self._block_open["close_marker"]
+        if len(self._block_body) >= len(marker):
+            tail = "".join(self._block_body[-len(marker):])
+            if tail == marker:
+                # Strip the marker from the body and emit the primitive.
+                del self._block_body[-len(marker):]
+                block = {
+                    "tag": self._block_open["tag"],
+                    "args": self._block_open["args"],
+                    "raw_body": self._block_open["raw_body"],
+                    "body": "".join(self._block_body),
+                }
+                self._block_open = None
+                self._block_body = []
+                yield {"event": "primitive", "tag": block}
+                return
 
     @staticmethod
     def _parse_tag_body(body: str) -> dict | None:

@@ -7,6 +7,7 @@ streaming without dropping content.
 from __future__ import annotations
 
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -60,7 +61,113 @@ _ARG_ALIASES = {
     "node": {"name": "id", "title": "label", "radius": "r"},
     "arrow": {"src": "from", "source": "from", "dst": "to", "target": "to", "text": "label"},
     "line": {"text": "label", "start_x": "x1", "start_y": "y1", "end_x": "x2", "end_y": "y2"},
+    "draw": {"code": "svg", "markup": "svg", "vb": "viewBox", "viewbox": "viewBox", "view_box": "viewBox", "width": "w", "height": "h", "label": "caption", "title": "caption"},
+    "draw_part": {"label": "name", "title": "name", "part": "name", "vb": "viewBox", "viewbox": "viewBox", "view_box": "viewBox", "width": "w", "height": "h"},
 }
+
+# Allowed SVG element tags inside a [draw: svg="..."] body. Anything else is
+# stripped during validation. Keep this short so the threat surface stays small
+# and so the model is incentivised to write clean SVG.
+_SVG_ALLOWED_ELEMENTS = {
+    "g", "path", "circle", "rect", "line", "polyline", "polygon",
+    "ellipse", "text", "tspan", "defs", "marker", "title",
+}
+
+# Attributes that may carry script-style content. Stripped unconditionally.
+_SVG_FORBIDDEN_ATTR_PREFIXES = ("on",)
+_SVG_FORBIDDEN_ATTR_NAMES = {"href", "xlink:href", "src"}
+
+# Hard-deny element tags that make SVG dangerous (script execution, arbitrary
+# HTML escape, network egress). Even if the element passed the allow-list we
+# would never want these.
+_SVG_DENY_ELEMENTS_PATTERN = re.compile(
+    r"<\s*(?:script|foreignObject|iframe|image|use|animate|set)\b[^>]*>.*?<\s*/\s*(?:script|foreignObject|iframe|image|use|animate|set)\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_SVG_DENY_ELEMENTS_VOID = re.compile(
+    r"<\s*(?:script|foreignObject|iframe|image|use|animate|set)\b[^>]*/?>",
+    re.IGNORECASE,
+)
+_SVG_EVENT_ATTR = re.compile(r"\son[a-zA-Z]+\s*=\s*(?:'[^']*'|\"[^\"]*\"|[^\s>]+)", re.IGNORECASE)
+# Match the whole `<separator>href="javascript:..."` chunk including the
+# whitespace that separates it from the previous attribute, so the result
+# leaves no stray trailing space.
+_SVG_JS_URL = re.compile(r"\s+(?:href|xlink:href|src)\s*=\s*(?:'\s*javascript:[^']*'|\"\s*javascript:[^\"]*\")", re.IGNORECASE)
+
+
+def _sanitize_svg(svg: str) -> str:
+    """Strip dangerous tags / attributes from inline SVG markup.
+
+    This is a defence-in-depth pass; the renderer also rasterises the SVG to a
+    PNG before placing it on the canvas, so nothing reaches a live DOM. We
+    still strip here so a future renderer change can't accidentally re-enable
+    script execution.
+    """
+    if not svg:
+        return ""
+    out = svg
+    out = _SVG_DENY_ELEMENTS_PATTERN.sub("", out)
+    out = _SVG_DENY_ELEMENTS_VOID.sub("", out)
+    out = _SVG_EVENT_ATTR.sub("", out)
+    out = _SVG_JS_URL.sub("", out)
+    return out.strip()
+
+
+# A path-data sequence is `M x y L x y C ... Z` etc. -- letters from the SVG
+# command alphabet plus numbers, commas, dots, signs, and whitespace. We use
+# this to classify body lines: those matching go inside a synthesised <path>;
+# those starting with `<` are parsed as full SVG elements (after sanitize).
+_PATH_DATA_LINE = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9eE\s\-,.\+]+$")
+# Allowed SVG element names inside a [draw_part] body. Anything else is
+# stripped during _process_draw_part_body (and the sanitizer is the second
+# defence in depth).
+_DRAW_PART_ALLOWED_ELEMENTS = {
+    "path", "circle", "rect", "line", "polyline", "polygon",
+    "ellipse", "text", "tspan", "g",
+}
+_LEADING_ELEMENT_NAME = re.compile(r"^<\s*([a-zA-Z][a-zA-Z0-9_-]*)")
+
+
+def _process_draw_part_body(body: str) -> str:
+    """Convert a [draw_part] body into a clean SVG inner string.
+
+    Each non-empty line is either:
+      - a path-data sequence (M ... L ... C ... Z) -> wrapped as <path d="...">
+      - a whitelisted SVG element (<path .../>, <circle .../>, etc.) -> kept
+
+    Lines that match neither are dropped. The output is run through
+    `_sanitize_svg` as a final safety pass so script-style attributes never
+    leak even if the model embedded them inline.
+    """
+    if not body:
+        return ""
+    pieces: list[str] = []
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("<"):
+            m = _LEADING_ELEMENT_NAME.match(line)
+            if not m:
+                continue
+            elem_name = m.group(1).lower()
+            if elem_name not in _DRAW_PART_ALLOWED_ELEMENTS:
+                continue
+            pieces.append(line)
+            continue
+        # Treat as raw path-data; reject anything with non-path chars
+        # (defensive: prevents the model from sneaking script-y text).
+        if _PATH_DATA_LINE.match(line):
+            # Escape double-quotes inside the d attribute; though path data
+            # shouldn't have quotes, we belt-and-brace.
+            d_attr = line.replace('"', "&quot;")
+            pieces.append(
+                f'<path d="{d_attr}" stroke="#111" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+            )
+    if not pieces:
+        return ""
+    inner = "\n".join(pieces)
+    return _sanitize_svg(inner)
 
 
 def _coerce_number(value: str) -> float | None:
@@ -76,6 +183,7 @@ def validate_and_repair(parsed: dict) -> tuple[bool, dict]:
     name = _ALIASES.get(name_raw, name_raw)
     args = dict(parsed.get("args", {}))
     raw_body: str = parsed.get("raw_body", "")
+    block_body: str = parsed.get("body", "")  # set only for block primitives
 
     if name not in _known_primitives():
         fallback_text = _stringify_unknown(parsed)
@@ -120,6 +228,23 @@ def validate_and_repair(parsed: dict) -> tuple[bool, dict]:
         else:
             coerced[k] = v
     args = coerced
+
+    if name == "draw":
+        svg_raw = str(args.get("svg", ""))
+        cleaned = _sanitize_svg(svg_raw)
+        if not cleaned:
+            return False, {"tag": "text", "args": {"content": "(diagram omitted)"}}
+        args["svg"] = cleaned
+
+    if name == "draw_part":
+        part_name = str(args.get("name", "")).strip()
+        cleaned = _process_draw_part_body(block_body)
+        if not cleaned:
+            label = part_name or "diagram"
+            return False, {"tag": "text", "args": {"content": f"(skipped {label})"}}
+        args["svg"] = cleaned
+        if not part_name:
+            args["name"] = "part"
 
     # Required arg check.
     missing = [k for k, schema in spec.items() if schema.get("required") and k not in args]

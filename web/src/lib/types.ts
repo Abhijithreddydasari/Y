@@ -8,7 +8,8 @@ export type PrimitiveName =
   | "box"
   | "node"
   | "arrow"
-  | "line";
+  | "line"
+  | "draw";
 
 export interface PrimitiveTag {
   tag: PrimitiveName;

@@ -11,6 +11,7 @@ import type { BinaryFileData, BinaryFiles, DataURL } from "@excalidraw/excalidra
 import type { FileId } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import { renderLatexToImage } from "./katex";
+import { parseSvg, rasterSvgToPng, type ParsedSvg } from "./svg";
 import type { PrimitiveTag } from "./types";
 
 export interface RenderResult {
@@ -26,6 +27,21 @@ export interface RenderResult {
   revealText?: string;
   revealWidth?: number;
   revealHeight?: number;
+  /**
+   * If set, the player should run a stroke-by-stroke reveal of the SVG diagram
+   * before swapping in the rasterised image. `parsedSvg` exposes the parsed
+   * paths and total stroke length so the player can pace the animation.
+   */
+  drawAnimation?: {
+    parsedSvg: ParsedSvg;
+    /** Excalidraw image element id holding the rasterised PNG. */
+    imageId: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    caption?: string;
+  };
 }
 
 const COL_WIDTH = 740;
@@ -108,6 +124,8 @@ export class LessonRenderer {
         return this.renderArrow(tag.args);
       case "line":
         return this.renderLine(tag.args);
+      case "draw":
+        return this.renderDraw(tag.args);
       default:
         return { skeletons: [] };
     }
@@ -274,6 +292,73 @@ export class LessonRenderer {
       ...(label ? { label: { text: label, fontSize: 14 } } : {}),
     };
     return { skeletons: [skel] };
+  }
+
+  private async renderDraw(args: Record<string, string | number>): Promise<RenderResult> {
+    const innerSvg = asStr(args.svg);
+    if (!innerSvg) return { skeletons: [] };
+    const viewBoxStr = asStr(args.viewBox, "0 0 400 300");
+    const w = Math.min(asNum(args.w) ?? 400, COL_WIDTH);
+    const parsed = parseSvg(innerSvg, viewBoxStr);
+    const [, , vbW, vbH] = parsed.viewBox;
+    const aspect = vbH / Math.max(1, vbW);
+    const h = Math.max(60, Math.round(w * aspect));
+    const caption = asStr(args.caption);
+
+    let raster;
+    try {
+      raster = await rasterSvgToPng(parsed.outerSvg, w, h);
+    } catch (exc) {
+      console.warn("[renderer] svg raster failed", exc);
+      return this.renderText(caption || "(diagram)");
+    }
+
+    const fileId = makeFileId();
+    const offsetX = (COL_WIDTH - w) / 2;
+    const x = this.narrationX + offsetX;
+    const y = this.narrationY;
+    const imageId = makeRevealId();
+    const imageSkel: ExcalidrawElementSkeleton = {
+      type: "image",
+      id: imageId,
+      fileId,
+      x,
+      y,
+      width: w,
+      height: h,
+    } as ExcalidrawElementSkeleton;
+    const fileData: BinaryFileData = {
+      id: fileId,
+      mimeType: "image/png",
+      dataURL: raster.dataURL as DataURL,
+      created: Date.now(),
+    };
+    const files: BinaryFiles = { [fileId]: fileData };
+    this.advanceNarration(h);
+
+    const result: RenderResult = {
+      skeletons: [imageSkel],
+      files,
+      drawAnimation: {
+        parsedSvg: parsed,
+        imageId,
+        x,
+        y,
+        width: w,
+        height: h,
+        caption,
+      },
+    };
+
+    if (caption) {
+      const captionResult = this.renderText(caption);
+      result.skeletons.push(...captionResult.skeletons);
+      if (captionResult.files) {
+        Object.assign(result.files!, captionResult.files);
+      }
+    }
+
+    return result;
   }
 
   private renderLine(args: Record<string, string | number>): RenderResult {

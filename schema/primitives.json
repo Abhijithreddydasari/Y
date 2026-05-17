@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Primitive tag protocol",
-  "description": "The 7 core primitives the LLM is allowed to emit. Single source of truth: the backend prompt template, the server-side parser, the frontend renderer, and the validator all read this file. Keep the vocabulary small; adding a primitive means updating the prompt, parser, validator, and renderer in lock-step.",
-  "version": "0.1.0",
+  "description": "The primitives the LLM is allowed to emit. Single source of truth: the backend prompt template, the server-side parser, the frontend renderer, and the validator all read this file. Keep the vocabulary small; adding a primitive means updating the prompt, parser, validator, and renderer in lock-step.",
+  "version": "0.3.0",
   "tag_syntax": {
     "shape": "[<name>: <arg>=<value> ...]",
     "rules": [
@@ -84,11 +84,37 @@
         "label": { "type": "string", "required": false, "default": "" }
       },
       "example": "[line: x1=100 y1=200 x2=300 y2=200 label=\"v\"]"
+    },
+    "draw": {
+      "summary": "Free-form inline SVG. Use ONLY when the 6 simpler primitives can't express the diagram (chemistry structures, anatomy, geometry constructions, circuits, custom plots). The renderer animates each <path> stroke-by-stroke so the diagram appears as if hand-drawn. Keep the SVG small (one concept) so the model can finish it in one tag.",
+      "args": {
+        "svg": { "type": "string", "required": true, "description": "Inner SVG markup (no outer <svg> wrapper). Allowed elements: g, path, circle, rect, line, polyline, polygon, ellipse, text, defs, marker, title. All attributes use single quotes. NO <script>, <foreignObject>, <iframe>, <image>, on* event handlers." },
+        "viewBox": { "type": "string", "required": false, "default": "0 0 400 300", "description": "SVG viewBox; coordinate system the inner markup uses." },
+        "w": { "type": "number", "required": false, "default": 400, "description": "On-canvas width in Excalidraw units." },
+        "h": { "type": "number", "required": false, "default": 300, "description": "On-canvas height in Excalidraw units." },
+        "caption": { "type": "string", "required": false, "default": "", "description": "Short one-line label drawn underneath the diagram." }
+      },
+      "example": "[draw: svg=\"<g stroke='#111' fill='none' stroke-width='2'><path d='M 50 250 L 200 50 L 350 250 Z'/><text x='40' y='270' font-family='Virgil' font-size='14'>A</text><text x='195' y='40' font-family='Virgil' font-size='14'>B</text><text x='350' y='270' font-family='Virgil' font-size='14'>C</text></g>\" viewBox=\"0 0 400 300\" caption=\"Equilateral triangle\"]"
+    },
+    "draw_part": {
+      "summary": "Block-structured part-decomposed drawing. The teacher draws a single named PART of a larger diagram. Each part is animated stroke-by-stroke as if hand-drawn. Multiple [draw_part] blocks compose into a full diagram (e.g. carbon skeleton, then bonds, then atom labels, then arrows). Body lines are either raw SVG path-data (M/L/C/Q/Z commands) which become <path> elements, or whitelisted SVG elements (<path>, <circle>, <rect>, <line>, <polyline>, <polygon>, <ellipse>, <text>). One element per line.",
+      "block": true,
+      "open_tag": "[draw_part: name=\"<part name>\" ...]",
+      "close_tag": "[/draw_part]",
+      "args": {
+        "name": { "type": "string", "required": true, "description": "Human-readable part name. Spoken aloud while drawing (e.g. \"carbon skeleton\", \"bonds\", \"nucleus\", \"ground reaction force\")." },
+        "viewBox": { "type": "string", "required": false, "default": "0 0 400 300", "description": "SVG viewBox shared across all draw_part blocks of the same diagram." },
+        "w": { "type": "number", "required": false, "default": 400, "description": "On-canvas width." },
+        "h": { "type": "number", "required": false, "default": 300, "description": "On-canvas height." }
+      },
+      "example": "[draw_part: name=\"carbon skeleton\"]\nM 200 80 L 280 130 L 280 220 L 200 270 L 120 220 L 120 130 Z\n[/draw_part]\n[draw_part: name=\"alternating bonds\"]\nM 210 90 L 270 130\nM 210 260 L 270 220\nM 130 130 L 190 90\n[/draw_part]\n[draw_part: name=\"atom labels\"]\n<text x=\"195\" y=\"75\" font-family=\"Virgil\" font-size=\"14\">C</text>\n<text x=\"285\" y=\"125\" font-family=\"Virgil\" font-size=\"14\">C</text>\n[/draw_part]"
     }
   },
   "hard_rules": [
-    "No primitive types beyond the 7 listed.",
+    "No primitive types beyond the 9 listed.",
     "If a concept needs a primitive not listed, fall back to [text: ...] narration.",
-    "Maximum 30 primitives per lesson; truncate the tail gracefully if exceeded."
+    "Maximum 30 primitives per lesson; truncate the tail gracefully if exceeded.",
+    "[draw] is the single-tag escape hatch for one-shot SVG.",
+    "[draw_part]...[/draw_part] is the preferred form for any drawing that benefits from being decomposed into named pedagogical parts (chemistry, anatomy, geometry, free-body, circuits, plots). Each [draw_part] is one stroke-set the teacher draws together."
   ]
 }

@@ -1,234 +1,161 @@
-# Y — an AI that writes on your whiteboard
+# Y: an AI learning companion that writes on your whiteboard
 
-**Submission for the [Gemma 4 Good Hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon).**
-Tracks targeted: **Future of Education**, **Ollama**, **Unsloth**.
+Submission for the [Gemma 4 Good Hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon).
 
-> Demo (3 min): _add YouTube link before submission_
-> Code: _add GitHub link_
-> Live demo: _add Modal/Vercel link_
-> Fine-tuning notebook: [`training/unsloth_train.ipynb`](../training/unsloth_train.ipynb)
-> Dataset on HF: _add link_
-> LoRA / GGUF on HF: _add link_
+## Project Description
 
-## TL;DR
+Y is a local-first AI learning companion built around a simple belief: the next generation of education should not be another chat box.
 
-Y is a Gemma 4-powered whiteboard tutor. The student writes a question
-and marks the unknown with `?`. The model reads the canvas, then **draws
-the answer back on the canvas** — narrating each stroke aloud — using a
-schema-constrained primitive vocabulary that includes a new
-**`draw_part` SVG-native block primitive**. After every lesson, a second
-Gemma 4 call surfaces educator notes (misconceptions, follow-ups,
-prereqs, difficulty) and a local extraction+embedding pipeline updates
-the student's knowledge profile, which feeds back into the next lesson's
-system prompt. Three Gemma 4 backends (E4B local, E4B+LoRA local,
-31B cloud) sit behind one toolbar. The Unsloth notebook fine-tunes
-Gemma 4 E4B on the [`ControlSketch-Part`](https://huggingface.co/datasets/seenubhargav/ControlSketch-Part)
-dataset to make the SVG output look like a human drew it.
+Students do not always think in text. They write half-solved equations, draw triangles, sketch force diagrams, circle confusing steps, and point to the part they do not understand. Y makes that whiteboard the interface. A learner writes or draws a question on an Excalidraw canvas, marks the unknown with `?`, and the system reads the board with Gemma 4, reasons about the student's intent, then writes the explanation back on the same canvas.
+
+The response is not a generated image. It is a streamed whiteboard lesson: a title appears, captions are written line by line, equations render as clean math, arrows and boxes form diagrams, and the browser narrates the explanation aloud. The experience is closer to watching a teacher solve the problem beside you than receiving a paragraph from a chatbot.
+
+The longer-term vision is an AI companion that grows with the learner. It should understand not only the current question, but also what the learner already knows, where they are struggling, and which representation will help next: words, equations, diagrams, flowcharts, or hand-drawn visual structure. This hackathon build is the first working slice of that vision: a Gemma-powered whiteboard tutor with local inference, sequential drawing, robust primitive rendering, educator notes, and a learner-knowledge visualization.
 
 ## Why this matters
 
-Two billion children learn from a single textbook each. Most of them
-never have a person to ask. AI tutors have proliferated, but almost all
-of them are *chat boxes*. Children don't learn from chat boxes; they
-learn at a whiteboard, with someone who can draw the next step at the
-exact moment they're stuck.
+AI has moved quickly, but learning interfaces have barely changed. Most AI tutors still ask students to type a polished prompt into a chat window. That excludes the messy, visual, unfinished way real learning happens.
 
-The "Future of Education" track asks for *multi-tool agents that adapt
-to the individual and empower the educator through seamless
-integration*. We took that brief literally:
+Y starts from a different assumption: the canvas is the conversation.
 
-* **Multi-tool agent** — the model emits a structured stream of typed
-  primitives (`title`, `text`, `equation`, `box`, `node`, `arrow`,
-  `line`, `draw`, `draw_part`), each rendered by a deterministic
-  frontend tool. We treat them in the system prompt as a tool registry.
-* **Adapts to the individual** — `learner.py` extracts concepts from
-  every lesson, embeds them with `nomic-embed-text`, and persists a
-  per-user JSON profile. The next lesson's system prompt is prepended
-  with a 1–3-line mastery summary so Y skips already-mastered material
-  and doubles down on struggling areas. The `LearnerPanel` shows a
-  rotating 3D UMAP projection of the student's knowledge map.
-* **Empowers the educator** — Teacher Mode fires a second Gemma call
-  after every lesson and renders the result in an `EducatorPanel` so a
-  parent or teacher sitting next to the student can see common
-  misconceptions to watch for, suggested follow-ups, and prerequisites.
+This matters especially for STEM. A student learning Newton's laws, vector addition, binary search, molecular structures, geometry, or systems engineering often needs to see the idea unfold spatially. A good teacher does not only say the answer. They write, draw, pause, connect pieces, and choose the next representation based on the learner's confusion.
 
-## What we actually built
+Y brings that interaction pattern to an AI system while keeping the default path local-first. The whiteboard image goes to a local Gemma 4 model through Ollama. The learner profile is a JSON file on the device. The embedding model is local. Cloud inference is optional, not required.
 
-### 1. SVG-native generation (`draw_part`)
+## What we built
 
-The single biggest jump from our v0 chat-box prototype. `draw_part` is a
-**block primitive**: the model writes a `[draw_part: name="…"
-viewBox="…"]` open marker, then *one SVG element per line*, then a
-matching `[/draw_part]`. The parser is block-aware: between markers it
-collects raw lines and emits a single primitive at close time, so the
-frontend animates each stroke in order, narrated as it appears.
+### 1. A whiteboard-native tutor
 
-Three things make this robust on a small model:
+The frontend is built on Excalidraw. The student can use drawing tools directly, insert sample problems, or write a custom question. When they press **Solve**, the app exports the canvas as a PNG and sends it to the backend.
 
-1. **`lxml` SVG sanitisation.** Strips `<script>`, `<foreignObject>`,
-   `on*=` event handlers, and `javascript:` URLs. Drops elements not on
-   the allowlist.
-2. **Per-path salvage.** If the model emits five paths and one fails to
-   parse, we keep the four good ones. The validator reports a *partial*
-   `draw_part` rather than a hard failure.
-3. **`[text]` fallback.** If everything fails, the validator collapses
-   the block into a `[text: "(diagram omitted)"]` so the lesson keeps
-   going.
+The backend asks Gemma 4 to read the canvas and produce a teaching plan as a stream of primitive tags. The frontend consumes those tags over Server-Sent Events and turns each one into a drawn Excalidraw element.
 
-This is the difference between a fragile demo and a fragile-resilient
-demo. On the five reference subjects, **>80% of `draw_part` blocks
-render at least one valid path** even before the LoRA, and that goes
-up materially after.
+The important design constraint is sequentiality. Y does not paste a final answer. It teaches step by step.
 
-### 2. Stroke-by-stroke animation locked to TTS
+### 2. A small primitive language instead of free-form SVG
 
-The frontend `LessonPlayer` renders each `draw_part` path with a
-transient `stroke-dasharray` overlay that animates from full-dash to
-zero-dash, replaced at the end with the final filled path. Crucially,
-the *speed* of the animation is locked to the speech synthesiser's word
-boundaries — the writing literally writes itself at the speed the voice
-reads it, the way a teacher would. This is the moment that makes the
-demo feel different from "AI generates an image."
+Small multimodal models are powerful but not perfectly reliable at arbitrary drawing code. So the production path uses a compact whiteboard primitive protocol:
 
-### 3. Latent learner-knowledge model
+| Primitive | Role |
+| --- | --- |
+| `title` | lesson heading |
+| `text` | narrated caption written on the board |
+| `equation` | KaTeX-rendered math |
+| `box` | labelled rectangle |
+| `node` | labelled circle |
+| `arrow` | relationship between boxes/nodes |
+| `line` | vector or free segment |
 
-After every lesson, `learner.py`:
+This split is deliberate. Gemma reasons about the student's problem and chooses the teaching sequence. The deterministic renderer handles layout, drawing, and animation. That gives us a cheap, fast, repairable system today, while leaving room for a future SVG-native model to replace pieces of the renderer later.
 
-1. Asks the local Ollama model (always the edge model, never cloud, for
-   privacy and cost) to extract `concepts_seen`, `mastered`, and
-   `struggling` lists from the lesson text.
-2. Builds a 1-line summary and embeds it with `nomic-embed-text`.
-3. Appends a `LearnerSession` record (timestamp, topic, primitive
-   count, concepts, mastery, summary, embedding) to a per-user JSON
-   file.
-4. The next `/lesson` request reads the same file, computes a
-   `mastery_summary`, and prepends a small string like
-   `"The student already knows: dot product, gradient. They are
-   struggling with: integration by parts."` to the system prompt.
+### 3. Robust parsing and repair
 
-The `LearnerPanel` UMAPs all session embeddings to 3D and renders them
-on a canvas with a slow rotation, hover-tooltips, and bar charts of
-concept frequency. We chose UMAP-js client-side so the entire profile
-visualisation lives on the device — no telemetry.
+The model is local and small, so the backend assumes imperfect output. Instead of failing when Gemma drifts, the parser and validator repair common mistakes:
 
-### 4. Multi-tool prompt + Teacher Mode
+* aliases like `heading`, `formula`, and `eq` are mapped to canonical tags;
+* unquoted equations such as `[equation: F=ma]` are salvaged;
+* bare headers like `[Title] Newton's Law` become valid primitives;
+* `[text: "a = F / m"]` is auto-promoted to an equation;
+* if Gemma falls into OCR/JSON mode, `salvage.py` extracts `text_content` and synthesizes primitives from the raw text.
 
-The system prompt now reads as a *tool registry*: each primitive is
-documented with its argument signature, an example, and a paragraph on
-when to use it. Five fully-worked exemplars (Pythagoras, free-body
-problem, benzene, animal cell, DFS on a tree) anchor the model's format.
+This is why the board does not stay blank when the model misbehaves. A rough lesson is better than no lesson, and the repair layer gives the frontend something drawable.
 
-Teacher Mode adds a second Gemma call after the main lesson. The
-prompt is a 5-key JSON schema: `{misconceptions[], follow_ups[],
-prereqs[], difficulty}`. We parse it with a forgiving extractor that
-also accepts code-fenced JSON, JSON-in-prose, and aliased keys like
-`follow_up_questions` or `prerequisites` (covered by
-`api/scripts/test_teacher.py`). Output is rendered into the
-`EducatorPanel` so the educator stays in the loop.
+### 4. Sequential drawing and narration
 
-### 5. Three Gemma 4 backends
+The browser `LessonPlayer` queues primitives and plays them back in order. Text is revealed character by character. Equations are rendered through KaTeX and inserted as Excalidraw image elements. The Web Speech API narrates the lesson, so the board fills in while the voice explains.
 
-The toolbar has a Model dropdown with three options:
+This is the moment the demo is meant to communicate: AI as a teacher at a board, not a static answer generator.
 
-| Choice | Implementation | When to use |
-| --- | --- | --- |
-| Edge (E4B) | `gemma4:e4b` on Ollama | Default. Fully local. |
-| Edge fine-tuned (E4B+LoRA) | `y-gemma4` from the published GGUF Modelfile | After we ran the Unsloth notebook. Same base, better at SVG. |
-| Cloud (Gemma 4 31B) | Google AI Studio via `google-genai` | Max quality. Used for the "max-quality" demo button. |
+### 5. Learner memory and latent learner space
 
-Behind a single `Teacher` Protocol with two implementations
-(`OllamaTeacher`, `CloudTeacher`). The `/health` endpoint reports each
-model's readiness so the toolbar greys out unconfigured options
-(socket-pings the Ollama daemon with a tight timeout, checks for
-`GOOGLE_API_KEY`).
+After each lesson, the backend updates a local learner profile. It extracts concepts seen, mastered, and struggled with, creates a short summary, embeds the session with `nomic-embed-text`, and stores everything in `data/learners/<user_id>.json`.
 
-### 6. Unsloth QLoRA on Gemma 4 E4B
+The learner panel visualizes this profile in two ways:
 
-[`training/unsloth_train.ipynb`](../training/unsloth_train.ipynb) is the
-Unsloth-track deliverable. It:
+* a 3D trajectory of session embeddings, showing how the learner moves through concept space;
+* interpretable axes such as diagrammatic understanding, critical reasoning, creative transfer, algebraic fluency, and conceptual depth.
 
-1. Installs Unsloth and loads `unsloth/gemma-4-E4B-it` in 4-bit. We picked
-   E4B over E2B deliberately: the vanilla "Edge" toolbar slot already
-   serves `gemma4:e4b`, so making the fine-tuned slot E4B+LoRA means the
-   adapter only has to add task quality on top of the same base — it
-   doesn't have to first claw back the gap from a smaller model. E4B in
-   4-bit + LoRA + activations at `seq=4096, batch=2` lands at ~6–8 GB,
-   comfortable on a T4's 15 GB VRAM.
-2. Adds a r=16, alpha=32 QLoRA adapter on attention + MLP, keeps the
-   vision and audio modalities frozen.
-3. Loads our part-structured JSONL produced by
-   [`training/prepare_dataset.py`](../training/prepare_dataset.py) from
-   ControlSketch-Part (~400 rows, hand-trimmed narration so the
-   `[text:]` captions read like a teacher's, not a dataset's).
-4. Trains for 2 epochs (`lr=2e-4`, `batch=2`, `grad_accum=4`,
-   `cosine_schedule`) — completes on a Kaggle T4 in ≈45–60 minutes.
-5. Sanity-checks inference with a benzene-diagram prompt.
-6. Saves the LoRA, exports GGUF (`q4_k_m`), and pushes to HF.
-7. The included `models/Modelfile.y-gemma4` wraps the GGUF with the
-   same system prompt the API uses, so training-serving behaviour
-   matches.
+These axes are computed from extracted concepts, mastery signals, struggle signals, and primitive usage. The goal is not to claim a finished cognitive model. The goal is to demonstrate the product direction: a tutor that builds a living map of the learner instead of treating every question as a blank slate.
 
-### 7. Ollama integration
+### 6. Educator mode
 
-The Ollama-track requirement: ship a 100% local edge experience. Our
-default toolbar option does exactly that — `gemma4:e4b` for the tutor,
-`nomic-embed-text` for the embedding pass, and the fine-tuned
-`y-gemma4` GGUF when the user has run the Modelfile. The Modal
-deployment script is intentionally cloud-only so it doesn't blur the
-edge story.
+Y is not meant to replace teachers. It should give them leverage.
 
-## Reproducibility
+Teacher Mode runs an optional second Gemma call after the lesson and produces educator-facing notes: likely misconceptions, follow-up questions, prerequisites, and difficulty. A parent, teacher, or mentor can use this panel to see what to watch for while the learner interacts with the AI.
 
-* `git clone` → `cp .env.example .env` → `uv sync` → `npm install
-  --legacy-peer-deps` → `uvicorn main:app` + `npm run dev` reproduces
-  the whole local demo.
-* The schema, the prompts, the exemplars, and the validator are all in
-  the repo. There are no hidden few-shot files.
-* Unit tests (`test_parser.py`, `test_teacher.py`) run in <2 s with no
-  network. The repo is already green.
-* The fine-tune is a single Kaggle notebook with hard-pinned
-  hyperparameters and a published seed. The notebook also contains the
-  inference sanity check, so the LoRA quality is verifiable from the
-  notebook alone before downloading anything.
+### 7. Fine-tuning path with Unsloth
 
-## What we'd do with another month
+The repo includes an Unsloth notebook for the next research step: making Gemma more SVG-native. We prepared sketch-to-SVG style data from ControlSketch-Part and trained LoRA variants of Gemma 4 E4B.
 
-* **Stroke-order data.** ControlSketch-Part gives us part structure but
-  not stroke order. We'd collect stroke-order traces from real teacher
-  whiteboards and add a third level of structure (`draw_strokes`) so
-  the animation reflects how a human actually writes.
-* **Educator dashboard.** Teacher Mode currently serves *one* lesson at
-  a time. A small dashboard that aggregates the educator notes across a
-  classroom would close the "empower the educator" loop further.
-* **Memory beyond a session.** The learner profile is a great starting
-  point, but a richer abstract knowledge map (with prerequisite graphs
-  and forgetting curves) would let Y plan multi-week learning paths,
-  not just per-lesson personalisation.
-* **Languages.** The primitive grammar is language-agnostic. A second
-  set of prompts in Hindi and Spanish would let us run pilots in two
-  more contexts where most kids don't have someone to ask.
+Artifacts:
+
+* `QuantumTransformer/y-gemma4-svg-lora`
+* `QuantumTransformer/y-gemma4-svg-lora-enhanced`
+
+For the demo, the reliable path is the primitive renderer. The fine-tuned model work shows the direction we would take next: gradually replacing deterministic diagram primitives with learned SVG drawing where it improves expressiveness without sacrificing latency or cost.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    A[Student writes/draws on Excalidraw] --> B[Canvas PNG]
+    B --> C[FastAPI /lesson]
+    C --> D[Gemma 4 via Ollama]
+    D --> E[Parser + validator + salvage]
+    E --> F[SSE primitives]
+    F --> G[LessonPlayer]
+    G --> H[Excalidraw elements]
+    G --> I[KaTeX equations]
+    G --> J[Web Speech narration]
+    E --> K[Learner profile]
+    K --> L[3D learner panel]
+```
+
+Core stack:
+
+* Next.js, React, Excalidraw, KaTeX, Web Speech API
+* FastAPI, SSE, Ollama
+* `gemma4:e4b` for local teaching
+* `nomic-embed-text` for local learner embeddings
+* Unsloth for LoRA fine-tuning experiments
+
+## Why Gemma
+
+Gemma is the center of the system. It acts as the visual reader, reasoning engine, lesson planner, educator-note generator, and concept extractor. The app is intentionally a harness around Gemma: as open models improve, the whiteboard experience improves without changing the product interface.
+
+This is important for education. A learning tool for children should be cheap to run, private by default, and adaptable to local devices. Gemma through Ollama gives us that path.
+
+## What worked
+
+The strongest part of the project is the interaction pattern. Students write naturally on a canvas, and the system responds on the same canvas. The primitive protocol also worked better than asking the model for arbitrary SVG in the demo timeframe. It made the system repairable, streamable, and compatible with local inference.
+
+The learner-space panel also became an important storytelling element. It shows that the project is not only about answering one question, but about building a model of the learner over time.
 
 ## Limitations
 
-* The model is small. It hallucinates. Teacher Mode's misconception
-  list mitigates this for the educator.
-* The student must mark the unknown with `?`. Without that anchor the
-  agent guesses.
-* The visual primitive vocabulary is whiteboard-friendly but not yet
-  rich enough for, e.g., dynamic graphs with axes or geometric
-  constructions with measured angles. The schema is designed to be
-  extended.
-* The `draw_part` decoder produces line-art, not coloured fills. The
-  next iteration adds a `fill` attribute and palette guard.
+The current system is a prototype:
 
-## Ethics
+* the local model sometimes misreads handwriting or flips into OCR-style output;
+* mathematical reasoning can be wrong and needs teacher oversight;
+* layout is deterministic and practical, not as expressive as a human artist;
+* the learner model is a proof of direction, not a validated cognitive model;
+* the SVG-native LoRA is early research and not yet the default rendering path.
 
-Y's default mode is fully offline. The learner profile lives on the
-device. The cloud option is opt-in. No accounts, no tracking, no
-training-on-user-data. That matters disproportionately for a product
-intended for children.
+The system is designed around these limitations. It repairs model output, keeps the educator in the loop, stores learner data locally, and separates reasoning from rendering so individual pieces can improve over time.
 
-## Acknowledgements
+## What comes next
 
-Gemma 4 (Google), Ollama, Unsloth, Excalidraw, KaTeX, ControlSketch,
-nomic-embed-text. We stood on every one of their shoulders.
+With more time, the next steps are:
+
+* collect real teacher whiteboard traces with stroke order;
+* fine-tune a stronger SVG/action decoder;
+* add richer primitives for axes, plots, circuits, chemistry, and geometry;
+* build a teacher dashboard over multiple learner sessions;
+* improve the learner model with prerequisite graphs and forgetting curves;
+* add multilingual prompts for broader access.
+
+## Closing
+
+Y is a first attempt at an AI tutor that uses the same medium humans use when they teach hard ideas: a whiteboard. The dream is a companion that can meet any learner where they are, fill gaps in understanding, and express ideas with the right mix of words, equations, diagrams, and memory.
+
+For this hackathon, we built the smallest working version of that dream: local Gemma 4 reading a student's board and writing back.

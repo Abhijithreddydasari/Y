@@ -18,7 +18,7 @@ flowchart LR
         TEA --> EFT[OllamaTeacher<br/>y-gemma4 LoRA]
         TEA --> CLD[CloudTeacher<br/>gemma-4-31b-it]
         PAR[IncrementalTagParser<br/>block-aware]
-        VAL[validate_and_repair<br/>lxml sanitise + salvage]
+        VAL[validate_and_repair<br/>repair + salvage]
         LRN[learner.py<br/>extract + embed + persist]
     end
 
@@ -60,8 +60,8 @@ sequenceDiagram
     API->>Teacher: stream_lesson(png, mastery_prefix)
     loop tokens
         Teacher-->>Parser: token
-        Parser->>Validator: primitive (inline or draw_part block)
-        Validator-->>Browser: SSE primitive (sanitised)
+        Parser->>Validator: primitive candidate
+        Validator-->>Browser: SSE primitive (repaired)
         Browser->>Player: enqueue
         Player-->>Student: draw stroke + speak (lock-stepped)
     end
@@ -91,8 +91,8 @@ Y/
 │  └─ lib/
 │     ├─ api.ts               streamLesson SSE client + fetchHealth/Learner
 │     ├─ renderer.ts          primitive → Excalidraw element
-│     ├─ rough-svg.ts         hand-drawn pass on raw SVG
-│     ├─ lesson-player.ts     queue + TTS sync + playDrawPart anim
+│     ├─ rough-svg.ts         experimental hand-drawn pass on raw SVG
+│     ├─ lesson-player.ts     queue + TTS sync + sequential playback
 │     ├─ katex.ts             [equation] → SVG
 │     ├─ tts.ts               Web Speech API wrapper
 │     ├─ layout.ts            studentBbox + answerRegion math
@@ -100,19 +100,20 @@ Y/
 ├─ api/                       FastAPI + Ollama + Cloud teacher
 │  ├─ main.py                 /health · /schema · /lesson · /learner
 │  ├─ teacher.py              Teacher protocol · OllamaTeacher · CloudTeacher · MODEL_REGISTRY
-│  ├─ parser.py               incremental tag state machine (block-aware)
-│  ├─ validator.py            schema check · SVG sanitise · per-path salvage
+│  ├─ parser.py               incremental tag state machine + bare-header repair
+│  ├─ validator.py            schema check · aliases · equation auto-promotion
+│  ├─ salvage.py              JSON/OCR/plain-text fallback to primitives
 │  ├─ learner.py              concept extraction · nomic embed · JSON store
 │  ├─ prompts/
 │  │  ├─ system.md            multi-tool agent prompt
 │  │  ├─ primitives.md        tag-by-tag reference
-│  │  └─ examples/            pythagoras / freebody / benzene / cell / dfs_tree
+│  │  └─ examples/            newton / vector_sum / binary_search
 │  └─ scripts/                test_parser.py · test_teacher.py · smoke_demos.py
 ├─ schema/primitives.json     single source of truth
 ├─ training/
 │  ├─ prepare_dataset.py      ControlSketch-Part → instruction JSONL
 │  ├─ _build_notebook.py      generator
-│  └─ unsloth_train.ipynb     QLoRA on gemma-4-E4B-it
+│  └─ unsloth-training.ipynb  QLoRA on gemma-4-E4B-it
 ├─ models/
 │  ├─ Modelfile.y-gemma4      Ollama wrapper for the fine-tuned GGUF
 │  └─ README.md

@@ -136,7 +136,11 @@ class OllamaTeacher:
 
     def warmup(self) -> None:
         try:
-            self._client.generate(model=self.model, prompt="ok", options={"num_predict": 1})
+            self._client.chat(
+                model=self.model,
+                messages=[{"role": "user", "content": "ok"}],
+                options={"num_predict": 1},
+            )
         except Exception as exc:
             raise TeacherError(f"warmup failed: {exc}")
 
@@ -150,29 +154,42 @@ class OllamaTeacher:
         Yields raw text deltas as they arrive. The caller is responsible for
         incremental parsing (see parser.IncrementalTagParser).
 
+        Uses ``ollama.chat()`` (chat-completion API) rather than
+        ``ollama.generate()`` because Gemma 4 is chat-tuned and respects the
+        system role far more reliably through the chat endpoint.
+
         `system_prefix` is prepended to the cached system prompt for THIS
         call only (used by the learner module to inject the user's mastery
         state). Concurrent calls don't bleed into each other.
         """
+        import base64
+
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
+        b64_image = base64.b64encode(png_bytes).decode("ascii")
 
         def producer() -> None:
             try:
-                stream = self._client.generate(
+                stream = self._client.chat(
                     model=self.model,
-                    prompt=self._user_prompt(),
-                    system=system,
-                    images=[png_bytes],
+                    messages=[
+                        {"role": "system", "content": system},
+                        {
+                            "role": "user",
+                            "content": self._user_prompt(),
+                            "images": [b64_image],
+                        },
+                    ],
                     stream=True,
                     options={
-                        "temperature": 0.4,
+                        "temperature": 0.2,
                         "num_predict": 2048,
                     },
                 )
                 for chunk in stream:
-                    text = chunk.get("response", "")
+                    msg = chunk.get("message", {})
+                    text = msg.get("content", "")
                     if text:
                         loop.call_soon_threadsafe(queue.put_nowait, text)
                     if chunk.get("done"):
@@ -209,23 +226,32 @@ class OllamaTeacher:
         parsed JSON dict, or an empty-shaped fallback if the model emits
         something unparsable. Best-effort.
         """
+        import base64
+
         loop = asyncio.get_running_loop()
+        b64_image = base64.b64encode(png_bytes).decode("ascii")
 
         def producer() -> str:
             try:
-                resp = self._client.generate(
+                resp = self._client.chat(
                     model=self.model,
-                    prompt=(
-                        "Look at the attached whiteboard image and produce educator notes.\n\n"
-                        + (f"Lesson the tutor just gave:\n{lesson_text}\n\n" if lesson_text else "")
-                        + "Output ONLY valid JSON, nothing else."
-                    ),
-                    system=EDUCATOR_SYSTEM_PROMPT,
-                    images=[png_bytes],
+                    messages=[
+                        {"role": "system", "content": EDUCATOR_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Look at the attached whiteboard image and produce educator notes.\n\n"
+                                + (f"Lesson the tutor just gave:\n{lesson_text}\n\n" if lesson_text else "")
+                                + "Output ONLY valid JSON, nothing else."
+                            ),
+                            "images": [b64_image],
+                        },
+                    ],
                     stream=False,
                     options={"temperature": 0.3, "num_predict": 512},
                 )
-                return str(resp.get("response", ""))
+                msg = resp.get("message", {})
+                return str(msg.get("content", ""))
             except Exception as exc:
                 return f"__error__:{exc}"
 

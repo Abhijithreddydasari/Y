@@ -5,12 +5,12 @@ gitignored — pull them from Hugging Face or rebuild via the Unsloth notebook.
 
 | File | Role | Source artefact |
 |---|---|---|
-| `Modelfile.y-gemma4` | Edge fine-tuned tutor (`y-gemma4`) | `y-gemma4-svg-q4_k_m.gguf` from `training/unsloth_train.ipynb` (step 8) |
+| `Modelfile.y-gemma4` | Edge fine-tuned tutor (`y-gemma4`) | `y-gemma4-svg-q4_k_m.gguf` from `training/unsloth-training.ipynb` |
 
 ## Building the fine-tuned model locally
 
 ```powershell
-# Copy the GGUF out of Kaggle (or `huggingface-cli download yourname/y-gemma4-svg-gguf` once published).
+# Copy the GGUF out of Kaggle or download it from the published Hugging Face artifact.
 # Drop it next to the Modelfile:
 #   models/y-gemma4-svg-q4_k_m.gguf
 ollama create y-gemma4 -f models/Modelfile.y-gemma4

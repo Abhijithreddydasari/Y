@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Primitive tag protocol",
-  "description": "The primitives the LLM is allowed to emit. Single source of truth: the backend prompt template, the server-side parser, the frontend renderer, and the validator all read this file. Keep the vocabulary small; adding a primitive means updating the prompt, parser, validator, and renderer in lock-step.",
+  "description": "Superset of primitives the backend can validate and the frontend can render. The default Gemma 4 prompt intentionally uses the 7 core primitives (title, text, equation, box, node, arrow, line) for reliability; draw and draw_part are experimental SVG-native hooks for the fine-tuned/research path.",
   "version": "0.3.0",
   "tag_syntax": {
     "shape": "[<name>: <arg>=<value> ...]",
@@ -111,7 +111,8 @@
     }
   },
   "hard_rules": [
-    "No primitive types beyond the 9 listed.",
+    "The default production prompt should prefer the 7 core primitives.",
+    "No primitive types beyond the listed schema.",
     "If a concept needs a primitive not listed, fall back to [text: ...] narration.",
     "Maximum 30 primitives per lesson; truncate the tail gracefully if exceeded.",
     "[draw] is the single-tag escape hatch for one-shot SVG.",

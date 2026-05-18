@@ -56,13 +56,23 @@ from teacher import (  # noqa: E402
     resolve_teacher,
 )
 from parser import IncrementalTagParser  # noqa: E402
+from salvage import salvage_raw_to_primitives  # noqa: E402
 from validator import validate_and_repair  # noqa: E402
 
 app = FastAPI(title="Y API", version="0.1.0")
 
+_cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
+_extra_cors = os.environ.get("CORS_ORIGINS", "").strip()
+if _extra_cors:
+    _cors_origins.extend(o.strip() for o in _extra_cors.split(",") if o.strip())
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -217,6 +227,16 @@ async def lesson(
                     if ok:
                         primitives_count += 1
                         yield {"event": "primitive", "data": json.dumps(fixed_tag)}
+
+            # Last-resort salvage: if the parser produced 0 primitives the
+            # model ignored the tag protocol entirely (common with the small
+            # gemma4:e4b baseline). Synthesise primitives from the raw text
+            # so the whiteboard still draws something.
+            if primitives_count == 0 and lesson_chunks:
+                raw_text = "".join(lesson_chunks)
+                for synth in salvage_raw_to_primitives(raw_text):
+                    primitives_count += 1
+                    yield {"event": "primitive", "data": json.dumps(synth)}
 
             if teacher_mode:
                 try:

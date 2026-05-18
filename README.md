@@ -1,261 +1,163 @@
-# Y · the AI that writes on your whiteboard
+# Y · an AI learning companion that writes on your whiteboard
 
-> Most AI tutors are chat boxes. Most kids don't learn from chat boxes.
-> They learn at a whiteboard, with someone who can draw.
-> Y is that someone.
+> Most AI tutors are chat boxes.  
+> Y reads the board, reasons about the student's question, and writes the next step back on the same canvas.
 
-A pedagogical AI built around Gemma 4. The student writes a question on a
-whiteboard, marks the unknown with `?`, and Y reads the canvas, *teaches by
-drawing on the same canvas* in real time, narrating each stroke, and
-remembers what the student knows for next time.
+Y is a local-first whiteboard tutor built with Gemma 4. A student writes a question, equation, or sketch directly on an Excalidraw canvas and marks the unknown with `?`. Y exports that canvas as an image, asks Gemma to understand the student's intent, then streams a structured lesson back to the board as titles, captions, equations, arrows, boxes, and diagrams while the browser narrates the explanation aloud.
 
-Built for the [Gemma 4 Good Hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon)
-across three tracks:
+The goal is not to generate a static answer image. The goal is to make AI feel like a patient teacher at a board: read what the learner drew, choose the next useful representation, write it step by step, and remember what the learner has seen before.
 
-* **Future of Education** — multi-tool agent, learner-knowledge model,
-  educator-coach panel.
-* **Ollama** — fully local edge inference on `gemma4:e4b`; the fine-tuned
-  variant ships as a `Modelfile`.
-* **Unsloth** — QLoRA fine-tune of `gemma-4-E2B-it` on the
-  [`ControlSketch-Part`](https://huggingface.co/datasets/seenubhargav/ControlSketch-Part)
-  dataset for SVG-stroke generation, exported to GGUF.
+Built for the [Gemma 4 Good Hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon).
 
-| | |
-| --- | --- |
-| Demo video | _add YouTube link_ |
-| Live demo | _add Modal/Vercel link_ |
-| Kaggle writeup | _add Kaggle notebook link_ |
-| Fine-tuning notebook | [`training/unsloth_train.ipynb`](./training/unsloth_train.ipynb) |
-| Dataset on HF | _add HF link_ |
-| Adapter on HF | _add HF link_ |
+## What We Built
 
----
+Y has three parts:
 
-## What's new in this build (vs. the v0 chat-box prototype)
+* **The eye and brain:** Gemma 4 through Ollama reads the whiteboard PNG and plans the explanation.
+* **The hand:** a deterministic renderer turns Gemma's primitive tags into Excalidraw elements, KaTeX equations, and browser speech.
+* **The learner memory:** a local profile tracks concepts seen, mastered, and struggled with, then visualizes the learner's path through a 3D latent space.
 
-1. **SVG-native generation.** A new `draw_part` block primitive lets the
-   model emit multi-line SVG paths grouped by part (head, body, ring, etc.)
-   inside a single call, instead of a token of tikz or a base64 image. Every
-   `<path d="...">` is sanitised by `lxml`, validated against allowed
-   elements, and salvaged path-by-path so a single bad stroke never crashes
-   the lesson.
-2. **Stroke-by-stroke animation locked to TTS.** The frontend
-   `LessonPlayer` reveals each path with a transient `stroke-dasharray`
-   overlay synchronised to the speech synthesiser's word boundaries. The
-   blackboard literally writes itself at the speed of the voice.
-3. **Multi-tool agent prompt.** `system.md` now reads as a tool registry:
-   `[title]`, `[text]`, `[equation]`, `[draw]`, `[draw_part]`, `[box]`,
-   `[node]`, `[arrow]`, `[line]`. Five subject exemplars
-   (Pythagoras / free-body / benzene / cell / DFS tree) anchor the model in
-   the format.
-4. **Teacher Mode** runs a second Gemma call after every lesson and
-   surfaces an `EducatorPanel` with misconceptions, follow-ups,
-   prerequisites, and a difficulty rating — the "empower the educator"
-   half of the Future-of-Education brief.
-5. **Latent learner-knowledge model.** `learner.py` extracts concepts from
-   each lesson, embeds them with `nomic-embed-text`, and persists a per-user
-   profile to disk. The next lesson's system prompt is prepended with a
-   1–3-line mastery summary so Y skips topics the student already knows.
-   Visualised live in the bottom-left `LearnerPanel` as a rotating 3D UMAP
-   point cloud.
-6. **Three Gemma 4 backends behind one toolbar.** Edge (`gemma4:e4b`) /
-   Edge fine-tuned (`y-gemma4` LoRA-merged GGUF) / Cloud (`gemma-4-31b-it`
-   on Google AI Studio). The `/health` endpoint reports per-model
-   readiness so the dropdown greys out unconfigured options.
-7. **Unsloth QLoRA notebook.** [`training/unsloth_train.ipynb`](./training/unsloth_train.ipynb)
-   runs end-to-end on a Kaggle T4: 4-bit `gemma-4-E2B-it`, r=16 LoRA on
-   attention + MLP, 2 epochs, GGUF export.
+This makes the app local-first by default. The core demo runs on `gemma4:e4b` locally through Ollama, with `nomic-embed-text` for learner embeddings. A cloud teacher path and fine-tuned model slot are present, but the submission is designed so a student can learn without sending their whiteboard or learning profile to a hosted API.
 
-## How it works
+## Why It Matters
 
-```
-                                    ┌─────────────────────┐
-   student draws on canvas ─PNG───► │  FastAPI /lesson    │
-                                    │  ┌──────────────┐   │
-                                    │  │ Teacher       │  │
-                                    │  │  ├ OllamaTea  │  │
-                                    │  │  └ CloudTea   │  │
-                                    │  └──────────────┘   │
-                                    └─────────┬───────────┘
-                                              │ tokens
-                              ┌───────────────▼───────────────┐
-                              │ IncrementalTagParser          │
-                              │  ├ inline tags → primitive    │
-                              │  └ draw_part block → svg path │
-                              └───────────────┬───────────────┘
-                                              │ primitive events
-                              ┌───────────────▼───────────────┐
-                              │ validate_and_repair (lxml)    │
-                              │  ├ schema check + alias map   │
-                              │  ├ SVG sanitize (no script,   │
-                              │  │  no foreignObject, no js:) │
-                              │  ├ per-path salvage           │
-                              │  └ fallback to [text] caption │
-                              └───────────────┬───────────────┘
-                                              │ SSE
-                              ┌───────────────▼───────────────┐
-                              │ LessonPlayer (Excalidraw)     │
-                              │  ├ KaTeX for [equation]       │
-                              │  ├ Rough.js for [box/node]    │
-                              │  ├ playDrawPart stroke anim   │
-                              │  └ Web Speech API word sync   │
-                              └───────────────┬───────────────┘
-                                              │
-   learner.py extract + embed + persist ◄─────┘
-              │
-              ▼
-   data/learners/<id>.json  ──► next lesson's system prompt prefix
+Education is still mostly built around text, lectures, and one-size-fits-all explanations. But many learners think visually. They draw triangles, forces, molecules, trees, circuits, and half-finished equations when they are stuck.
+
+Y treats the canvas as the interface. A learner does not need to translate confusion into a polished prompt. They can write naturally, mark the missing piece, and watch the system respond in the same medium: a whiteboard explanation with equations and diagrams appearing in sequence.
+
+The long-term vision is an AI learning companion that builds an abstract map of what each learner understands and uses that map to choose the right words, diagrams, pace, and next question. This hackathon build is the first working slice of that idea.
+
+## Core Features
+
+* **Whiteboard-native input:** students write or draw on Excalidraw, not a chat box.
+* **Gemma 4 multimodal reasoning:** the backend sends the canvas snapshot to a local Gemma model.
+* **Structured drawing protocol:** Gemma emits a small primitive language: `title`, `text`, `equation`, `box`, `node`, `arrow`, and `line`.
+* **Sequential playback:** the frontend draws each primitive in order and reveals text character by character.
+* **Math rendering:** equations are rendered with KaTeX and embedded back into Excalidraw.
+* **Text-to-speech narration:** the Web Speech API narrates while the board fills in.
+* **Robust parser and repair layer:** malformed tags, bare headers, JSON-ish vision output, and equation-like text are salvaged into drawable primitives.
+* **Learner profile:** each lesson updates a local JSON memory of concepts, mastery, struggle signals, summaries, and embeddings.
+* **Latent learner space:** the learner panel visualizes a 3D trajectory plus interpretable axes such as diagrammatic understanding, critical reasoning, creative transfer, algebraic fluency, and conceptual depth.
+* **Educator mode:** an optional second Gemma pass surfaces misconceptions, prerequisites, follow-up questions, and difficulty.
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A[Student writes on Excalidraw<br/>and marks ?] --> B[Canvas exported as PNG]
+    B --> C[FastAPI /lesson]
+    C --> D[Gemma 4 via Ollama]
+    D --> E[Parser + validator + salvage]
+    E --> F[SSE primitive stream]
+    F --> G[LessonPlayer]
+    G --> H[Excalidraw drawing]
+    G --> I[KaTeX equations]
+    G --> J[Web Speech narration]
+    E --> K[Learner profile update]
+    K --> L[3D learner space]
 ```
 
-After the lesson stream, **Teacher Mode** runs a second Gemma call to emit
-educator JSON (misconceptions / follow-ups / prereqs / difficulty), and the
-**learner module** updates the per-user profile in JSON on disk. The next
-`/lesson` request reads that profile and prepends a mastery summary to the
-system prompt.
+The key design choice is the primitive protocol. Instead of asking a small model to output arbitrary SVG perfectly, Y asks it to emit a compact sequence of whiteboard actions:
 
-## The primitive vocabulary
-
-The LLM is constrained to a small tag protocol — schema-as-code in
-[`schema/primitives.json`](./schema/primitives.json):
-
-| Tag | Purpose | Example |
+| Primitive | Purpose | Example |
 | --- | --- | --- |
-| `title` | Lesson heading | `[title: "Newton's Second Law"]` |
-| `text` | Narrated caption (also drawn) | `[text: "Solve for a."]` |
+| `title` | lesson heading | `[title: "Newton's Second Law"]` |
+| `text` | narrated caption | `[text: "Solve for acceleration."]` |
 | `equation` | KaTeX-rendered math | `[equation: "a = F / m"]` |
-| `box` | Labeled rectangle | `[box: id=A label="Block"]` |
-| `node` | Labeled circle | `[node: id=A label="0.6"]` |
-| `arrow` | Connect two ids | `[arrow: from=A to=B label="step"]` |
-| `line` | Free segment | `[line: x1=0 y1=0 x2=200 y2=0 label="v"]` |
-| `draw` | Inline single SVG snippet | `[draw: svg="<path d=...>"]` |
-| `draw_part` | **Block** primitive: multi-line SVG paths grouped by part | see `prompts/examples/benzene.md` |
+| `box` | labelled rectangle | `[box: id=A label="start"]` |
+| `node` | labelled circle | `[node: id=N label="A"]` |
+| `arrow` | relationship between ids | `[arrow: from=A to=B label="next"]` |
+| `line` | free vector or segment | `[line: x1=0 y1=0 x2=200 y2=0 label="v"]` |
 
-The bet: a tiny structured language is easier to teach a small LLM (and
-easier to repair after the fact) than free-form SVG.
+The renderer owns layout and drawing. The model owns reasoning and pedagogy. This separation keeps the demo fast, cheap, and recoverable when the model drifts.
 
-## Quick start
+## Robustness
 
-Prereqs:
+Small multimodal models are not perfectly obedient, so the backend is intentionally forgiving:
 
-* Python 3.11 / 3.12, Node 20+, [Ollama](https://ollama.com/download), [uv](https://github.com/astral-sh/uv).
+* `heading`, `h1`, `formula`, and `eq` are aliased to canonical primitives.
+* Unquoted positional arguments such as `[equation: F=ma]` are repaired.
+* Bare outputs like `[Title] Newton's Law` are converted into primitives.
+* `[text: "a = F / m"]` is auto-promoted to an `equation`.
+* If Gemma falls into OCR/JSON mode, `salvage.py` extracts the useful `text_content` and synthesizes a lesson from it.
 
-```powershell
-# 1. .env from template
-Copy-Item .env.example .env
+The result is that prompt drift produces a rough lesson, not a blank board.
 
-# 2. Pull edge models
+## Local Quick Start
+
+Prerequisites: Python 3.11+, Node 20+, [Ollama](https://ollama.com/download), and [uv](https://github.com/astral-sh/uv).
+
+```cmd
+cd /d "C:\path\to\Y"
+copy .env.example .env
 ollama pull gemma4:e4b
 ollama pull nomic-embed-text
+```
 
-# 3. (Optional) Build the fine-tuned tag from the published GGUF
-ollama create y-gemma4 -f models/Modelfile.y-gemma4
+Start the backend:
 
-# 4. Backend
+```cmd
+cd /d "C:\path\to\Y"
 cd api
 uv sync
-.\.venv\Scripts\python.exe -m uvicorn main:app --port 8000
+.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-# 5. Frontend (separate shell)
-cd web
+Start the frontend in another terminal:
+
+```cmd
+cd /d "C:\path\to\Y\web"
 npm install --legacy-peer-deps
 npm run dev
 ```
 
-Open <http://localhost:3000>. Pick a sample subject (Math / Physics / Chem
-/ Bio / CS) or write your own question with the pen tool, mark the
-unknown with `?`, then **Solve**.
+Open `http://localhost:3000/app`, insert a sample or write your own question, mark the unknown with `?`, and press **Solve**.
 
-For deployment topologies (local-only, Modal+Vercel cloud-only, hybrid)
-see [`deploy/README.md`](./deploy/README.md).
+## Tests
 
-## Reproducibility
-
-Everything in this repo is reproducible from a clean checkout:
-
-* **Schema** — single source of truth at [`schema/primitives.json`](./schema/primitives.json),
-  consumed by both backend (validator) and frontend (renderer).
-* **Prompts** — versioned under [`api/prompts/`](./api/prompts), including
-  the five subject exemplars used for in-context calibration.
-* **Dataset** — [`training/prepare_dataset.py`](./training/prepare_dataset.py)
-  converts ControlSketch-Part into the part-structured instruction JSONL we
-  fine-tune on. Run with `--push <hf-repo>` to mirror to Hugging Face.
-* **Fine-tune** — [`training/unsloth_train.ipynb`](./training/unsloth_train.ipynb)
-  runs on a Kaggle T4 in ≈2 hours; outputs a LoRA, optional GGUF, optional
-  HF push.
-* **Inference** — [`models/Modelfile.y-gemma4`](./models/Modelfile.y-gemma4)
-  wraps the GGUF with the same system prompt the API uses, so behaviour
-  matches between training and serving.
-* **Tests** — `api/scripts/test_parser.py` and `api/scripts/test_teacher.py`
-  cover the parser/validator and educator-JSON repair paths in ~1 second
-  with no network access.
-
-## Smoke tests
-
-```powershell
-# Unit tests (no network required)
-cd api
-.\.venv\Scripts\python.exe scripts\test_parser.py
-.\.venv\Scripts\python.exe scripts\test_teacher.py
-
-# 5 subjects × 3 model variants matrix (requires running API)
-.\.venv\Scripts\python.exe scripts\smoke_demos.py --all-models
+```cmd
+cd /d "C:\path\to\Y"
+api\.venv\Scripts\python.exe api\scripts\test_parser.py
+api\.venv\Scripts\python.exe api\scripts\test_salvage.py
+api\.venv\Scripts\python.exe api\scripts\smoke_lesson.py
 ```
 
-## Repository layout
+`test_parser.py` covers the parser, validator, repair logic, SVG sanitizer hooks, and equation auto-promotion. `test_salvage.py` covers fallback extraction from JSON/OCR-style model outputs. `smoke_lesson.py` runs the full local `/lesson` pipeline against Ollama.
 
-```
+## Fine-Tuning Path
+
+The repo includes an Unsloth training notebook at [`training/unsloth-training.ipynb`](./training/unsloth-training.ipynb) and a dataset preparation script at [`training/prepare_dataset.py`](./training/prepare_dataset.py). This work explores the next phase: teaching Gemma to emit more SVG-like drawing actions directly from sketch datasets.
+
+Two LoRA artifacts were produced during development:
+
+* [`QuantumTransformer/y-gemma4-svg-lora`](https://huggingface.co/QuantumTransformer/y-gemma4-svg-lora)
+* [`QuantumTransformer/y-gemma4-svg-lora-enhanced`](https://huggingface.co/QuantumTransformer/y-gemma4-svg-lora-enhanced)
+
+The hackathon demo uses the robust primitive renderer as the reliable path, while the LoRA represents the research direction toward a more SVG-native teacher.
+
+## Repository Layout
+
+```text
 Y/
-├── web/                      Next.js 16 / React 19 / Excalidraw / KaTeX
-│   └── src/
-│       ├── app/              page.tsx · main orchestrator
-│       ├── components/       Whiteboard, Toolbar, EducatorPanel, LearnerPanel
-│       └── lib/              api, renderer, lesson-player, rough-svg, layout, types
-├── api/                      FastAPI + Ollama + Cloud teacher
-│   ├── main.py               /health · /schema · /lesson · /learner
-│   ├── teacher.py            Teacher protocol + OllamaTeacher + CloudTeacher
-│   ├── parser.py             incremental tag state machine (block-aware)
-│   ├── validator.py          schema check, SVG sanitize, path salvage
-│   ├── learner.py            concept extraction + embedding + JSON store
-│   ├── prompts/              system.md + primitives.md + 5 examples/
-│   └── scripts/              parser tests, teacher tests, demo smoke
-├── schema/primitives.json    single source of truth for the tag protocol
-├── training/
-│   ├── prepare_dataset.py    ControlSketch-Part → instruction JSONL
-│   ├── _build_notebook.py    generator for the Kaggle notebook
-│   └── unsloth_train.ipynb   QLoRA on gemma-4-E2B-it
-├── models/
-│   ├── Modelfile.y-gemma4    Ollama wrapper for the fine-tuned GGUF
-│   └── README.md             how to build the local tag
-├── deploy/
-│   ├── modal_app.py          serverless API on Modal
-│   └── README.md             local / cloud / hybrid topologies
-├── docs/video_script.md      shooting script for the YouTube demo
-└── .env.example
+├── api/                      FastAPI, Gemma/Ollama teacher, parser, learner memory
+│   ├── main.py               /health, /schema, /lesson, /learner
+│   ├── teacher.py            local Ollama + optional cloud teacher
+│   ├── parser.py             incremental primitive parser
+│   ├── validator.py          repair, aliases, equation promotion, SVG safety hooks
+│   ├── salvage.py            fallback from OCR/JSON/plain text to primitives
+│   └── prompts/              compact 7-primitive prompt and few-shot examples
+├── web/                      Next.js, Excalidraw, KaTeX, TTS, learner panel
+├── schema/primitives.json    primitive schema used by parser and renderer
+├── training/                 dataset preparation and Unsloth notebook
+├── models/                   Ollama Modelfile for the fine-tuned slot
+├── docs/                     architecture, Kaggle writeup, submission notes
+└── assets/                   local demo videos
 ```
 
-## Ethics & limitations
+## Limitations
 
-* **Privacy.** Learner profiles are JSON files on disk, never sent
-  anywhere by default. The cloud teacher path is opt-in and only fires
-  when the toolbar is set to "Cloud."
-* **Hallucinations.** The model is small. Wrong answers are possible.
-  Teacher Mode's misconception list partially mitigates this by
-  surfacing common errors next to the lesson; the educator can verify.
-* **Accessibility.** TTS uses the browser's Web Speech API; we lean on
-  the OS voice for now. Captions are drawn on the canvas as text so the
-  lesson is fully readable with sound off.
-* **Languages.** English only at the moment. The primitive grammar is
-  language-independent; only the prompts and exemplars need translation.
+Y is a prototype. It can misread handwriting, solve incorrectly, or produce a rough layout. The default model is small enough to run locally, so the system trades maximum reasoning quality for privacy, cost, and latency. The current primitive protocol is strong for equations, flowcharts, graph-like diagrams, and simple whiteboard explanations; richer chemistry/anatomy/freeform SVG drawing is the next research step.
 
-## License
+## Ethics
 
-MIT. See [`LICENSE`](./LICENSE).
-
-## Acknowledgements
-
-* The Gemma 4 team at Google for the model that runs this entire show.
-* The Ollama and Unsloth maintainers for making local + cheap fine-tunes
-  realistic on a single 8 GB consumer GPU.
-* The Excalidraw team for an open whiteboard you can actually build on.
-* The ControlSketch authors for releasing a part-structured sketch
-  dataset that turned out to be the perfect fuel for SVG-as-language.
+Y is designed around local inference and local memory. Learner profiles are JSON files on disk. The cloud path is optional. For a tool aimed at children, privacy and cost control are not nice-to-haves; they are core product requirements.

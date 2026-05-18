@@ -19,10 +19,10 @@ no "mostly done" allowed. Cross off as you go.
   `huggingface.co/datasets/<user>/y-svg-lessons` is public and contains
   `svg_lessons.jsonl`.
 * [ ] LoRA uploaded:
-  `huggingface.co/<user>/y-gemma3n-svg-lora` is public and contains the
+  `huggingface.co/<user>/y-gemma4-svg-lora` is public and contains the
   adapter shards + tokeniser.
 * [ ] (Optional) GGUF uploaded:
-  `huggingface.co/<user>/y-gemma3n-svg-gguf` with `q4_k_m`.
+  `huggingface.co/<user>/y-gemma4-svg-gguf` with `q4_k_m`.
 * [ ] All three repos linked from the README and the writeup.
 
 ## 2. Ollama

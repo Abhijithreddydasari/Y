@@ -235,6 +235,26 @@ def _process_draw_part_body(body: str) -> str:
     return _sanitize_svg(inner)
 
 
+_EQUATION_LIKE = re.compile(
+    r"^[A-Za-z_]\w*"           # starts with a variable name
+    r"\s*=\s*"                 # has an equals sign
+    r"[^.!?]{1,50}$"          # RHS is short, no sentence-ending punctuation
+)
+
+
+def _looks_like_equation(text: str) -> bool:
+    """Return True if the text looks like a math equation rather than prose."""
+    s = text.strip()
+    if not _EQUATION_LIKE.match(s):
+        return False
+    rhs = s.split("=", 1)[1] if "=" in s else ""
+    if not re.search(r"[\d+\-*/^]", rhs) and not re.search(r"[A-Za-z]", rhs):
+        return False
+    if re.match(r"^[A-Z][a-z]+\s+[a-z]", s):
+        return False
+    return True
+
+
 def _coerce_number(value: str) -> float | None:
     try:
         return float(value)
@@ -310,6 +330,17 @@ def validate_and_repair(parsed: dict) -> tuple[bool, dict]:
         args["svg"] = cleaned
         if not part_name:
             args["name"] = "part"
+
+    # Auto-promote: when the model writes [text: "a = F / m"] instead of
+    # [equation: "a = F / m"], detect the math and promote. Only fires for
+    # short, equation-shaped content to avoid grabbing prose sentences.
+    if name == "text":
+        content = str(args.get("content", ""))
+        if _looks_like_equation(content):
+            name = "equation"
+            spec = _known_primitives()["equation"]["args"]
+            valid_keys = set(spec.keys())
+            args = {"latex": content}
 
     # Required arg check.
     missing = [k for k, schema in spec.items() if schema.get("required") and k not in args]

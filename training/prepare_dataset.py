@@ -16,7 +16,7 @@ into messages of the form
                                          [text: \"That's a horse.\"]"}
     ]
 
-so that an Unsloth QLoRA fine-tune on gemma-4-E2B-it teaches it the structure
+so that an Unsloth QLoRA fine-tune on gemma-4-E4B-it teaches it the structure
 of [draw_part] blocks and chains-of-narration.
 
 Usage

@@ -42,6 +42,86 @@ BLOCK_PRIMITIVES: dict[str, str] = {
     "draw_part": "[/draw_part]",
 }
 
+# When the model defies the system prompt and emits markdown-style bracket
+# headers without a colon (e.g. `[Title] Newton's Law\n` or `[Step 1] ...\n`),
+# we salvage them by reading the rest of the line as the primitive's positional
+# value. This is critical for the edge (gemma4:e4b) baseline which sometimes
+# slips back into its pretraining habit of bracket-headers; the fine-tuned
+# y-gemma4 LoRA emits the canonical `[title: "..."]` form directly.
+BARE_HEADER_ALIASES: dict[str, str] = {
+    "title": "title",
+    "heading": "title",
+    "header": "title",
+    "h1": "title",
+    "h2": "title",
+    "text": "text",
+    "description": "text",
+    "summary": "text",
+    "narration": "text",
+    "step": "text",
+    "list": "text",
+    "item": "text",
+    "bullet": "text",
+    "note": "text",
+    "answer": "text",
+    "conclusion": "text",
+    "result": "text",
+    "given": "text",
+    "find": "text",
+    "solution": "text",
+    "explanation": "text",
+    "equation": "equation",
+    "formula": "equation",
+    "math": "equation",
+    "eq": "equation",
+    "expression": "equation",
+}
+
+
+# Pattern to detect equation-like content for auto-promotion.
+# Matches strings like "a = F / m", "a = 10 / 2", "F = m * a", "a = 5 m/s^2"
+# but NOT prose like "Given m = 2 kg, F = 10 N. Solve for a."
+_EQUATION_LIKE = re.compile(
+    r"^[A-Za-z_]\w*"           # starts with a variable name
+    r"\s*=\s*"                 # has an equals sign
+    r"[^.!?]{1,50}$"          # RHS is short, no sentence-ending punctuation
+)
+
+
+def _looks_like_equation(text: str) -> bool:
+    """Return True if the text looks like a math equation rather than prose.
+
+    Criteria: starts with a variable, has `=`, RHS contains a number or
+    operator, total length is short, and doesn't look like a sentence.
+    """
+    s = text.strip()
+    if not _EQUATION_LIKE.match(s):
+        return False
+    # Must have at least one digit or math operator on the RHS.
+    rhs = s.split("=", 1)[1] if "=" in s else ""
+    if not re.search(r"[\d+\-*/^]", rhs) and not re.search(r"[A-Za-z]", rhs):
+        return False
+    # Reject if it looks like a sentence (starts with caps word + space + lower).
+    if re.match(r"^[A-Z][a-z]+\s+[a-z]", s):
+        return False
+    return True
+
+
+def _classify_bare_header(body: str) -> str | None:
+    """Return the canonical primitive name for a bracket body like `Title`,
+    `Step 1`, `Formula` (no colon). Returns None if the body isn't a known
+    bare header alias.
+
+    Strips trailing digits/punctuation so `Step 1`, `Step 2:`, `Step.3`, etc.
+    all collapse to `step` -> "text" mapping.
+    """
+    cleaned = body.strip().lower()
+    # Drop trailing digits, dots, colons, spaces (keep the leading word(s)).
+    cleaned = re.sub(r"[\s\d:\.\-\)]+$", "", cleaned).strip()
+    if not cleaned:
+        return None
+    return BARE_HEADER_ALIASES.get(cleaned)
+
 
 def _unescape(s: str) -> str:
     """Unescape quoted string values.
@@ -126,6 +206,13 @@ class IncrementalTagParser:
         # comparison without re-scanning the whole buffer per char.
         self._block_open: dict | None = None  # {tag, args, raw_body, close_marker}
         self._block_body: list[str] = []
+        # PENDING_HEADER state: set when we saw a bare bracket header like
+        # `[Title]`, `[Step 1]`, `[Formula]` without a colon. The canonical
+        # primitive name is stashed here and the next chars (up to newline,
+        # ignoring a leading space/colon) are accumulated as its positional
+        # value. The next `[` or end-of-stream also flushes the header.
+        self._pending_header: str | None = None
+        self._header_body: list[str] = []
 
     def feed(self, chunk: str) -> Iterator[dict]:
         for ch in chunk:
@@ -133,6 +220,8 @@ class IncrementalTagParser:
                 yield from self._consume_block_char(ch)
             elif self._in_tag:
                 yield from self._consume_tag_char(ch)
+            elif self._pending_header is not None:
+                yield from self._consume_header_char(ch)
             else:
                 yield from self._consume_narr_char(ch)
 
@@ -142,6 +231,8 @@ class IncrementalTagParser:
         lesson never silently drops a partial diagram; drops half-finished
         single-line tags (they would just be an LLM truncation).
         """
+        if self._pending_header is not None:
+            yield from self._flush_pending_header()
         if self._narr_pending:
             yield {"event": "token", "text": self._narr_pending}
             self._narr_pending = ""
@@ -158,6 +249,67 @@ class IncrementalTagParser:
             self._block_open = None
             self._block_body = []
             yield {"event": "primitive", "tag": block}
+
+    def _flush_pending_header(self) -> Iterator[dict]:
+        """Emit the accumulated PENDING_HEADER as a synthesised primitive.
+
+        Drops if the body is empty (model wrote a bare `[Title]` with no
+        content) so we don't pollute the lesson with empty tags.
+        """
+        if self._pending_header is None:
+            return
+        name = self._pending_header
+        body = "".join(self._header_body).strip()
+        # Strip a leading colon if the model wrote `[Title]: text` style.
+        if body.startswith(":"):
+            body = body[1:].strip()
+        # Drop markdown emphasis the model often sprinkles inside.
+        body = body.strip("*_` ")
+        self._pending_header = None
+        self._header_body = []
+        if not body:
+            return
+        positional = POSITIONAL_FIRST_ARG.get(name)
+        if positional is None:
+            positional = "content"
+            name = "text"
+
+        # Auto-promote: when resolved as "text" but the body is clearly math
+        # (e.g. "a = F / m", "a = 10 / 2", "F = m * a"), upgrade to equation.
+        if name == "text" and _looks_like_equation(body):
+            name = "equation"
+            positional = "latex"
+
+        yield {
+            "event": "primitive",
+            "tag": {
+                "tag": name,
+                "args": {positional: body},
+                "raw_body": body,
+            },
+        }
+
+    def _consume_header_char(self, ch: str) -> Iterator[dict]:
+        """Accumulate the rest of a PENDING_HEADER's line.
+
+        Terminators (any of which flushes the primitive):
+          - `\n`: end of line, the normal case (`[Title] X\n`).
+          - `[`:  next tag begins on the same line (rare but defensive). The
+                  '[' is replayed into the narr state so the next tag is parsed.
+        """
+        if ch == "\n":
+            yield from self._flush_pending_header()
+            return
+        if ch == "[":
+            # Header finished by start of a new tag. Flush, then re-enter
+            # TAG_OPEN state with a fresh tag buffer.
+            yield from self._flush_pending_header()
+            self._in_tag = True
+            self._tag_buf = []
+            self._in_quote = False
+            self._escape = False
+            return
+        self._header_body.append(ch)
 
     def _consume_narr_char(self, ch: str) -> Iterator[dict]:
         if ch == "[":
@@ -206,7 +358,19 @@ class IncrementalTagParser:
             self._tag_buf = []
             parsed = self._parse_tag_body(tag_text)
             if parsed is None:
-                # malformed; emit as text so we don't silently lose content
+                # No `name:` match. Try the bare-header salvage (e.g. `[Title]`,
+                # `[Step 1]`, `[Formula]`) before giving up.
+                canonical = _classify_bare_header(tag_text)
+                if canonical is not None:
+                    self._pending_header = canonical
+                    self._header_body = []
+                    return
+                # Silently drop closing pseudo-tags the model sometimes emits
+                # (e.g. [/title], [/text]) so they don't leak as narrative.
+                stripped = tag_text.strip()
+                if stripped.startswith("/"):
+                    return
+                # Truly malformed; emit as text so we don't silently lose content.
                 yield {"event": "token", "text": f"[{tag_text}]"}
                 return
             close_marker = BLOCK_PRIMITIVES.get(parsed["tag"])

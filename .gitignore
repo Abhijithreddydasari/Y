@@ -23,6 +23,10 @@ research/
 starvector_test/
 plan.md
 start-all.ps1
+/docs/video_script.md
+/docs/submission_walkthrough.md
+/docs/submission_checklist.md
+/training/_build_notebook.py
 
 # IDE / tooling
 .cursor/
@@ -35,6 +39,10 @@ start-all.ps1
 .DS_Store
 Thumbs.db
 *.bak
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
 
 # Model artifacts (local only) -- but keep Modelfile manifests in git
 models/*
@@ -51,3 +59,4 @@ api/scripts/smoke_out/
 
 # Local learner store (per-user state)
 data/learners/
+api/data/

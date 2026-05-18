@@ -90,6 +90,58 @@ def main() -> int:
             [{"tag": "equation", "args": {"latex": "F = m a", "align": "center"}}],
             "alias eq -> equation",
         ),
+        # Bare-header salvage: model writes [Title] X\n instead of [title: "X"].
+        (
+            '[Title] Newton\'s Second Law\n',
+            [{"tag": "title", "args": {"text": "Newton's Second Law"}}],
+            "bare header [Title] -> title",
+        ),
+        (
+            '[Formula] a = F / m\n',
+            [{"tag": "equation", "args": {"latex": "a = F / m", "align": "center"}}],
+            "bare header [Formula] -> equation",
+        ),
+        (
+            '[Step 1] Substitute values into formula\n',
+            [{"tag": "text", "args": {"content": "Substitute values into formula"}}],
+            "bare header [Step 1] -> text",
+        ),
+        (
+            '[Description] We use Newton\'s Second Law.\n',
+            [{"tag": "text", "args": {"content": "We use Newton's Second Law."}}],
+            "bare header [Description] -> text",
+        ),
+        (
+            '[Conclusion] The answer is 5 m/s squared.\n',
+            [{"tag": "text", "args": {"content": "The answer is 5 m/s squared."}}],
+            "bare header [Conclusion] -> text",
+        ),
+        (
+            '[List] Force (F) = 10 N\n',
+            [{"tag": "text", "args": {"content": "Force (F) = 10 N"}}],
+            "bare header [List] -> text",
+        ),
+        # Auto-promotion: text that looks like math -> equation.
+        (
+            '[Text] a = F / m\n',
+            [{"tag": "equation", "args": {"latex": "a = F / m", "align": "center"}}],
+            "bare header [Text] with equation content -> equation auto-promote",
+        ),
+        (
+            '[Text] a = 10 / 2\n',
+            [{"tag": "equation", "args": {"latex": "a = 10 / 2", "align": "center"}}],
+            "bare header [Text] with numeric equation -> equation auto-promote",
+        ),
+        (
+            '[Text] a = 5 m/s^2\n',
+            [{"tag": "equation", "args": {"latex": "a = 5 m/s^2", "align": "center"}}],
+            "bare header [Text] with units equation -> equation auto-promote",
+        ),
+        (
+            '[Text] We are given the following values:\n',
+            [{"tag": "text", "args": {"content": "We are given the following values:"}}],
+            "bare header [Text] with prose -> stays text (no promote)",
+        ),
         # Single-backslash LaTeX (model forgot to double-escape): backslash
         # must survive so KaTeX receives a valid command.
         (

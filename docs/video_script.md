@@ -135,7 +135,7 @@ Hover one point: tooltip pops up with topic + concepts.
 writeup). Three lanes, three colors:
 
 - **Edge (E4B)** - gemma4:e4b on Ollama, 100% local
-- **Edge fine-tuned (E2B + LoRA)** - our Unsloth-trained variant on
+- **Edge fine-tuned (E4B + LoRA)** - our Unsloth-trained variant on
   ControlSketch-Part, served as a GGUF Modelfile
 - **Cloud (Gemma 4 31B)** - Google AI Studio for the maximum-quality
   demo button
@@ -158,7 +158,7 @@ Cut briefly to the toolbar dropdown showing the three options.
 - **Future of Education** - "Multi-tool agent that adapts to the
   individual and empowers the educator."
 - **Ollama** - "100% local, edge-first inference. Modelfile included."
-- **Unsloth** - "QLoRA on Gemma 4 E2B, ControlSketch-Part dataset,
+- **Unsloth** - "QLoRA on Gemma 4 E4B, ControlSketch-Part dataset,
   GGUF export, Modelfile published."
 
 **Narrator.**

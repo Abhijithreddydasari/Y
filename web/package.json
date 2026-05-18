@@ -30,5 +30,10 @@
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "nanoid": "^5.0.9",
+    "postcss": "^8.5.14",
+    "lodash-es": "^4.17.23"
   }
 }

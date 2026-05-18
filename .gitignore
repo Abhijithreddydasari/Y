@@ -23,6 +23,9 @@ research/
 starvector_test/
 plan.md
 start-all.ps1
+/docs/video_script.md
+/docs/submission_walkthrough.md
+/training/_build_notebook.py
 
 # IDE / tooling
 .cursor/

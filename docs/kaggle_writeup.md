@@ -20,9 +20,9 @@ schema-constrained primitive vocabulary that includes a new
 Gemma 4 call surfaces educator notes (misconceptions, follow-ups,
 prereqs, difficulty) and a local extraction+embedding pipeline updates
 the student's knowledge profile, which feeds back into the next lesson's
-system prompt. Three Gemma 4 backends (E4B local, E2B+LoRA local,
+system prompt. Three Gemma 4 backends (E4B local, E4B+LoRA local,
 31B cloud) sit behind one toolbar. The Unsloth notebook fine-tunes
-Gemma 4 E2B on the [`ControlSketch-Part`](https://huggingface.co/datasets/seenubhargav/ControlSketch-Part)
+Gemma 4 E4B on the [`ControlSketch-Part`](https://huggingface.co/datasets/seenubhargav/ControlSketch-Part)
 dataset to make the SVG output look like a human drew it.
 
 ## Why this matters
@@ -133,7 +133,7 @@ The toolbar has a Model dropdown with three options:
 | Choice | Implementation | When to use |
 | --- | --- | --- |
 | Edge (E4B) | `gemma4:e4b` on Ollama | Default. Fully local. |
-| Edge fine-tuned (E2B+LoRA) | `y-gemma4` from the published GGUF Modelfile | After we ran the Unsloth notebook. Smaller + better at SVG. |
+| Edge fine-tuned (E4B+LoRA) | `y-gemma4` from the published GGUF Modelfile | After we ran the Unsloth notebook. Same base, better at SVG. |
 | Cloud (Gemma 4 31B) | Google AI Studio via `google-genai` | Max quality. Used for the "max-quality" demo button. |
 
 Behind a single `Teacher` Protocol with two implementations
@@ -142,14 +142,18 @@ model's readiness so the toolbar greys out unconfigured options
 (socket-pings the Ollama daemon with a tight timeout, checks for
 `GOOGLE_API_KEY`).
 
-### 6. Unsloth QLoRA on Gemma 4 E2B
+### 6. Unsloth QLoRA on Gemma 4 E4B
 
 [`training/unsloth_train.ipynb`](../training/unsloth_train.ipynb) is the
 Unsloth-track deliverable. It:
 
-1. Installs Unsloth and loads `unsloth/gemma-4-E2B-it` in 4-bit (the
-   smallest Gemma 4 family member that Unsloth supports at submission
-   time).
+1. Installs Unsloth and loads `unsloth/gemma-4-E4B-it` in 4-bit. We picked
+   E4B over E2B deliberately: the vanilla "Edge" toolbar slot already
+   serves `gemma4:e4b`, so making the fine-tuned slot E4B+LoRA means the
+   adapter only has to add task quality on top of the same base — it
+   doesn't have to first claw back the gap from a smaller model. E4B in
+   4-bit + LoRA + activations at `seq=4096, batch=2` lands at ~6–8 GB,
+   comfortable on a T4's 15 GB VRAM.
 2. Adds a r=16, alpha=32 QLoRA adapter on attention + MLP, keeps the
    vision and audio modalities frozen.
 3. Loads our part-structured JSONL produced by
@@ -157,7 +161,7 @@ Unsloth-track deliverable. It:
    ControlSketch-Part (~400 rows, hand-trimmed narration so the
    `[text:]` captions read like a teacher's, not a dataset's).
 4. Trains for 2 epochs (`lr=2e-4`, `batch=2`, `grad_accum=4`,
-   `cosine_schedule`) — completes on a Kaggle T4 in ≈2 hours.
+   `cosine_schedule`) — completes on a Kaggle T4 in ≈45–60 minutes.
 5. Sanity-checks inference with a benzene-diagram prompt.
 6. Saves the LoRA, exports GGUF (`q4_k_m`), and pushes to HF.
 7. The included `models/Modelfile.y-gemma4` wraps the GGUF with the

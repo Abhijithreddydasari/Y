@@ -112,7 +112,7 @@ Y/
 ├─ training/
 │  ├─ prepare_dataset.py      ControlSketch-Part → instruction JSONL
 │  ├─ _build_notebook.py      generator
-│  └─ unsloth_train.ipynb     QLoRA on gemma-4-E2B-it
+│  └─ unsloth_train.ipynb     QLoRA on gemma-4-E4B-it
 ├─ models/
 │  ├─ Modelfile.y-gemma4      Ollama wrapper for the fine-tuned GGUF
 │  └─ README.md

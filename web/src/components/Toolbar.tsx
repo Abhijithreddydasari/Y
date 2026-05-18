@@ -6,7 +6,7 @@ export type ModelChoice = "edge" | "edge-ft" | "cloud";
 
 export const MODEL_CHOICES: { id: ModelChoice; label: string; subtitle: string }[] = [
   { id: "edge", label: "Edge (E4B)", subtitle: "gemma4:e4b on Ollama" },
-  { id: "edge-ft", label: "Edge fine-tuned (E2B+LoRA)", subtitle: "y-gemma4 ControlSketch LoRA" },
+  { id: "edge-ft", label: "Edge fine-tuned (E4B+LoRA)", subtitle: "y-gemma4 ControlSketch LoRA" },
   { id: "cloud", label: "Cloud (Gemma 4 31B)", subtitle: "Google AI Studio" },
 ];
 

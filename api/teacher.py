@@ -2,7 +2,7 @@
 
 Two concrete implementations:
 
-  * ``OllamaTeacher`` — local Ollama daemon serving any pulled Gemma 4 / 3n
+  * ``OllamaTeacher`` — local Ollama daemon serving any pulled Gemma 4
     variant (``gemma4:e4b``, ``y-gemma4`` after the LoRA-merged Modelfile is
     built, etc.). Default in dev.
   * ``CloudTeacher`` — Google AI Studio (Gemma 4 31B). High-quality demo

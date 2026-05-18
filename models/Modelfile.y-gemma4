@@ -1,4 +1,4 @@
-# Y · Modelfile for the fine-tuned edge tutor (Gemma-3n-E2B + ControlSketch LoRA)
+# Y · Modelfile for the fine-tuned edge tutor (Gemma 4 E4B + ControlSketch LoRA)
 #
 # Build the GGUF artefact first via the Unsloth Kaggle notebook
 # (`training/unsloth_train.ipynb` step 8), drop it next to this file, then run:
@@ -7,15 +7,17 @@
 #
 # After this, the API will be able to serve the fine-tuned tutor by setting
 # `model_choice=edge-ft` on the /lesson endpoint (or selecting "Edge
-# fine-tuned (E2B+LoRA)" in the toolbar).
+# fine-tuned (E4B+LoRA)" in the toolbar).
 #
-# If GGUF conversion failed, swap the FROM line to `FROM gemma3n:e2b` to keep
-# the demo functional with the *base* E2B model and ship the LoRA on HF as a
-# separate Unsloth-track artefact.
+# If the GGUF export from the Unsloth notebook fails on your machine, swap
+# the FROM line to `FROM gemma4:e4b` to keep the demo functional on the
+# *base* Gemma 4 E4B and ship the LoRA on HF as a separate Unsloth-track
+# artefact (judges can merge it locally).
 
-FROM ./y-gemma3n-svg-q4_k_m.gguf
+FROM ./y-gemma4-svg-q4_k_m.gguf
 
-# Decoding settings recommended by the Gemma-3n team (Unsloth docs).
+# Decoding settings recommended for the Gemma 4 family (Unsloth + Google
+# launch post). Gemma 4 supports the same sampling envelope as Gemma 3.
 PARAMETER temperature 0.4
 PARAMETER top_k 64
 PARAMETER top_p 0.95

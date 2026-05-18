@@ -16,7 +16,7 @@ across three tracks:
   educator-coach panel.
 * **Ollama** — fully local edge inference on `gemma4:e4b`; the fine-tuned
   variant ships as a `Modelfile`.
-* **Unsloth** — QLoRA fine-tune of `gemma-4-E2B-it` on the
+* **Unsloth** — QLoRA fine-tune of `gemma-4-E4B-it` on the
   [`ControlSketch-Part`](https://huggingface.co/datasets/seenubhargav/ControlSketch-Part)
   dataset for SVG-stroke generation, exported to GGUF.
 
@@ -63,7 +63,7 @@ across three tracks:
    on Google AI Studio). The `/health` endpoint reports per-model
    readiness so the dropdown greys out unconfigured options.
 7. **Unsloth QLoRA notebook.** [`training/unsloth_train.ipynb`](./training/unsloth_train.ipynb)
-   runs end-to-end on a Kaggle T4: 4-bit `gemma-4-E2B-it`, r=16 LoRA on
+   runs end-to-end on a Kaggle T4: 4-bit `gemma-4-E4B-it`, r=16 LoRA on
    attention + MLP, 2 epochs, GGUF export.
 
 ## How it works
@@ -222,7 +222,7 @@ Y/
 ├── training/
 │   ├── prepare_dataset.py    ControlSketch-Part → instruction JSONL
 │   ├── _build_notebook.py    generator for the Kaggle notebook
-│   └── unsloth_train.ipynb   QLoRA on gemma-4-E2B-it
+│   └── unsloth_train.ipynb   QLoRA on gemma-4-E4B-it
 ├── models/
 │   ├── Modelfile.y-gemma4    Ollama wrapper for the fine-tuned GGUF
 │   └── README.md             how to build the local tag

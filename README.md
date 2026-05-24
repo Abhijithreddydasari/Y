@@ -7,8 +7,6 @@ Y is a local-first whiteboard tutor built with Gemma 4. A student writes a quest
 
 The goal is not to generate a static answer image. The goal is to make AI feel like a patient teacher at a board: read what the learner drew, choose the next useful representation, write it step by step, and remember what the learner has seen before.
 
-Built for the [Gemma 4 Good Hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon).
-
 ## What We Built
 
 Y has three parts:

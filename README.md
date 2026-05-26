@@ -17,6 +17,10 @@ Y has three parts:
 
 This makes the app local-first by default. The core demo runs on `gemma4:e4b` locally through Ollama, with `nomic-embed-text` for learner embeddings. A cloud teacher path and fine-tuned model slot are present, but the submission is designed so a student can learn without sending their whiteboard or learning profile to a hosted API.
 
+![Demo 1](./assets/Demo1.gif)
+![Demo 2](./assets/Demo2.gif)
+You can check the [Full_demo.mp4](./assets/Full_demo.mp4) for the complete demo along with narration.
+
 ## Why It Matters
 
 Education is still mostly built around text, lectures, and one-size-fits-all explanations. But many learners think visually. They draw triangles, forces, molecules, trees, circuits, and half-finished equations when they are stuck.

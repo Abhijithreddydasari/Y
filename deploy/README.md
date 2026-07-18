@@ -1,67 +1,43 @@
-# Deploying Y
+# Deploying Y v2
 
-Three valid topologies; pick one based on what you want judges to see.
+## Submission demo: local UI/API + GPT-5.6
 
-## 1. Local-only (recommended for the demo video)
+Run FastAPI and Next.js on the demo laptop, set `OPENAI_API_KEY`, and keep
+Ollama running for the privacy-fallback segment. Install `api[speech]` and
+prefetch the locked Kokoro assets before recording. A CUDA-enabled PyTorch
+build plus `ADAPTER_DEVICE=cuda` is recommended for the online-update latency
+target.
 
-Run everything on the laptop with the GPU:
+## Public judge URL: Modal API + Vercel frontend
 
-```bash
-ollama serve                                    # daemon, port 11434
-ollama pull gemma4:e4b
-ollama pull nomic-embed-text
-# optional: build the fine-tuned tag
-ollama create y-gemma4 -f ../models/Modelfile.y-gemma4
-
-cd ../api && uv sync && uv run uvicorn main:app --port 8000
-
-cd ../web && npm i --legacy-peer-deps && npm run dev
+```powershell
+modal secret create y-openai OPENAI_API_KEY=sk-...
+modal secret create y-google-ai GOOGLE_API_KEY=... CLOUD_MODEL=gemma-4-31b-it
+modal deploy deploy/modal_app.py
 ```
 
-Open http://localhost:3000 . Toolbar dropdown will show all three model
-options as `ready`.
+Set the returned URL as `NEXT_PUBLIC_API_BASE` in Vercel. Mounting the
+`y-learner` Modal volume preserves learner JSON and fast weights across cold
+starts. For a public education demo, use a disposable judge user and document
+that the canvas is sent to OpenAI in cloud mode.
 
-## 2. Cloud-only public URL (Modal + Vercel)
+## Training the global adapter on Modal
 
-Use this if you want a live link for judges. Skip the GPU, drive Gemma 4
-31B over Google AI Studio.
-
-```bash
-pip install modal
-modal token new
-modal secret create y-google-ai \
-    --from-literal GOOGLE_API_KEY=<your-key> \
-    --from-literal CLOUD_MODEL=gemma-4-31b-it
-modal deploy modal_app.py
+```powershell
+modal secret create y-openai OPENAI_API_KEY=sk-...
+modal run deploy/modal_train_learner.py --learners 4000 --turns 48
 ```
 
-Modal prints a `https://<user>--y-api-fastapi-app.modal.run` URL.
+The A10G job builds the licensed synthetic corpus, trains with early stopping,
+and writes checkpoint/config/manifest hashes to the `y-learner-training`
+volume. Download `learner-adapter-v1.safetensors` into `models/` before the
+final benchmark and demo.
 
-```bash
-cd ../web
-vercel link
-vercel env add NEXT_PUBLIC_API_BASE production
-# paste the Modal URL when prompted
-vercel --prod
-```
+## Post-deploy checks
 
-In this mode the toolbar greys out the Edge / Edge-fine-tuned options; the
-Cloud option works.
-
-## 3. Hybrid (local edge GPU + Vercel frontend)
-
-For when you want to demo edge inference but share a polished URL:
-
-* `ngrok http 8000` to expose the local FastAPI.
-* Set `NEXT_PUBLIC_API_BASE` on Vercel to the ngrok URL.
-* Keep `ollama serve` running locally.
-
-# Smoke testing
-
-After any deploy:
-
-```bash
-cd api && .\.venv\Scripts\python.exe scripts\smoke_demos.py --base https://<modal-url> --all-models
-```
-
-Prints a 5-subject x 3-model matrix of primitive counts and latencies.
+- `/health` reports OpenAI ready, `trained_checkpoint: true`, the expected
+  adapter device, and speech readiness.
+- Run a help request: online steps must remain unchanged.
+- Submit one strong checkpoint: online steps should increase by three.
+- Reset the judge user and confirm JSON plus fast weights disappear.
+- Confirm the toolbar visibly labels GPT-5.6 as cloud mode.

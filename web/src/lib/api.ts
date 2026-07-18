@@ -3,14 +3,17 @@
 // send a POST body; instead we use fetch with a ReadableStream reader.
 
 import type {
+  Checkpoint,
   EducatorNotes,
+  LearnerState,
   LearnerSnapshot,
   LearnerUpdateEvent,
+  LearningEvidence,
   LessonEvent,
   PrimitiveTag,
 } from "./types";
 
-const API_BASE =
+export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
 export interface LessonStreamCallbacks {
@@ -18,6 +21,9 @@ export interface LessonStreamCallbacks {
   onPrimitive?: (tag: PrimitiveTag) => void;
   onEducatorNotes?: (notes: EducatorNotes) => void;
   onLearnerUpdate?: (update: LearnerUpdateEvent) => void;
+  onLearnerState?: (state: LearnerState) => void;
+  onCheckpoint?: (checkpoint: Checkpoint) => void;
+  onEvidence?: (evidence: LearningEvidence) => void;
   onDone?: (reason: string) => void;
   onError?: (message: string) => void;
 }
@@ -28,6 +34,7 @@ export interface LessonStreamOptions {
   userId?: string;
   /** Toolbar dropdown choice; "edge" | "edge-ft" | "cloud". */
   modelChoice?: string;
+  conversationId?: string;
 }
 
 export async function streamLesson(
@@ -41,6 +48,7 @@ export async function streamLesson(
   if (options.teacherMode) form.append("teacher_mode", "true");
   if (options.userId) form.append("user_id", options.userId);
   if (options.modelChoice) form.append("model_choice", options.modelChoice);
+  if (options.conversationId) form.append("conversation_id", options.conversationId);
 
   const res = await fetch(`${API_BASE}/lesson`, {
     method: "POST",
@@ -104,6 +112,15 @@ function handleFrame(frame: string, cb: LessonStreamCallbacks) {
     case "learner_update":
       cb.onLearnerUpdate?.(evt.data);
       break;
+    case "learner_state":
+      cb.onLearnerState?.(evt.data);
+      break;
+    case "checkpoint":
+      cb.onCheckpoint?.(evt.data);
+      break;
+    case "evidence":
+      cb.onEvidence?.(evt.data);
+      break;
     case "done":
       cb.onDone?.(evt.data.reason);
       break;
@@ -120,6 +137,51 @@ export interface HealthInfo {
   ollama_reachable: boolean;
   schema_exists: boolean;
   models: Record<string, { kind: string; model: string; ready: boolean }>;
+  preferred_model: string;
+  learner_adapter: Record<string, unknown>;
+  speech: { available: boolean; model_version: string; error?: string };
+}
+
+export interface AssessStreamOptions {
+  userId: string;
+  conversationId: string;
+  checkpointId: string;
+  modelChoice: string;
+}
+
+export async function streamAssessment(
+  imageBlob: Blob,
+  cb: LessonStreamCallbacks,
+  signal: AbortSignal | undefined,
+  options: AssessStreamOptions,
+): Promise<void> {
+  const form = new FormData();
+  form.append("image", imageBlob, "answer.png");
+  form.append("user_id", options.userId);
+  form.append("conversation_id", options.conversationId);
+  form.append("checkpoint_id", options.checkpointId);
+  form.append("model_choice", options.modelChoice);
+  const res = await fetch(`${API_BASE}/assess`, { method: "POST", body: form, signal });
+  if (!res.ok || !res.body) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail ?? detail; } catch { /* non-JSON */ }
+    cb.onError?.(`HTTP ${res.status}: ${detail}`);
+    return;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let idx: number;
+    while ((idx = buf.indexOf("\n\n")) !== -1) {
+      handleFrame(buf.slice(0, idx), cb);
+      buf = buf.slice(idx + 2);
+    }
+  }
+  if (buf.trim()) handleFrame(buf, cb);
 }
 
 export async function fetchHealth(): Promise<HealthInfo | null> {

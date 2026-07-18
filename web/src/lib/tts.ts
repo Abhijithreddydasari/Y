@@ -1,194 +1,147 @@
-// Web Speech API wrapper. Uses the browser's built-in synthesizer because
-// it's free, fast, and runs offline. The first speak() call may have
-// 200-500ms of voice-pick latency the first time the page loads; subsequent
-// calls are immediate.
+// Backend Kokoro narration with a best-effort browser Speech fallback.
+// The active fetch and audio element are both cancellable so Stop is immediate.
+
+import { API_BASE } from "./api";
 
 export interface SpeakOptions {
   rate?: number;
   pitch?: number;
   voiceName?: string;
-  /**
-   * Called as the synthesizer advances through the text. `charsSpoken` is the
-   * length (in original-text characters) the engine has progressed through so
-   * far. Used by the lesson player to write the text element word-by-word in
-   * lockstep with the voice. Monotonic; never moves backward.
-   */
   onProgress?: (charsSpoken: number) => void;
 }
 
-let cachedVoice: SpeechSynthesisVoice | null = null;
-let voicesReady: Promise<void> | null = null;
-
-function waitForVoices(): Promise<void> {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    return Promise.resolve();
-  }
-  if (voicesReady) return voicesReady;
-  voicesReady = new Promise((resolve) => {
-    const tryLoad = () => {
-      const voices = window.speechSynthesis.getVoices();
-      if (voices.length) {
-        resolve();
-      } else {
-        window.speechSynthesis.addEventListener(
-          "voiceschanged",
-          () => resolve(),
-          { once: true },
-        );
-      }
-    };
-    tryLoad();
-  });
-  return voicesReady;
-}
-
-function pickVoice(preferred?: string): SpeechSynthesisVoice | null {
-  if (cachedVoice && !preferred) return cachedVoice;
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) return null;
-  const voices = window.speechSynthesis.getVoices();
-  if (!voices.length) return null;
-  if (preferred) {
-    const found = voices.find((v) => v.name === preferred);
-    if (found) return found;
-  }
-  // Prefer a high-quality English voice if available.
-  const en = voices.find((v) => /en-(US|GB)/i.test(v.lang) && /natural|neural|premium|enhanced/i.test(v.name))
-    || voices.find((v) => /en-US/i.test(v.lang))
-    || voices.find((v) => /^en/i.test(v.lang))
-    || voices[0];
-  cachedVoice = en;
-  return en;
-}
+let activeController: AbortController | null = null;
+let activeAudio: HTMLAudioElement | null = null;
+let activeResolve: (() => void) | null = null;
 
 export function ttsAvailable(): boolean {
-  return typeof window !== "undefined" && "speechSynthesis" in window;
+  return typeof window !== "undefined" && (
+    typeof Audio !== "undefined" || "speechSynthesis" in window
+  );
 }
 
 export function cancelSpeech(): void {
-  if (!ttsAvailable()) return;
-  window.speechSynthesis.cancel();
+  activeController?.abort();
+  activeController = null;
+  if (activeAudio) {
+    activeAudio.pause();
+    activeAudio.removeAttribute("src");
+    activeAudio.load();
+    activeAudio = null;
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    window.speechSynthesis.cancel();
+  }
+  activeResolve?.();
+  activeResolve = null;
 }
 
-export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
-  if (!ttsAvailable() || !text.trim()) return;
-  await waitForVoices();
-  return new Promise<void>((resolve) => {
-    const u = new SpeechSynthesisUtterance(text);
-    u.rate = opts.rate ?? 1.05;
-    u.pitch = opts.pitch ?? 1.0;
-    const voice = pickVoice(opts.voiceName);
-    if (voice) u.voice = voice;
-    // Hard upper bound: even at ~150 wpm a 200-word utterance is ~80s. Cap at
-    // 60s so a stuck speech-synth never blocks the lesson pipeline.
-    const maxMs = Math.min(60_000, 1500 + text.length * 80);
+function wordBoundaryAt(text: string, estimate: number): number {
+  let index = Math.max(0, Math.min(text.length, Math.floor(estimate)));
+  while (index < text.length && !/\s/.test(text[index])) index++;
+  return index;
+}
 
-    // --- progressive reveal plumbing ---
-    // Two paths feed the same monotonic counter:
-    //   1. Real `onboundary` events from the engine (Chrome/Edge: word-level).
-    //   2. A timer estimate that engages only if no boundary fires for ~600ms,
-    //      so Safari (which historically ignores boundary for some voices)
-    //      still gets a smooth reveal instead of a single-shot at the end.
-    let revealed = 0;
-    const reveal = (n: number) => {
-      if (!opts.onProgress) return;
-      const clamped = Math.min(text.length, Math.max(0, Math.floor(n)));
-      if (clamped <= revealed) return;
-      revealed = clamped;
-      opts.onProgress(revealed);
-    };
-    let boundaryFired = false;
-    let fallbackInterval: number | undefined;
-    let fallbackKickoff: number | undefined;
-    const stopFallback = () => {
-      if (fallbackKickoff !== undefined) {
-        window.clearTimeout(fallbackKickoff);
-        fallbackKickoff = undefined;
-      }
-      if (fallbackInterval !== undefined) {
-        window.clearInterval(fallbackInterval);
-        fallbackInterval = undefined;
-      }
-    };
-    if (opts.onProgress) {
-      u.onboundary = (e: SpeechSynthesisEvent) => {
-        boundaryFired = true;
-        stopFallback();
-        if (e.name === "word" || e.name === undefined) {
-          const idx = e.charIndex ?? 0;
-          // charLength is non-standard; when missing, scan forward to the
-          // next whitespace to find the end of the current word.
-          let charLen = (e as SpeechSynthesisEvent & { charLength?: number })
-            .charLength ?? 0;
-          if (charLen === 0) {
-            let end = idx;
-            while (end < text.length && !/\s/.test(text[end])) end++;
-            charLen = end - idx;
-          }
-          reveal(idx + charLen);
-        }
-      };
-      // Roughly 12.5 chars/sec at rate=1.0 (≈150 wpm, ≈5 chars/word).
-      const charsPerMs = 0.0125 * (opts.rate ?? 1.05);
-      const TICK_MS = 80;
-      fallbackKickoff = window.setTimeout(() => {
-        if (boundaryFired) return;
-        let lastTick = Date.now();
-        fallbackInterval = window.setInterval(() => {
-          const now = Date.now();
-          const dt = now - lastTick;
-          lastTick = now;
-          reveal(revealed + Math.max(1, Math.round(dt * charsPerMs)));
-        }, TICK_MS);
-      }, 600);
-    }
-
-    // Chrome/Edge silently kill long utterances after ~15s. A periodic
-    // pause+resume keeps the engine alive without audible artefacts.
-    let keepaliveId: number | undefined;
-    if (/Chrome|Edg/i.test(navigator.userAgent)) {
-      keepaliveId = window.setInterval(() => {
-        if (!window.speechSynthesis.speaking) return;
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      }, 10_000);
-    }
-    const stopKeepalive = () => {
-      if (keepaliveId !== undefined) {
-        window.clearInterval(keepaliveId);
-        keepaliveId = undefined;
-      }
-    };
-    // --- end reveal plumbing ---
-
-    const timer = window.setTimeout(() => {
-      try { window.speechSynthesis.cancel(); } catch { /* ignored */ }
-      stopFallback();
-      stopKeepalive();
-      reveal(text.length);
-      resolve();
-    }, maxMs);
-    u.onend = () => {
-      window.clearTimeout(timer);
-      stopFallback();
-      stopKeepalive();
-      reveal(text.length);
+async function speakWithKokoro(text: string, opts: SpeakOptions): Promise<void> {
+  const controller = new AbortController();
+  activeController = controller;
+  const response = await fetch(`${API_BASE}/speech`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      voice: opts.voiceName ?? "kokoro_af_heart",
+      speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
+    }),
+    signal: controller.signal,
+  });
+  if (!response.ok) throw new Error(`speech backend returned ${response.status}`);
+  const blob = await response.blob();
+  if (controller.signal.aborted) return;
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  activeAudio = audio;
+  await new Promise<void>((resolve, reject) => {
+    let lastProgress = 0;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      if (activeAudio === audio) activeAudio = null;
+      if (activeController === controller) activeController = null;
+      if (activeResolve === finish) activeResolve = null;
       resolve();
     };
-    u.onerror = () => {
-      window.clearTimeout(timer);
-      stopFallback();
-      stopKeepalive();
-      reveal(text.length);
-      resolve();
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      if (activeAudio === audio) activeAudio = null;
+      if (activeController === controller) activeController = null;
+      if (activeResolve === finish) activeResolve = null;
+      reject(error);
     };
-    window.speechSynthesis.speak(u);
+    activeResolve = finish;
+    audio.ontimeupdate = () => {
+      if (!opts.onProgress || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      const estimate = text.length * Math.min(1, audio.currentTime / audio.duration);
+      const boundary = wordBoundaryAt(text, estimate);
+      if (boundary > lastProgress) {
+        lastProgress = boundary;
+        opts.onProgress(boundary);
+      }
+    };
+    audio.onended = () => {
+      opts.onProgress?.(text.length);
+      finish();
+    };
+    audio.onerror = () => {
+      fail(new Error("audio playback failed"));
+    };
+    void audio.play().catch((error) => fail(error as Error));
   });
 }
 
-/**
- * Sleep for `ms` milliseconds. Useful between non-speech primitives to give
- * the rendering a human cadence.
- */
+async function speakWithBrowser(text: string, opts: SpeakOptions): Promise<void> {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    opts.onProgress?.(text.length);
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = opts.rate ?? 1.0;
+    utterance.pitch = opts.pitch ?? 1.0;
+    utterance.onboundary = (event) => {
+      const start = event.charIndex ?? 0;
+      opts.onProgress?.(wordBoundaryAt(text, start));
+    };
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (activeResolve === finish) activeResolve = null;
+      opts.onProgress?.(text.length);
+      resolve();
+    };
+    activeResolve = finish;
+    utterance.onend = utterance.onerror = finish;
+    window.speechSynthesis.speak(utterance);
+  });
+}
+
+export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
+  const clean = text.trim();
+  if (!clean || !ttsAvailable()) return;
+  cancelSpeech();
+  try {
+    await speakWithKokoro(clean.slice(0, 500), opts);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    await speakWithBrowser(clean, opts);
+  }
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }

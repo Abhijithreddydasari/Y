@@ -14,6 +14,7 @@ The toolbar's "Edge / Edge fine-tuned / Cloud" dropdown maps directly to
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -36,10 +37,34 @@ class Teacher(Protocol):
     def ping(self) -> bool: ...
     def warmup(self) -> None: ...
     def stream_lesson(
-        self, png_bytes: bytes, system_prefix: str = ""
+        self,
+        png_bytes: bytes,
+        system_prefix: str = "",
+        safety_identifier: str = "",
     ) -> AsyncIterator[str]: ...
 
     async def educator_notes(self, png_bytes: bytes, lesson_text: str = "") -> dict: ...
+    async def extract_evidence(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        safety_identifier: str = "",
+    ) -> dict: ...
+    async def generate_checkpoint(
+        self,
+        lesson_text: str,
+        learner_state: dict,
+        conversation_id: str,
+        safety_identifier: str = "",
+    ) -> dict: ...
+    def stream_assessment_feedback(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        evidence: dict,
+        system_prefix: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]: ...
 
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
@@ -58,6 +83,44 @@ Reply with a SINGLE valid JSON object, nothing else (no markdown, no commentary,
 }
 
 Each string should be 6-15 words. Be concrete, not generic. Tailor to the exact concept the student is asking about.
+"""
+
+EVIDENCE_SYSTEM_PROMPT = """You are grading one learner's whiteboard answer to a checkpoint.
+
+Return one JSON object and nothing else:
+{
+  "concepts": [{"name": "specific-concept", "description": "short description", "confidence": 0.0}],
+  "outcome": {"correct": 0.0, "partial": 0.0, "incorrect": 0.0},
+  "independence": 0.0,
+  "evidence_strength": 0.0,
+  "response_summary": "what the learner attempted",
+  "misconception": "specific misconception or empty string",
+  "response_text": "short transcription of the learner's answer"
+}
+The outcome probabilities must sum to 1. Use evidence_strength below 0.65
+when handwriting, the rubric, or correctness is ambiguous. Never infer broad
+personality traits or ability axes from one answer.
+"""
+
+CHECKPOINT_SYSTEM_PROMPT = """You write one short check-for-understanding question.
+
+Return one JSON object and nothing else:
+{
+  "question": "one answerable question, at most 24 words",
+  "concepts": ["specific-open-vocabulary-concept"],
+  "rubric": "a concise correct-answer rubric for the grader",
+  "difficulty": "introductory" | "intermediate" | "transfer"
+}
+Target uncertain or weakly evidenced concepts. If the learner appears secure,
+ask a nearby transfer question. Do not repeat the worked example verbatim.
+"""
+
+ASSESSMENT_FEEDBACK_PROMPT = """The attached whiteboard is the learner's answer to a checkpoint.
+Use the supplied grading evidence and probabilistic learner profile to give
+brief corrective feedback like a teacher at the board. Emit only the existing
+whiteboard primitive tags. Use 4-8 tags, no markdown, and end with one [text:]
+that says what to try or remember next. Treat low-confidence evidence as
+uncertain and never reveal numeric mastery scores.
 """
 
 
@@ -148,6 +211,7 @@ class OllamaTeacher:
         self,
         png_bytes: bytes,
         system_prefix: str = "",
+        safety_identifier: str = "",
     ) -> AsyncIterator[str]:
         """Stream the model's text response to the multimodal prompt.
 
@@ -162,8 +226,6 @@ class OllamaTeacher:
         call only (used by the learner module to inject the user's mastery
         state). Concurrent calls don't bleed into each other.
         """
-        import base64
-
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[str | None] = asyncio.Queue()
         system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
@@ -226,8 +288,6 @@ class OllamaTeacher:
         parsed JSON dict, or an empty-shaped fallback if the model emits
         something unparsable. Best-effort.
         """
-        import base64
-
         loop = asyncio.get_running_loop()
         b64_image = base64.b64encode(png_bytes).decode("ascii")
 
@@ -260,6 +320,186 @@ class OllamaTeacher:
             raise TeacherError(raw[len("__error__:"):])
         return _parse_educator_json(raw)
 
+    async def extract_evidence(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        safety_identifier: str = "",
+    ) -> dict:
+        loop = asyncio.get_running_loop()
+        b64_image = base64.b64encode(png_bytes).decode("ascii")
+
+        def producer() -> str:
+            try:
+                response = self._client.chat(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": EVIDENCE_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Checkpoint and rubric:\n"
+                                + json.dumps(checkpoint, ensure_ascii=False)
+                                + "\nGrade the attached learner answer. Output JSON only."
+                            ),
+                            "images": [b64_image],
+                        },
+                    ],
+                    stream=False,
+                    options={"temperature": 0.1, "num_predict": 600},
+                )
+                return str(response.get("message", {}).get("content", ""))
+            except Exception as exc:
+                return f"__error__:{exc}"
+
+        raw = await loop.run_in_executor(None, producer)
+        if raw.startswith("__error__:"):
+            raise TeacherError(raw[len("__error__:"):])
+        return _parse_json_object(raw)
+
+    async def generate_checkpoint(
+        self,
+        lesson_text: str,
+        learner_state: dict,
+        conversation_id: str,
+        safety_identifier: str = "",
+    ) -> dict:
+        loop = asyncio.get_running_loop()
+
+        def producer() -> str:
+            try:
+                response = self._client.chat(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": CHECKPOINT_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Lesson:\n{lesson_text[-5000:]}\n\n"
+                                f"Learner state:\n{learner_state.get('profile_text', '')}\n"
+                                "Output JSON only."
+                            ),
+                        },
+                    ],
+                    stream=False,
+                    options={"temperature": 0.2, "num_predict": 350},
+                )
+                return str(response.get("message", {}).get("content", ""))
+            except Exception as exc:
+                return f"__error__:{exc}"
+
+        raw = await loop.run_in_executor(None, producer)
+        if raw.startswith("__error__:"):
+            raise TeacherError(raw[len("__error__:"):])
+        return _coerce_checkpoint(_parse_json_object(raw), conversation_id)
+
+    async def stream_assessment_feedback(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        evidence: dict,
+        system_prefix: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
+        prompt = (
+            ASSESSMENT_FEEDBACK_PROMPT
+            + "\n\nCheckpoint:\n" + json.dumps(checkpoint, ensure_ascii=False)
+            + "\n\nGrading evidence:\n" + json.dumps(evidence, ensure_ascii=False)
+        )
+        b64_image = base64.b64encode(png_bytes).decode("ascii")
+
+        def producer() -> None:
+            try:
+                stream = self._client.chat(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": prompt, "images": [b64_image]},
+                    ],
+                    stream=True,
+                    options={"temperature": 0.2, "num_predict": 1200},
+                )
+                for chunk in stream:
+                    text = chunk.get("message", {}).get("content", "")
+                    if text:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+                    if chunk.get("done"):
+                        break
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, f"\n[error: {exc}]")
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        await loop.run_in_executor(None, producer)
+        while True:
+            item = await queue.get()
+            if item is None:
+                return
+            yield item
+
+
+def _parse_json_object(raw: str) -> dict:
+    """Salvage the first balanced JSON object from a model response."""
+    if not raw:
+        return {}
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+    try:
+        value = json.loads(cleaned)
+        return value if isinstance(value, dict) else {}
+    except json.JSONDecodeError:
+        pass
+    start = cleaned.find("{")
+    while start >= 0:
+        depth = 0
+        in_string = False
+        escaped = False
+        for end in range(start, len(cleaned)):
+            ch = cleaned[end]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        value = json.loads(cleaned[start:end + 1])
+                        return value if isinstance(value, dict) else {}
+                    except json.JSONDecodeError:
+                        break
+        start = cleaned.find("{", start + 1)
+    return {}
+
+
+def _coerce_checkpoint(value: object, conversation_id: str) -> dict:
+    source = value if isinstance(value, dict) else {}
+    question = re.sub(r"\s+", " ", str(source.get("question", ""))).strip()[:500]
+    concepts = source.get("concepts") or []
+    if isinstance(concepts, str):
+        concepts = [concepts]
+    difficulty = str(source.get("difficulty", "introductory")).strip().lower()
+    if difficulty not in {"introductory", "intermediate", "transfer"}:
+        difficulty = "introductory"
+    return {
+        "conversation_id": conversation_id,
+        "question": question or "Explain the key idea from this lesson in your own words.",
+        "concepts": [str(item).strip()[:80] for item in concepts if str(item).strip()][:6],
+        "rubric": re.sub(r"\s+", " ", str(source.get("rubric", ""))).strip()[:1000]
+        or "The answer should accurately state and apply the lesson's central idea.",
+        "difficulty": difficulty,
+    }
+
 
 def _parse_educator_json(raw: str) -> dict:
     """Parse the educator-notes JSON the model emits, with a salvage step.
@@ -269,35 +509,7 @@ def _parse_educator_json(raw: str) -> dict:
     block can be found we return an empty-shaped dict so the frontend has
     something to render instead of failing the lesson.
     """
-    fallback = {"misconceptions": [], "follow_ups": [], "prereqs": [], "difficulty": ""}
-    if not raw:
-        return fallback
-    # Try the cleanest path first.
-    cleaned = raw.strip()
-    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
-    cleaned = re.sub(r"\s*```$", "", cleaned)
-    try:
-        return _coerce_shape(json.loads(cleaned))
-    except json.JSONDecodeError:
-        pass
-    # Salvage: scan for the first balanced {...}.
-    start = cleaned.find("{")
-    while start != -1:
-        depth = 0
-        for end in range(start, len(cleaned)):
-            ch = cleaned[end]
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    chunk = cleaned[start:end + 1]
-                    try:
-                        return _coerce_shape(json.loads(chunk))
-                    except json.JSONDecodeError:
-                        break
-        start = cleaned.find("{", start + 1)
-    return fallback
+    return _coerce_shape(_parse_json_object(raw))
 
 
 def _coerce_shape(d: object) -> dict:
@@ -439,7 +651,10 @@ class CloudTeacher:
             raise TeacherError(f"cloud warmup failed: {self._classify_error(exc)}")
 
     async def stream_lesson(
-        self, png_bytes: bytes, system_prefix: str = ""
+        self,
+        png_bytes: bytes,
+        system_prefix: str = "",
+        safety_identifier: str = "",
     ) -> AsyncIterator[str]:
         """Stream Gemma-4-31B output asynchronously."""
         self._ensure_client()
@@ -585,17 +800,376 @@ class CloudTeacher:
         return _parse_educator_json(raw)
 
 
+    async def _json_request(
+        self,
+        system: str,
+        prompt: str,
+        png_bytes: bytes | None = None,
+    ) -> dict:
+        self._ensure_client()
+        if self._client_kind == "genai":
+            from google.genai import types  # type: ignore
+
+            parts = [types.Part.from_text(text=prompt)]
+            if png_bytes is not None:
+                parts.append(types.Part.from_bytes(data=png_bytes, mime_type="image/png"))
+            try:
+                response = await self._client.aio.models.generate_content(  # type: ignore[union-attr]
+                    model=self.model,
+                    contents=[types.Content(role="user", parts=parts)],
+                    config=types.GenerateContentConfig(
+                        system_instruction=system,
+                        temperature=0.1,
+                        max_output_tokens=700,
+                    ),
+                )
+            except Exception as exc:
+                raise TeacherError(self._classify_error(exc)) from exc
+            return _parse_json_object(getattr(response, "text", "") or "")
+
+        loop = asyncio.get_running_loop()
+        legacy_client = self._client
+
+        def producer() -> str:
+            try:
+                model = legacy_client.GenerativeModel(  # type: ignore[union-attr]
+                    self.model, system_instruction=system,
+                )
+                content: list[object] = [prompt]
+                if png_bytes is not None:
+                    content.append({"mime_type": "image/png", "data": png_bytes})
+                response = model.generate_content(content)
+                return getattr(response, "text", "") or ""
+            except Exception as exc:
+                return f"__error__:{self._classify_error(exc)}"
+
+        raw = await loop.run_in_executor(None, producer)
+        if raw.startswith("__error__:"):
+            raise TeacherError(raw[len("__error__:"):])
+        return _parse_json_object(raw)
+
+    async def extract_evidence(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        safety_identifier: str = "",
+    ) -> dict:
+        return await self._json_request(
+            EVIDENCE_SYSTEM_PROMPT,
+            "Checkpoint and rubric:\n"
+            + json.dumps(checkpoint, ensure_ascii=False)
+            + "\nGrade the attached answer. Output JSON only.",
+            png_bytes,
+        )
+
+    async def generate_checkpoint(
+        self,
+        lesson_text: str,
+        learner_state: dict,
+        conversation_id: str,
+        safety_identifier: str = "",
+    ) -> dict:
+        value = await self._json_request(
+            CHECKPOINT_SYSTEM_PROMPT,
+            f"Lesson:\n{lesson_text[-5000:]}\n\n"
+            f"Learner state:\n{learner_state.get('profile_text', '')}\n"
+            "Output JSON only.",
+        )
+        return _coerce_checkpoint(value, conversation_id)
+
+    async def stream_assessment_feedback(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        evidence: dict,
+        system_prefix: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        self._ensure_client()
+        system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
+        prompt = (
+            ASSESSMENT_FEEDBACK_PROMPT
+            + "\n\nCheckpoint:\n" + json.dumps(checkpoint, ensure_ascii=False)
+            + "\n\nGrading evidence:\n" + json.dumps(evidence, ensure_ascii=False)
+        )
+        if self._client_kind == "genai":
+            from google.genai import types  # type: ignore
+
+            try:
+                stream = await self._client.aio.models.generate_content_stream(  # type: ignore[union-attr]
+                    model=self.model,
+                    contents=[types.Content(role="user", parts=[
+                        types.Part.from_text(text=prompt),
+                        types.Part.from_bytes(data=png_bytes, mime_type="image/png"),
+                    ])],
+                    config=types.GenerateContentConfig(
+                        system_instruction=system,
+                        temperature=0.2,
+                        max_output_tokens=1200,
+                    ),
+                )
+                async for chunk in stream:
+                    text = getattr(chunk, "text", "") or ""
+                    if text:
+                        yield text
+            except Exception as exc:
+                raise TeacherError(self._classify_error(exc)) from exc
+            return
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        legacy_client = self._client
+
+        def producer() -> None:
+            try:
+                model = legacy_client.GenerativeModel(  # type: ignore[union-attr]
+                    self.model, system_instruction=system,
+                )
+                response = model.generate_content(
+                    [prompt, {"mime_type": "image/png", "data": png_bytes}],
+                    stream=True,
+                )
+                for chunk in response:
+                    text = getattr(chunk, "text", "") or ""
+                    if text:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, f"\n[cloud error: {exc}]")
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        await loop.run_in_executor(None, producer)
+        while True:
+            item = await queue.get()
+            if item is None:
+                return
+            yield item
+
+
+# ---------------------------------------------------------------------------
+# OpenAITeacher (GPT-5.6 Responses API)
+# ---------------------------------------------------------------------------
+
+
+class OpenAITeacher:
+    """GPT-5.6 vision teacher with a cheaper structured-analysis path."""
+
+    def __init__(
+        self,
+        model: str | None = None,
+        api_key: str | None = None,
+        evidence_model: str | None = None,
+    ) -> None:
+        self.model = model or os.environ.get("OPENAI_MODEL", "gpt-5.6-sol")
+        self.evidence_model = evidence_model or os.environ.get(
+            "OPENAI_EVIDENCE_MODEL", "gpt-5.6-terra"
+        )
+        self.host = "https://api.openai.com"
+        self._api_key = (api_key or os.environ.get("OPENAI_API_KEY", "")).strip()
+        self._system_prompt = _load_system_prompt()
+        self._client = None
+
+    def _ensure_client(self):
+        if self._client is not None:
+            return self._client
+        if not self._api_key:
+            raise TeacherError(
+                "OPENAI_API_KEY is not set. Add it to .env or choose Local Gemma."
+            )
+        try:
+            from openai import AsyncOpenAI
+        except ImportError as exc:  # pragma: no cover - installation guard
+            raise TeacherError("Install the `openai` Python package.") from exc
+        self._client = AsyncOpenAI(api_key=self._api_key)
+        return self._client
+
+    def ping(self) -> bool:
+        return bool(self._api_key)
+
+    def warmup(self) -> None:
+        # Avoid a billable request at startup; readiness means credentials exist.
+        if self._api_key:
+            self._ensure_client()
+
+    @staticmethod
+    def _image_input(png_bytes: bytes, prompt: str) -> list[dict]:
+        image = base64.b64encode(png_bytes).decode("ascii")
+        return [{
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{image}",
+                    "detail": "original",
+                },
+            ],
+        }]
+
+    @staticmethod
+    def _safety_kwargs(safety_identifier: str) -> dict:
+        return {"safety_identifier": safety_identifier} if safety_identifier else {}
+
+    async def _stream_response(
+        self,
+        *,
+        png_bytes: bytes,
+        instructions: str,
+        prompt: str,
+        safety_identifier: str,
+        reasoning_effort: str = "medium",
+    ) -> AsyncIterator[str]:
+        client = self._ensure_client()
+        try:
+            stream = await client.responses.create(
+                model=self.model,
+                instructions=instructions,
+                input=self._image_input(png_bytes, prompt),
+                reasoning={"effort": reasoning_effort},
+                store=False,
+                stream=True,
+                **self._safety_kwargs(safety_identifier),
+            )
+            async for event in stream:
+                if getattr(event, "type", "") == "response.output_text.delta":
+                    delta = getattr(event, "delta", "") or ""
+                    if delta:
+                        yield delta
+        except Exception as exc:
+            raise TeacherError(f"OpenAI request failed: {exc}") from exc
+
+    async def _json_response(
+        self,
+        *,
+        instructions: str,
+        prompt: str,
+        png_bytes: bytes | None = None,
+        safety_identifier: str = "",
+    ) -> dict:
+        client = self._ensure_client()
+        input_value: object
+        if png_bytes is None:
+            input_value = prompt
+        else:
+            input_value = self._image_input(png_bytes, prompt)
+        try:
+            response = await client.responses.create(
+                model=self.evidence_model,
+                instructions=instructions,
+                input=input_value,
+                reasoning={"effort": "low"},
+                store=False,
+                **self._safety_kwargs(safety_identifier),
+            )
+        except Exception as exc:
+            raise TeacherError(f"OpenAI analysis failed: {exc}") from exc
+        return _parse_json_object(getattr(response, "output_text", "") or "")
+
+    async def stream_lesson(
+        self,
+        png_bytes: bytes,
+        system_prefix: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
+        prompt = (
+            "Read the attached Excalidraw whiteboard and locate the learner's question mark. "
+            "Teach the missing idea on the same board. Emit only the primitive protocol: "
+            "short captions, math only in equation tags, 8-15 tags, and no markdown."
+        )
+        async for delta in self._stream_response(
+            png_bytes=png_bytes,
+            instructions=system,
+            prompt=prompt,
+            safety_identifier=safety_identifier,
+        ):
+            yield delta
+
+    async def educator_notes(self, png_bytes: bytes, lesson_text: str = "") -> dict:
+        value = await self._json_response(
+            instructions=EDUCATOR_SYSTEM_PROMPT,
+            prompt=(
+                "Produce educator notes for the attached board.\n\n"
+                + (f"Lesson:\n{lesson_text[-5000:]}\n" if lesson_text else "")
+                + "Output JSON only."
+            ),
+            png_bytes=png_bytes,
+        )
+        return _coerce_shape(value)
+
+    async def extract_evidence(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        safety_identifier: str = "",
+    ) -> dict:
+        return await self._json_response(
+            instructions=EVIDENCE_SYSTEM_PROMPT,
+            prompt=(
+                "Checkpoint and rubric:\n"
+                + json.dumps(checkpoint, ensure_ascii=False)
+                + "\nGrade the attached answer. Output JSON only."
+            ),
+            png_bytes=png_bytes,
+            safety_identifier=safety_identifier,
+        )
+
+    async def generate_checkpoint(
+        self,
+        lesson_text: str,
+        learner_state: dict,
+        conversation_id: str,
+        safety_identifier: str = "",
+    ) -> dict:
+        value = await self._json_response(
+            instructions=CHECKPOINT_SYSTEM_PROMPT,
+            prompt=(
+                f"Lesson:\n{lesson_text[-5000:]}\n\n"
+                f"Learner state:\n{learner_state.get('profile_text', '')}\n"
+                "Output JSON only."
+            ),
+            safety_identifier=safety_identifier,
+        )
+        return _coerce_checkpoint(value, conversation_id)
+
+    async def stream_assessment_feedback(
+        self,
+        png_bytes: bytes,
+        checkpoint: dict,
+        evidence: dict,
+        system_prefix: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
+        prompt = (
+            ASSESSMENT_FEEDBACK_PROMPT
+            + "\n\nCheckpoint:\n" + json.dumps(checkpoint, ensure_ascii=False)
+            + "\n\nGrading evidence:\n" + json.dumps(evidence, ensure_ascii=False)
+        )
+        async for delta in self._stream_response(
+            png_bytes=png_bytes,
+            instructions=system,
+            prompt=prompt,
+            safety_identifier=safety_identifier,
+            reasoning_effort="low",
+        ):
+            yield delta
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
-# Maps the toolbar's `model_choice` to a (kind, ollama-model | cloud-model).
-# `kind` is "ollama" or "cloud"; resolve_teacher() picks the constructor.
-ModelChoice = str  # "edge" | "edge-ft" | "cloud"
+# Maps the toolbar's `model_choice` to a provider and model.
+ModelChoice = str  # "openai" | "edge" | "edge-ft" | "cloud"
 
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
 
 MODEL_REGISTRY: dict[str, dict[str, str]] = {
+    "openai": {
+        "kind": "openai",
+        "model": os.environ.get("OPENAI_MODEL", "gpt-5.6-sol"),
+    },
     "edge": {
         "kind": "ollama",
         "model": os.environ.get("MODEL_NAME", "gemma4:e4b"),
@@ -626,8 +1200,11 @@ def resolve_teacher(choice: ModelChoice) -> Teacher:
     cache_key = f"{cfg['kind']}:{cfg['model']}"
     if cache_key in _teacher_cache:
         return _teacher_cache[cache_key]
-    if cfg["kind"] == "cloud":
-        teacher: Teacher = CloudTeacher(model=cfg["model"])
+    teacher: Teacher
+    if cfg["kind"] == "openai":
+        teacher = OpenAITeacher(model=cfg["model"])
+    elif cfg["kind"] == "cloud":
+        teacher = CloudTeacher(model=cfg["model"])
     else:
         teacher = OllamaTeacher(
             host=os.environ.get("OLLAMA_HOST", DEFAULT_OLLAMA_HOST),

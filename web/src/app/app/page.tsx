@@ -5,11 +5,12 @@ import Whiteboard, { type WhiteboardHandle } from "@/components/Whiteboard";
 import Toolbar, { type ModelChoice, type SampleSubject } from "@/components/Toolbar";
 import EducatorPanel from "@/components/EducatorPanel";
 import LearnerPanel from "@/components/LearnerPanel";
-import { fetchHealth, fetchLearner, resetLearner, streamLesson } from "@/lib/api";
+import CheckpointCard from "@/components/CheckpointCard";
+import { fetchHealth, fetchLearner, resetLearner, streamAssessment, streamLesson } from "@/lib/api";
 import { getAnswerRegion, getStudentBbox } from "@/lib/layout";
 import { LessonPlayer } from "@/lib/lesson-player";
 import { cancelSpeech } from "@/lib/tts";
-import type { EducatorNotes, LearnerSnapshot, PrimitiveTag } from "@/lib/types";
+import type { Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 
 interface CachedLesson {
   primitives: PrimitiveTag[];
@@ -91,6 +92,7 @@ export default function AppPage() {
   const [status, setStatus] = useState("Connecting to backend...");
   const [busy, setBusy] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const [voice, setVoice] = useState("kokoro_af_heart");
   const [teacherMode, setTeacherMode] = useState(false);
   const [modelChoice, setModelChoice] = useState<ModelChoice>("edge");
   const [modelReady, setModelReady] = useState<Partial<Record<ModelChoice, boolean>>>({});
@@ -98,9 +100,12 @@ export default function AppPage() {
   const [educatorNotes, setEducatorNotes] = useState<EducatorNotes | null>(null);
   const [educatorBusy, setEducatorBusy] = useState(false);
   const [learnerSnapshot, setLearnerSnapshot] = useState<LearnerSnapshot | null>(null);
+  const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null);
+  const [lastEvidence, setLastEvidence] = useState<LearningEvidence | null>(null);
   const cachedRef = useRef<CachedLesson | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const userIdRef = useRef<string>("anon");
+  const conversationIdRef = useRef<string>("default");
 
   const refreshLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -111,6 +116,9 @@ export default function AppPage() {
 
   useEffect(() => {
     userIdRef.current = getOrCreateUserId();
+    const stored = window.sessionStorage.getItem("y_conversation_id");
+    conversationIdRef.current = stored || `c_${crypto.randomUUID()}`;
+    if (!stored) window.sessionStorage.setItem("y_conversation_id", conversationIdRef.current);
     void refreshLearner();
   }, [refreshLearner]);
 
@@ -127,7 +135,10 @@ export default function AppPage() {
         ready[k as ModelChoice] = !!v.ready;
       }
       setModelReady(ready);
-      if (!h.ollama_reachable) {
+      if (h.preferred_model === "openai" && ready.openai) {
+        setModelChoice("openai");
+        setStatus("Ready in GPT-5.6 cloud mode. The canvas will be sent to OpenAI.");
+      } else if (!h.ollama_reachable) {
         setStatus(`Ollama unreachable - check daemon (model=${h.model})`);
       } else {
         setStatus(`Ready. Write/draw a question, mark unknown with '?', press Solve.`);
@@ -223,11 +234,13 @@ export default function AppPage() {
         origin,
         handle,
         ttsEnabled,
+        voiceName: voice,
         onProgress: setStatus,
         signal: controller.signal,
       });
 
       const collect: PrimitiveTag[] = [];
+      let streamError = "";
 
       try {
         if (mode === "live" && liveBlob) {
@@ -246,18 +259,38 @@ export default function AppPage() {
               onLearnerUpdate: () => {
                 void refreshLearner();
               },
+              onLearnerState: () => void refreshLearner(),
+              onCheckpoint: (next) => {
+                setCheckpoint(next);
+                const checkpointTag: PrimitiveTag = {
+                  tag: "text",
+                  args: { content: `Checkpoint: ${next.question}` },
+                };
+                collect.push(checkpointTag);
+                player.enqueue(checkpointTag);
+              },
               onDone: () => setStatus("Lesson received. Finishing playback..."),
-              onError: (msg) => setStatus(`Error: ${msg}`),
+              onError: (msg) => {
+                streamError = msg;
+                setStatus(`Error: ${msg}`);
+              },
             },
             controller.signal,
-            { teacherMode, userId: userIdRef.current, modelChoice },
+            {
+              teacherMode,
+              userId: userIdRef.current,
+              modelChoice,
+              conversationId: conversationIdRef.current,
+            },
           );
         } else {
           for (const tag of cachedPrims) player.enqueue(tag);
         }
         await player.finish();
         setStatus(
-          mode === "live"
+          streamError
+            ? `Error: ${streamError}`
+            : mode === "live"
             ? `Lesson complete. ${collect.length} primitives drawn.`
             : `Replay complete.`,
         );
@@ -277,8 +310,76 @@ export default function AppPage() {
         abortRef.current = null;
       }
     },
-    [busy, ttsEnabled, teacherMode, modelChoice, refreshLearner],
+    [busy, ttsEnabled, voice, teacherMode, modelChoice, refreshLearner],
   );
+
+  const assessWork = useCallback(async () => {
+    const handle = handleRef.current;
+    if (!handle || busy || !checkpoint) return;
+    cancelSpeech();
+    setBusy(true);
+    setStatus("Sending your checkpoint answer for evidence-based assessment...");
+    const image = await handle.exportPng();
+    if (!image) {
+      setStatus("Canvas export failed.");
+      setBusy(false);
+      return;
+    }
+    const region = getAnswerRegion(getStudentBbox(handle.getElements()));
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const player = new LessonPlayer({
+      origin: { x: region.x, y: region.y },
+      handle,
+      ttsEnabled,
+      voiceName: voice,
+      onProgress: setStatus,
+      signal: controller.signal,
+    });
+    let assessmentError = "";
+    try {
+      await streamAssessment(
+        image,
+        {
+          onPrimitive: (tag) => player.enqueue(tag),
+          onEvidence: (evidence) => {
+            setLastEvidence(evidence);
+            setStatus(evidence.adaptation?.adapted ? "Strong evidence accepted; learner fast weights updated." : "Assessment recorded; adaptation guard kept fast weights unchanged.");
+          },
+          onLearnerState: () => void refreshLearner(),
+          onCheckpoint: (next) => {
+            setCheckpoint(next);
+            player.enqueue({
+              tag: "text",
+              args: { content: `Next checkpoint: ${next.question}` },
+            });
+          },
+          onDone: () => setStatus("Assessment received. Finishing personalized feedback..."),
+          onError: (message) => {
+            assessmentError = message;
+            setStatus(`Assessment error: ${message}`);
+          },
+        },
+        controller.signal,
+        {
+          userId: userIdRef.current,
+          conversationId: conversationIdRef.current,
+          checkpointId: checkpoint.checkpoint_id,
+          modelChoice,
+        },
+      );
+      await player.finish();
+      await refreshLearner();
+      if (!assessmentError) {
+        setStatus("Assessment complete. Try the next checkpoint on the canvas.");
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setStatus(`Assessment failed: ${(error as Error).message}`);
+    } finally {
+      abortRef.current = null;
+      setBusy(false);
+    }
+  }, [busy, checkpoint, modelChoice, refreshLearner, ttsEnabled, voice]);
 
   const onResetLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -286,6 +387,8 @@ export default function AppPage() {
     if (!window.confirm("Reset learner profile? This deletes all session memory for this user.")) return;
     await resetLearner(id);
     setLearnerSnapshot(null);
+    setCheckpoint(null);
+    setLastEvidence(null);
     setStatus("Learner profile reset.");
     void refreshLearner();
   }, [refreshLearner]);
@@ -316,7 +419,10 @@ export default function AppPage() {
         modelChoice={modelChoice}
         modelReady={modelReady}
         canReplay={hasReplay}
+        canAssess={!!checkpoint}
+        voice={voice}
         onSolve={solve}
+        onAssess={() => void assessWork()}
         onClear={clearAll}
         onInsertSample={insertSample}
         onReplay={replay}
@@ -324,8 +430,10 @@ export default function AppPage() {
         onToggleTts={() => setTtsEnabled((v) => !v)}
         onToggleTeacherMode={() => setTeacherMode((v) => !v)}
         onModelChange={setModelChoice}
+        onVoiceChange={setVoice}
       />
       <LearnerPanel snapshot={learnerSnapshot} onReset={onResetLearner} />
+      <CheckpointCard checkpoint={checkpoint} evidence={lastEvidence} />
       {teacherMode && <EducatorPanel notes={educatorNotes} busy={educatorBusy} />}
       <Whiteboard onReady={onReady} />
     </div>

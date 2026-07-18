@@ -5,7 +5,13 @@ gitignored — pull them from Hugging Face or rebuild via the Unsloth notebook.
 
 | File | Role | Source artefact |
 |---|---|---|
+| `learner-adapter-v1.safetensors` | Shared 9.43M learner model | `deploy/modal_train_learner.py` |
+| `learner-adapter-v1.config.json` | Architecture, validation loss, and hashes | emitted beside the checkpoint |
 | `Modelfile.y-gemma4` | Edge fine-tuned tutor (`y-gemma4`) | `y-gemma4-svg-q4_k_m.gguf` from `training/unsloth-training.ipynb` |
+
+The learner-adapter checkpoint is intentionally distinct from Gemma. Fast
+weights are never stored here; they live under each learner's data directory.
+`GET /health` says `trained_checkpoint: false` until this file is present.
 
 ## Building the fine-tuned model locally
 

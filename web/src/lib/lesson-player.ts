@@ -102,6 +102,7 @@ interface PlayerOptions {
   origin: { x: number; y: number };
   handle: WhiteboardHandle;
   ttsEnabled: boolean;
+  voiceName?: string;
   /** ms between non-speech primitives. */
   visualGapMs?: number;
   /** ms after a [text] primitive renders before its narration starts. */
@@ -111,9 +112,10 @@ interface PlayerOptions {
 }
 
 export class LessonPlayer {
-  private readonly opts: Required<Omit<PlayerOptions, "signal" | "onProgress">> & {
+  private readonly opts: Required<Omit<PlayerOptions, "signal" | "onProgress" | "voiceName">> & {
     signal?: AbortSignal;
     onProgress?: (status: string) => void;
+    voiceName?: string;
   };
   private readonly renderer: LessonRenderer;
   private chain: Promise<void> = Promise.resolve();
@@ -125,6 +127,7 @@ export class LessonPlayer {
       visualGapMs: 200,
       speakHeadStartMs: 80,
       ttsEnabled: opts.ttsEnabled,
+      voiceName: opts.voiceName,
       origin: opts.origin,
       handle: opts.handle,
       onProgress: opts.onProgress,
@@ -216,6 +219,7 @@ export class LessonPlayer {
         const revealer = new TextRevealer(fullText, mutate!, 45, this.opts.signal);
         revealer.start();
         await speak(fullText, {
+          voiceName: this.opts.voiceName,
           onProgress: (chars) => revealer.setTarget(chars),
         });
         revealer.finish();
@@ -320,7 +324,7 @@ export class LessonPlayer {
       const speakPromise: Promise<void> = (caption && this.opts.ttsEnabled && ttsAvailable())
         ? (async () => {
             await sleep(40);
-            try { await speak(caption, {}); } catch { /* swallow */ }
+            try { await speak(caption, { voiceName: this.opts.voiceName }); } catch { /* swallow */ }
           })()
         : Promise.resolve();
 
@@ -331,7 +335,6 @@ export class LessonPlayer {
         p.style.transition = `stroke-dashoffset ${perPathMs}ms ease-out`;
         // Reading offsetWidth flushes the transition setter so the next
         // assignment actually animates rather than snapping.
-        // eslint-disable-next-line @typescript-eslint/no-unused-expressions
         p.getBoundingClientRect();
         p.style.strokeDashoffset = "0";
         await sleep(perPathMs);

@@ -1,9 +1,7 @@
-"""Modal deployment for the Y API in cloud-only mode.
+"""Modal deployment for Y's GPT-5.6-first public API.
 
-We host the FastAPI app on Modal serverless, with the Gemma-4-31B "Cloud"
-teacher path enabled via Google AI Studio. The "Edge" and "Edge fine-tuned"
-options stay disabled here (Modal serves no Ollama daemon by default), and
-the toolbar greys them out via the /health `ready` flag.
+The OpenAI teacher is the submission path. Google Gemma cloud compatibility
+remains available; Ollama choices are disabled because Modal has no daemon.
 
 Setup once:
     pip install modal
@@ -43,6 +41,10 @@ image = (
         "sse-starlette>=2.1",
         "pillow>=11",
         "httpx>=0.28.1",
+        "openai>=2.0",
+        "numpy>=2.0",
+        "torch>=2.5",
+        "safetensors>=0.5",
         "google-genai>=0.3.0",
         "lxml>=5.3",
     )
@@ -52,11 +54,18 @@ image = (
 
 app = modal.App("y-api", image=image)
 learner_volume = modal.Volume.from_name("y-learner", create_if_missing=True)
+training_volume = modal.Volume.from_name("y-learner-training", create_if_missing=True)
 
 
 @app.function(
-    secrets=[modal.Secret.from_name("y-google-ai")],
-    volumes={"/data/learners": learner_volume},
+    secrets=[
+        modal.Secret.from_name("y-google-ai"),
+        modal.Secret.from_name("y-openai"),
+    ],
+    volumes={
+        "/data/learners": learner_volume,
+        "/training-output": training_volume,
+    },
     cpu=1.0,
     memory=2048,
     timeout=600,
@@ -72,6 +81,10 @@ def fastapi_app():
     sys.path.insert(0, "/app/api")
     # Force the learner store onto the persistent volume.
     os.environ.setdefault("LEARNER_STORE_DIR", "/data/learners")
+    os.environ.setdefault(
+        "LEARNER_ADAPTER_CHECKPOINT",
+        "/training-output/learner-adapter-v1.safetensors",
+    )
     # Block Ollama defaults so the cloud teacher is the only enabled choice.
     os.environ.setdefault("OLLAMA_HOST", "http://disabled")
 

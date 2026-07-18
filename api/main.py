@@ -1,15 +1,19 @@
 """FastAPI entry point for the AI Learning Companion backend.
 
 Endpoints:
-- GET /health             liveness + ollama reachability
+- GET /health             provider, adapter, and speech readiness
 - GET /schema             expose primitives.json so the frontend can validate
 - POST /lesson            multipart PNG -> SSE stream of token/primitive events
+- POST /assess            grade a checkpoint and adapt the learner model
+- GET/POST /speech        list voices / synthesize local Kokoro speech
 - GET /learner/{user_id}  return the per-user knowledge profile
 """
 from __future__ import annotations
 
 import json
+import hashlib
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 API_ROOT = Path(__file__).resolve().parent
@@ -42,12 +46,15 @@ def _load_env_file() -> None:
 
 
 _load_env_file()
+DEFAULT_MODEL_CHOICE = "openai" if os.environ.get("OPENAI_API_KEY", "").strip() else "edge"
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile  # noqa: E402
+from fastapi import FastAPI, File, Form, HTTPException, Response, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
-from learner import LearnerStore  # noqa: E402
+from learner import LearnerStore, normalise_evidence  # noqa: E402
+from speech import DEFAULT_VOICE, SpeechError, get_speech_engine  # noqa: E402
 from teacher import (  # noqa: E402
     MODEL_REGISTRY,
     OllamaTeacher,
@@ -59,7 +66,22 @@ from parser import IncrementalTagParser  # noqa: E402
 from salvage import salvage_raw_to_primitives  # noqa: E402
 from validator import validate_and_repair  # noqa: E402
 
-app = FastAPI(title="Y API", version="0.1.0")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Warm local inference without making a billable cloud request."""
+    try:
+        get_teacher("edge").warmup()
+    except Exception as exc:
+        print(f"[warmup] non-fatal: {exc}")
+    if os.environ.get("SPEECH_PREFETCH", "").lower() in {"1", "true", "yes"}:
+        try:
+            await get_speech_engine().prefetch()
+        except Exception as exc:
+            print(f"[speech-prefetch] non-fatal: {exc}")
+    yield
+
+
+app = FastAPI(title="Y API", version="0.2.0", lifespan=_lifespan)
 
 _cors_origins = [
     "http://localhost:3000",
@@ -81,7 +103,12 @@ app.add_middleware(
 _learner_store: LearnerStore | None = None
 
 
-def get_teacher(model_choice: str = "edge") -> Teacher:
+def _safety_identifier(user_id: str) -> str:
+    salt = os.environ.get("SAFETY_ID_SALT", "y-local-demo")
+    return "y_" + hashlib.sha256(f"{salt}|{user_id}".encode("utf-8")).hexdigest()[:24]
+
+
+def get_teacher(model_choice: str = DEFAULT_MODEL_CHOICE) -> Teacher:
     """Return the cached Teacher matching the toolbar's `model_choice`.
 
     Defaults to the edge baseline so /health and warmup never need to know
@@ -95,15 +122,6 @@ def get_learner_store() -> LearnerStore:
     if _learner_store is None:
         _learner_store = LearnerStore()
     return _learner_store
-
-
-@app.on_event("startup")
-async def _warmup() -> None:
-    """Pre-warm the default (edge) teacher so the first real request is fast."""
-    try:
-        get_teacher("edge").warmup()
-    except Exception as exc:
-        print(f"[warmup] non-fatal: {exc}")
 
 
 @app.get("/health")
@@ -137,6 +155,7 @@ async def health() -> dict:
         "model": edge.model,
         "ollama_reachable": edge_ready,
         "schema_exists": SCHEMA_PATH.exists(),
+        "preferred_model": "openai" if ready_by_choice.get("openai") else "edge",
         "models": {
             choice: {
                 "kind": cfg["kind"],
@@ -145,6 +164,8 @@ async def health() -> dict:
             }
             for choice, cfg in MODEL_REGISTRY.items()
         },
+        "learner_adapter": get_learner_store().adapter_info,
+        "speech": get_speech_engine().health(),
     }
 
 
@@ -159,7 +180,8 @@ async def lesson(
     image: UploadFile = File(...),
     teacher_mode: bool = Form(False),
     user_id: str = Form("anon"),
-    model_choice: str = Form("edge"),
+    conversation_id: str = Form("default"),
+    model_choice: str = Form(DEFAULT_MODEL_CHOICE),
 ):
     """Accept a canvas PNG and stream lesson events.
 
@@ -172,7 +194,9 @@ async def lesson(
       - user_id        (str, default 'anon'): stable per-browser identifier
                        used by the learner module to track mastery across
                        sessions.
-      - model_choice   (str, default 'edge'): one of 'edge' (gemma4:e4b),
+      - conversation_id (str): binds checkpoints to the active browser session.
+      - model_choice   (str, defaults to OpenAI when configured): one of 'openai' (GPT-5.6),
+                       'edge' (gemma4:e4b),
                        'edge-ft' (the fine-tuned y-gemma4 LoRA-merged GGUF),
                        or 'cloud' (Gemma-4-31B via Google AI Studio). Honoured
                        even if the chosen backend isn't running -- the call
@@ -191,6 +215,7 @@ async def lesson(
     learner = get_learner_store()
     parser = IncrementalTagParser()
     primitives_count = 0
+    safety_identifier = _safety_identifier(user_id)
     # Pull the learner's mastery prefix (if any) and prepend it to the
     # system prompt for THIS lesson only. The teacher object's base prompt
     # is left untouched so concurrent calls don't bleed into each other.
@@ -202,7 +227,11 @@ async def lesson(
         nonlocal primitives_count
         lesson_chunks: list[str] = []
         try:
-            async for token in teacher.stream_lesson(png_bytes, system_prefix=mastery_prefix):
+            async for token in teacher.stream_lesson(
+                png_bytes,
+                system_prefix=mastery_prefix,
+                safety_identifier=safety_identifier,
+            ):
                 lesson_chunks.append(token)
                 for evt in parser.feed(token):
                     if evt["event"] == "token":
@@ -271,12 +300,54 @@ async def lesson(
                     lesson_text="".join(lesson_chunks),
                     primitives_count=primitives_count,
                     teacher_model=extractor_model,
+                    conversation_id=conversation_id,
                 )
-                # Don't push the (large) raw embedding through SSE; the panel
-                # fetches the full profile via /learner/{user_id} for UMAP.
+                # Don't push the legacy raw session embedding through SSE; the
+                # panel fetches the probabilistic state from /learner/{user_id}.
                 payload = {k: v for k, v in rec.__dict__.items() if k != "embedding"}
                 payload["has_embedding"] = bool(rec.embedding)
                 yield {"event": "learner_update", "data": json.dumps(payload)}
+                profile = learner.get(user_id)
+                state = profile.last_state or learner.state_snapshot(profile)
+
+                try:
+                    checkpoint_raw = await teacher.generate_checkpoint(
+                        lesson_text="".join(lesson_chunks),
+                        learner_state=state,
+                        conversation_id=conversation_id,
+                        safety_identifier=safety_identifier,
+                    )
+                except Exception:
+                    concepts = [b["name"] for b in state.get("concept_beliefs", [])[:2]]
+                    label = concepts[0] if concepts else "the lesson's main idea"
+                    checkpoint_raw = {
+                        "conversation_id": conversation_id,
+                        "question": f"Show one example that applies {label}, and explain your reasoning.",
+                        "concepts": concepts or ["lesson transfer"],
+                        "rubric": "Check the method, result, and whether the explanation is independent.",
+                        "difficulty": "introductory",
+                    }
+                if not rec.concepts_seen and checkpoint_raw.get("concepts"):
+                    weak_evidence = normalise_evidence(
+                        {
+                            "concepts": checkpoint_raw.get("concepts", []),
+                            "outcome": {"correct": 0.2, "partial": 0.5, "incorrect": 0.3},
+                            "independence": 0.2,
+                            "evidence_strength": 0.15,
+                            "response_summary": "Concept inferred from the generated checkpoint; answer not yet assessed.",
+                            "task_text": "".join(lesson_chunks)[:1000],
+                        },
+                        user_id=user_id,
+                        conversation_id=conversation_id,
+                        source="help_request",
+                    )
+                    state, _ = await learner.record_evidence(
+                        weak_evidence,
+                        allow_adaptation=False,
+                    )
+                yield {"event": "learner_state", "data": json.dumps(state)}
+                checkpoint = learner.save_checkpoint(user_id, checkpoint_raw)
+                yield {"event": "checkpoint", "data": json.dumps(checkpoint)}
             except Exception as exc:
                 yield {
                     "event": "learner_update",
@@ -292,19 +363,128 @@ async def lesson(
     return EventSourceResponse(event_stream())
 
 
+@app.post("/assess")
+async def assess(
+    image: UploadFile = File(...),
+    user_id: str = Form("anon"),
+    conversation_id: str = Form("default"),
+    checkpoint_id: str = Form(...),
+    model_choice: str = Form(DEFAULT_MODEL_CHOICE),
+):
+    """Grade a checkpoint answer, run a guarded Level-2 update, and reteach."""
+    png_bytes = await image.read()
+    learner = get_learner_store()
+    checkpoint = learner.get_checkpoint(user_id, checkpoint_id)
+    if checkpoint is None:
+        raise HTTPException(status_code=404, detail="checkpoint not found for this learner")
+    if checkpoint.get("conversation_id") != conversation_id:
+        raise HTTPException(status_code=409, detail="checkpoint belongs to another conversation")
+    teacher = get_teacher(model_choice)
+    safety_identifier = _safety_identifier(user_id)
+
+    async def event_stream():
+        parser = IncrementalTagParser()
+        lesson_chunks: list[str] = []
+        primitives_count = 0
+        try:
+            raw = await teacher.extract_evidence(
+                png_bytes,
+                checkpoint,
+                safety_identifier=safety_identifier,
+            )
+            if isinstance(raw, dict):
+                raw.setdefault("task_text", checkpoint.get("question", ""))
+            evidence = normalise_evidence(
+                raw,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                source="checkpoint_answer",
+            )
+            state, adaptation = await learner.record_evidence(
+                evidence,
+                allow_adaptation=True,
+            )
+            evidence_payload = evidence.to_dict()
+            evidence_payload["adaptation"] = adaptation
+            yield {"event": "evidence", "data": json.dumps(evidence_payload)}
+
+            prefix = learner.system_prompt_prefix(user_id)
+            async for token in teacher.stream_assessment_feedback(
+                png_bytes,
+                checkpoint,
+                evidence_payload,
+                system_prefix=prefix,
+                safety_identifier=safety_identifier,
+            ):
+                lesson_chunks.append(token)
+                for evt in parser.feed(token):
+                    if evt["event"] == "token":
+                        yield {"event": "token", "data": json.dumps({"text": evt["text"]})}
+                    elif evt["event"] == "primitive":
+                        ok, fixed_tag = validate_and_repair(evt["tag"])
+                        if ok:
+                            primitives_count += 1
+                            yield {"event": "primitive", "data": json.dumps(fixed_tag)}
+            for evt in parser.flush():
+                if evt["event"] == "token":
+                    yield {"event": "token", "data": json.dumps({"text": evt["text"]})}
+                elif evt["event"] == "primitive":
+                    ok, fixed_tag = validate_and_repair(evt["tag"])
+                    if ok:
+                        primitives_count += 1
+                        yield {"event": "primitive", "data": json.dumps(fixed_tag)}
+            if primitives_count == 0 and lesson_chunks:
+                for primitive in salvage_raw_to_primitives("".join(lesson_chunks)):
+                    primitives_count += 1
+                    yield {"event": "primitive", "data": json.dumps(primitive)}
+
+            yield {"event": "learner_state", "data": json.dumps(state)}
+            try:
+                next_raw = await teacher.generate_checkpoint(
+                    lesson_text="".join(lesson_chunks) or evidence.response_summary,
+                    learner_state=state,
+                    conversation_id=conversation_id,
+                    safety_identifier=safety_identifier,
+                )
+            except Exception:
+                concept = evidence.concepts[0].name if evidence.concepts else "the same idea"
+                next_raw = {
+                    "conversation_id": conversation_id,
+                    "question": f"Try a new example using {concept}. Show each step and explain why it works.",
+                    "concepts": [concept],
+                    "rubric": "The answer applies the target concept correctly and explains the reasoning.",
+                    "difficulty": "transfer" if evidence.outcome.correct >= 0.7 else "introductory",
+                }
+            next_checkpoint = learner.save_checkpoint(user_id, next_raw)
+            yield {"event": "checkpoint", "data": json.dumps(next_checkpoint)}
+            yield {"event": "done", "data": json.dumps({"reason": "assessed"})}
+        except TeacherError as exc:
+            yield {"event": "error", "data": json.dumps({"message": str(exc)})}
+        except Exception as exc:
+            yield {"event": "error", "data": json.dumps({"message": f"internal: {exc}"})}
+
+    return EventSourceResponse(event_stream())
+
+
 @app.get("/learner/{user_id}")
 async def learner_profile(user_id: str) -> dict:
     """Return the per-user knowledge profile.
 
-    Includes every session (with its embedding) so the frontend can run UMAP
-    client-side. Empty profile for first-time visitors.
+    Includes legacy sessions plus v2 evidence, open-vocabulary beliefs,
+    latent trajectory, checkpoint history, online steps, and rollbacks.
     """
     store = get_learner_store()
     profile = store.get(user_id)
+    state = profile.last_state or store.state_snapshot(profile)
     return {
-        "user_id": profile.user_id,
-        "sessions": profile.sessions,
+        **profile.to_dict(),
         "mastery_summary": profile.mastery_summary(),
+        "learner_state": state,
+        "concept_beliefs": state.get("concept_beliefs", []),
+        "latent_trajectory": state.get("latent_trajectory", []),
+        "adapter_version": profile.adapter.get("base_version"),
+        "online_step_count": profile.adapter.get("online_steps", 0),
+        "rollback_count": profile.adapter.get("rollback_count", 0),
     }
 
 
@@ -315,11 +495,47 @@ async def reset_learner(user_id: str) -> dict:
     Returns 200 even if the file didn't exist.
     """
     store = get_learner_store()
-    p = store._path(user_id)  # noqa: SLF001 - intentional internal access
     try:
-        p.unlink(missing_ok=True)
+        store.reset(user_id)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    # Drop the in-memory cache so the next get() returns a fresh profile.
-    store._cache.pop(user_id, None)  # noqa: SLF001
     return {"ok": True}
+
+
+class SpeechRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=500)
+    voice: str = DEFAULT_VOICE
+    speed: float = Field(default=1.0, ge=0.8, le=1.2)
+
+
+@app.get("/speech/voices")
+async def speech_voices() -> dict:
+    engine = get_speech_engine()
+    return {
+        "voices": engine.voices(),
+        "available": engine.available,
+        "model_version": engine.health()["model_version"],
+    }
+
+
+@app.post("/speech")
+async def speech(request: SpeechRequest) -> Response:
+    engine = get_speech_engine()
+    try:
+        audio, metadata = await engine.synthesize(
+            request.text,
+            request.voice,
+            request.speed,
+        )
+    except SpeechError as exc:
+        status = 503 if not engine.available else 422
+        raise HTTPException(status_code=status, detail=str(exc)) from exc
+    return Response(
+        content=audio,
+        media_type="audio/wav",
+        headers={
+            "X-Speech-Voice": str(metadata.get("voice", request.voice)),
+            "X-Speech-Cache": "hit" if metadata.get("cached") else "miss",
+            "X-Speech-Model": str(metadata.get("model_version", "")),
+        },
+    )

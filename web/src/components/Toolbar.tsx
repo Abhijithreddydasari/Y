@@ -2,9 +2,10 @@
 
 import { type ChangeEvent } from "react";
 
-export type ModelChoice = "edge" | "edge-ft" | "cloud";
+export type ModelChoice = "openai" | "edge" | "edge-ft" | "cloud";
 
 export const MODEL_CHOICES: { id: ModelChoice; label: string; subtitle: string }[] = [
+  { id: "openai", label: "OpenAI (GPT-5.6)", subtitle: "Canvas is sent to OpenAI" },
   { id: "edge", label: "Edge (E4B)", subtitle: "gemma4:e4b on Ollama" },
   { id: "edge-ft", label: "Edge fine-tuned (E4B+LoRA)", subtitle: "y-gemma4 ControlSketch LoRA" },
   { id: "cloud", label: "Cloud (Gemma 4 31B)", subtitle: "Google AI Studio" },
@@ -28,7 +29,10 @@ interface Props {
   modelChoice: ModelChoice;
   modelReady?: Partial<Record<ModelChoice, boolean>>;
   canReplay: boolean;
+  canAssess: boolean;
+  voice: string;
   onSolve: () => void;
+  onAssess: () => void;
   onClear: () => void;
   onInsertSample: (subject: SampleSubject) => void;
   onReplay: () => void;
@@ -36,6 +40,7 @@ interface Props {
   onToggleTts: () => void;
   onToggleTeacherMode: () => void;
   onModelChange: (model: ModelChoice) => void;
+  onVoiceChange: (voice: string) => void;
 }
 
 export default function Toolbar({
@@ -46,7 +51,10 @@ export default function Toolbar({
   modelChoice,
   modelReady,
   canReplay,
+  canAssess,
+  voice,
   onSolve,
+  onAssess,
   onClear,
   onInsertSample,
   onReplay,
@@ -54,6 +62,7 @@ export default function Toolbar({
   onToggleTts,
   onToggleTeacherMode,
   onModelChange,
+  onVoiceChange,
 }: Props) {
   // Excalidraw owns the top-center (tool strip) and top-left (menu/library)
   // areas. Place the Y controls in the top-right corner so the native UI is
@@ -113,7 +122,25 @@ export default function Toolbar({
                 );
               })}
             </select>
+            {(modelChoice === "openai" || modelChoice === "cloud") && (
+              <span className="text-[10px] text-amber-700 dark:text-amber-300">
+                Cloud mode: your whiteboard image is sent to {modelChoice === "openai" ? "OpenAI" : "Google AI Studio"}.
+              </span>
+            )}
           </label>
+          {ttsEnabled && (
+            <label className="flex items-center justify-between gap-2 px-1 text-[11px] text-zinc-600 dark:text-zinc-300">
+              Kokoro voice
+              <select
+                value={voice}
+                onChange={(e) => onVoiceChange(e.target.value)}
+                className="rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-[11px] dark:border-zinc-700 dark:bg-zinc-800"
+              >
+                <option value="kokoro_af_heart">Heart</option>
+                <option value="kokoro_am_michael">Michael</option>
+              </select>
+            </label>
+          )}
           <button
             type="button"
             onClick={onSolve}
@@ -121,6 +148,15 @@ export default function Toolbar({
             className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
           >
             {busy ? "Thinking..." : "Solve  (mark ? on canvas)"}
+          </button>
+          <button
+            type="button"
+            onClick={onAssess}
+            disabled={busy || !canAssess}
+            title={canAssess ? "Submit the answer currently drawn on the canvas" : "Complete a lesson to receive a checkpoint"}
+            className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
+          >
+            Check my work
           </button>
           <div className="grid grid-cols-2 gap-2">
             <button

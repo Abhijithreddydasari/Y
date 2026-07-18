@@ -55,8 +55,13 @@ models/*
 
 # Training caches and prepared datasets (push to HF instead of git)
 training/data/*.jsonl
+training/data/*.manifest.json
+training/data/*.config.json
+training/data/evaluation*.json
 api/scripts/smoke_out/
 
 # Local learner store (per-user state)
 data/learners/
+data/speech-cache/
+data/tts-assets/
 api/data/

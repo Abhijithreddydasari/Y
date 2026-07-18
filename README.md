@@ -1,165 +1,250 @@
-# Y · an AI learning companion that writes on your whiteboard
+# Y v2 — a whiteboard tutor that learns the learner
 
-> Most AI tutors are chat boxes.  
-> Y reads the board, reasons about the student's question, and writes the next step back on the same canvas.
+Y reads a learner's Excalidraw whiteboard, teaches on the same canvas, asks a
+short checkpoint, and changes the next lesson from evidence about that answer.
+It is an Education-track project for OpenAI Build Week.
 
-Y is a local-first whiteboard tutor built with Gemma 4. A student writes a question, equation, or sketch directly on an Excalidraw canvas and marks the unknown with `?`. Y exports that canvas as an image, asks Gemma to understand the student's intent, then streams a structured lesson back to the board as titles, captions, equations, arrows, boxes, and diagrams while the browser narrates the explanation aloud.
+The central contribution is a separate 9.43M-parameter probabilistic learner
+adapter. GPT-5.6 is the teacher and visual reasoner; the adapter models the
+learner. Per-user rank-4 LoRA fast weights update at test time after strong,
+independent checkpoint evidence. Help requests and ambiguous grading remain in
+history but cannot rewrite fast weights.
 
-The goal is not to generate a static answer image. The goal is to make AI feel like a patient teacher at a board: read what the learner drew, choose the next useful representation, write it step by step, and remember what the learner has seen before.
+## What is working
 
-## What We Built
+- GPT-5.6 vision through the OpenAI Responses API (`gpt-5.6-sol`) streams the
+  existing deterministic whiteboard primitive language.
+- `Check my work` sends a checkpoint answer for lower-cost structured grading
+  with `gpt-5.6-terra`.
+- A causal 4-layer Transformer produces a 256-dimensional variational learner
+  state and mastery distributions for arbitrary concept text.
+- Per-user LoRA updates use recent evidence plus replay, soft correctness,
+  confidence weighting, clipping, anchoring, and a 5% replay-loss rollback.
+- The learner panel shows an emergent 3D latent trajectory, open-vocabulary
+  beliefs, confidence intervals, evidence counts, trends, and misconceptions.
+- Local Gemma 4 through Ollama remains the private/offline teacher fallback.
+- Kokoro-82M narration runs locally through Moonshine Voice, with Heart and
+  Michael as the only approved voices. Browser speech is a non-blocking fallback.
+- Excalidraw/KaTeX remains the reliable hand for this milestone. Native SVG
+  generation and DINO/structural SVG evaluation are explicitly deferred.
 
-Y has three parts:
-
-* **The eye and brain:** Gemma 4 through Ollama reads the whiteboard PNG and plans the explanation.
-* **The hand:** a deterministic renderer turns Gemma's primitive tags into Excalidraw elements, KaTeX equations, and browser speech.
-* **The learner memory:** a local profile tracks concepts seen, mastered, and struggled with, then visualizes the learner's path through a 3D latent space.
-
-This makes the app local-first by default. The core demo runs on `gemma4:e4b` locally through Ollama, with `nomic-embed-text` for learner embeddings. A cloud teacher path and fine-tuned model slot are present, but the submission is designed so a student can learn without sending their whiteboard or learning profile to a hosted API.
-
-![Demo 1](./assets/Demo1.gif)
-![Demo 2](./assets/Demo2.gif)
-You can check the [Full_demo.mp4](./assets/Full_demo.mp4) for the complete demo along with narration.
-
-## Why It Matters
-
-Education is still mostly built around text, lectures, and one-size-fits-all explanations. But many learners think visually. They draw triangles, forces, molecules, trees, circuits, and half-finished equations when they are stuck.
-
-Y treats the canvas as the interface. A learner does not need to translate confusion into a polished prompt. They can write naturally, mark the missing piece, and watch the system respond in the same medium: a whiteboard explanation with equations and diagrams appearing in sequence.
-
-The long-term vision is an AI learning companion that builds an abstract map of what each learner understands and uses that map to choose the right words, diagrams, pace, and next question. This hackathon build is the first working slice of that idea.
-
-## Core Features
-
-* **Whiteboard-native input:** students write or draw on Excalidraw, not a chat box.
-* **Gemma 4 multimodal reasoning:** the backend sends the canvas snapshot to a local Gemma model.
-* **Structured drawing protocol:** Gemma emits a small primitive language: `title`, `text`, `equation`, `box`, `node`, `arrow`, and `line`.
-* **Sequential playback:** the frontend draws each primitive in order and reveals text character by character.
-* **Math rendering:** equations are rendered with KaTeX and embedded back into Excalidraw.
-* **Text-to-speech narration:** the Web Speech API narrates while the board fills in.
-* **Robust parser and repair layer:** malformed tags, bare headers, JSON-ish vision output, and equation-like text are salvaged into drawable primitives.
-* **Learner profile:** each lesson updates a local JSON memory of concepts, mastery, struggle signals, summaries, and embeddings.
-* **Latent learner space:** the learner panel visualizes a 3D trajectory plus interpretable axes such as diagrammatic understanding, critical reasoning, creative transfer, algebraic fluency, and conceptual depth.
-* **Educator mode:** an optional second Gemma pass surfaces misconceptions, prerequisites, follow-up questions, and difficulty.
-
-## How It Works
+## System architecture
 
 ```mermaid
 flowchart LR
-    A[Student writes on Excalidraw<br/>and marks ?] --> B[Canvas exported as PNG]
-    B --> C[FastAPI /lesson]
-    C --> D[Gemma 4 via Ollama]
-    D --> E[Parser + validator + salvage]
-    E --> F[SSE primitive stream]
-    F --> G[LessonPlayer]
-    G --> H[Excalidraw drawing]
-    G --> I[KaTeX equations]
-    G --> J[Web Speech narration]
-    E --> K[Learner profile update]
-    K --> L[3D learner space]
+    A["Learner draws question or answer"] --> B["Canvas PNG"]
+    B --> C["GPT-5.6-sol or local Gemma 4"]
+    C --> D["Primitive parser + repair"]
+    D --> E["Excalidraw + KaTeX renderer"]
+    E --> F["Local Kokoro narration"]
+    C --> G["Personalized checkpoint"]
+    A -->|"Check my work"| H["GPT-5.6-terra evidence extraction"]
+    G --> H
+    H --> I["Validated LearningEvidence"]
+    I --> J["9.43M global learner adapter"]
+    J --> K["Per-user rank-4 LoRA fast weights"]
+    K -->|"probabilistic profile text"| C
 ```
 
-The key design choice is the primitive protocol. Instead of asking a small model to output arbitrary SVG perfectly, Y asks it to emit a compact sequence of whiteboard actions:
+The adapter is not attached to the drawing LLM. It supplies a short,
+deterministic profile such as likely-understood concepts, uncertain concepts,
+supported misconceptions, and recommended depth. Numeric mastery values are
+not revealed to the learner or teacher model.
 
-| Primitive | Purpose | Example |
-| --- | --- | --- |
-| `title` | lesson heading | `[title: "Newton's Second Law"]` |
-| `text` | narrated caption | `[text: "Solve for acceleration."]` |
-| `equation` | KaTeX-rendered math | `[equation: "a = F / m"]` |
-| `box` | labelled rectangle | `[box: id=A label="start"]` |
-| `node` | labelled circle | `[node: id=N label="A"]` |
-| `arrow` | relationship between ids | `[arrow: from=A to=B label="next"]` |
-| `line` | free vector or segment | `[line: x1=0 y1=0 x2=200 y2=0 label="v"]` |
+## Quick start
 
-The renderer owns layout and drawing. The model owns reasoning and pedagogy. This separation keeps the demo fast, cheap, and recoverable when the model drifts.
+Prerequisites: Python 3.11, Node 20+, [uv](https://docs.astral.sh/uv/), and
+optionally [Ollama](https://ollama.com/) for local mode.
 
-## Robustness
+```powershell
+Copy-Item .env.example .env
+Set-Location api
+uv sync
+Set-Location ..\web
+npm install --legacy-peer-deps
+```
 
-Small multimodal models are not perfectly obedient, so the backend is intentionally forgiving:
+Put `OPENAI_API_KEY` in `.env` for the submission path. With a key present,
+the UI selects GPT-5.6 by default and visibly labels that the canvas is sent to
+OpenAI. Raw learner ids are never sent; the backend uses a salted SHA-256
+`safety_identifier`.
 
-* `heading`, `h1`, `formula`, and `eq` are aliased to canonical primitives.
-* Unquoted positional arguments such as `[equation: F=ma]` are repaired.
-* Bare outputs like `[Title] Newton's Law` are converted into primitives.
-* `[text: "a = F / m"]` is auto-promoted to an `equation`.
-* If Gemma falls into OCR/JSON mode, `salvage.py` extracts the useful `text_content` and synthesizes a lesson from it.
+For the local fallback:
 
-The result is that prompt drift produces a rough lesson, not a blank board.
-
-## Local Quick Start
-
-Prerequisites: Python 3.11+, Node 20+, [Ollama](https://ollama.com/download), and [uv](https://github.com/astral-sh/uv).
-
-```cmd
-cd /d "C:\path\to\Y"
-copy .env.example .env
+```powershell
 ollama pull gemma4:e4b
 ollama pull nomic-embed-text
 ```
 
-Start the backend:
+Start the two processes:
 
-```cmd
-cd /d "C:\path\to\Y"
-cd api
-uv sync
-.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-```
+```powershell
+# terminal 1
+Set-Location api
+.\.venv\Scripts\python.exe -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
-Start the frontend in another terminal:
-
-```cmd
-cd /d "C:\path\to\Y\web"
-npm install --legacy-peer-deps
+# terminal 2
+Set-Location web
 npm run dev
 ```
 
-Open `http://localhost:3000/app`, insert a sample or write your own question, mark the unknown with `?`, and press **Solve**.
+Open `http://localhost:3000/app`.
 
-## Tests
+## Local Kokoro speech
 
-```cmd
-cd /d "C:\path\to\Y"
-api\.venv\Scripts\python.exe api\scripts\test_parser.py
-api\.venv\Scripts\python.exe api\scripts\test_salvage.py
-api\.venv\Scripts\python.exe api\scripts\smoke_lesson.py
+Speech is an optional dependency so the core app remains installable on hosts
+without a compatible Moonshine wheel:
+
+```powershell
+Set-Location api
+uv sync --extra speech
+.\.venv\Scripts\python.exe scripts\prefetch_speech.py
 ```
 
-`test_parser.py` covers the parser, validator, repair logic, SVG sanitizer hooks, and equation auto-promotion. `test_salvage.py` covers fallback extraction from JSON/OCR-style model outputs. `smoke_lesson.py` runs the full local `/lesson` pipeline against Ollama.
+The prefetch command downloads only English G2P, the Kokoro ONNX model, and
+`kokoro_af_heart` / `kokoro_am_michael`; it audits forbidden asset names and
+writes `api/speech_assets.lock.json` with exact hashes. Set
+`SPEECH_REQUIRE_LOCK=1` for a release. Stop aborts both an in-flight `/speech`
+request and active audio. Reveal progress is calculated from audio playback
+time and snapped to word boundaries.
 
-## Fine-Tuning Path
+Moonshine is pinned to `0.0.69`. The runtime/G2P is MIT licensed and the
+Kokoro weights are Apache-2.0. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)
+and [sbom.spdx.json](./sbom.spdx.json). No Piper, voice-cloning, eSpeak, or GPL
+phonemizer asset is shipped.
 
-The repo includes an Unsloth training notebook at [`training/unsloth-training.ipynb`](./training/unsloth-training.ipynb) and a dataset preparation script at [`training/prepare_dataset.py`](./training/prepare_dataset.py). This work explores the next phase: teaching Gemma to emit more SVG-like drawing actions directly from sketch datasets.
+## Demo flow
 
-Two LoRA artifacts were produced during development:
+1. Insert a math sample and press **Solve**. This is a help request: it records
+   weak history and never changes fast weights.
+2. Read the checkpoint card, write an answer on the canvas, and press
+   **Check my work**.
+3. Show an incorrect but legible answer. The concept belief should fall or
+   remain uncertain; the next explanation becomes more concrete.
+4. Answer independently and correctly. Mastery should rise, uncertainty should
+   narrow, and the next checkpoint should become a transfer question.
+5. Switch to a science question. Science remains uncertain instead of
+   inheriting math mastery.
+6. Switch the model picker to local Gemma to show the privacy fallback.
 
-* [`QuantumTransformer/y-gemma4-svg-lora`](https://huggingface.co/QuantumTransformer/y-gemma4-svg-lora)
-* [`QuantumTransformer/y-gemma4-svg-lora-enhanced`](https://huggingface.co/QuantumTransformer/y-gemma4-svg-lora-enhanced)
+## API contracts
 
-The hackathon demo uses the robust primitive renderer as the reliable path, while the LoRA represents the research direction toward a more SVG-native teacher.
+| Route | Purpose |
+| --- | --- |
+| `GET /health` | provider, adapter checkpoint/device, and speech readiness |
+| `POST /lesson` | PNG + user/conversation/model; streams primitives, learner state, checkpoint |
+| `POST /assess` | PNG + checkpoint; streams evidence, feedback, updated state, next checkpoint |
+| `GET /learner/{user_id}` | schema v2 profile, beliefs, trajectory, steps, rollbacks, legacy sessions |
+| `DELETE /learner/{user_id}` | reset v2 profile and per-user fast weights |
+| `GET /speech/voices` | two allowlisted Kokoro voices |
+| `POST /speech` | cached WAV synthesis, maximum 500 characters |
 
-## Repository Layout
+Learner data lives under `data/learners/<safe-user-id>/`. Profile JSON and
+safetensors fast weights are replaced atomically. Reset deletes the fast
+weights and writes an explicit empty v2 profile. A legacy
+`data/learners/<user>.json` is migrated into low-strength evidence and retained.
+
+## Training the global adapter
+
+The corpus uses item content from GSM8K (MIT) and OpenBookQA (Apache-2.0).
+GPT-5.6-terra labels concepts, difficulty, prerequisites, and two plausible
+misconceptions. Learner histories are then simulated with known mastery,
+difficulty, slip, guess, learning, and forgetting values; no real student data
+or manual latent-state annotation is required.
+
+```powershell
+# Offline format smoke test
+api\.venv\Scripts\python.exe training\build_learner_corpus.py `
+  --offline-smoke --learners 12 --turns 8
+
+# Real corpus (requires datasets + OPENAI_API_KEY)
+Set-Location api; uv sync --extra training; Set-Location ..
+api\.venv\Scripts\python.exe training\build_learner_corpus.py `
+  --learners 4000 --turns 48 --labeler openai
+
+# Global adapter training
+api\.venv\Scripts\python.exe training\train_learner_adapter.py `
+  --epochs 30 --batch-size 64
+```
+
+The split is by learner, with a complete held-out concept cluster and science
+domain slice. Training uses mixed precision on CUDA, sequences up to 64,
+gradient clipping, early stopping on validation prequential log loss, and
+checkpoint/config/data-manifest hashes. Release training and evaluation use
+frozen `nomic-ai/nomic-embed-text-v1.5` embeddings; `--embedder hash` exists
+only for an offline pipeline smoke test.
+
+Modal is the recommended training path:
+
+```powershell
+modal secret create y-openai OPENAI_API_KEY=sk-...
+modal run deploy/modal_train_learner.py --learners 4000 --turns 48
+```
+
+Copy the resulting `learner-adapter-v1.safetensors` and config from the Modal
+volume into `models/`. Until a trained checkpoint is present, `/health` reports
+`trained_checkpoint: false`; the seeded adapter remains useful for integration
+testing but is not the research checkpoint.
+
+## Evaluation
+
+```powershell
+api\.venv\Scripts\python.exe training\evaluate_learner.py `
+  --checkpoint models\learner-adapter-v1.safetensors `
+  --max-learners 500 --output training\evaluation.json
+```
+
+The harness compares the legacy heuristic, Bayesian Knowledge Tracing,
+hash-query DKT/LSTM, frozen adapter, deterministic/no-uncertainty adapter, and
+full Level-2 adapter. It reports next-response AUROC, log loss, Brier score,
+10-bin calibration error, hidden-state Spearman correlation, adaptation gain,
+cold-start loss, held-out concept/domain performance, and rollback rate.
+
+The shipping gate is explicit: the trained full adapter must beat its frozen
+ablation on held-out prequential log loss and visibly change the controlled
+three-turn lesson. A smoke checkpoint is not evidence for that claim.
+
+## Verification
+
+```powershell
+Set-Location api
+.\.venv\Scripts\python.exe -m pytest -q tests scripts/test_teacher.py
+.\.venv\Scripts\python.exe scripts\test_parser.py
+.\.venv\Scripts\python.exe scripts\test_salvage.py
+.\.venv\Scripts\python.exe scripts\benchmark_adapter.py
+
+Set-Location ..\web
+npm run lint
+npx tsc --noEmit
+```
+
+The tests cover evidence normalization, latent shapes/uncertainty, guarded
+updates, rollback, persistence, migration/reset, SSE ordering, learner API
+shape, speech allowlisting, WAV caching, and malformed teacher JSON.
+
+## Repository map
 
 ```text
-Y/
-├── api/                      FastAPI, Gemma/Ollama teacher, parser, learner memory
-│   ├── main.py               /health, /schema, /lesson, /learner
-│   ├── teacher.py            local Ollama + optional cloud teacher
-│   ├── parser.py             incremental primitive parser
-│   ├── validator.py          repair, aliases, equation promotion, SVG safety hooks
-│   ├── salvage.py            fallback from OCR/JSON/plain text to primitives
-│   └── prompts/              compact 7-primitive prompt and few-shot examples
-├── web/                      Next.js, Excalidraw, KaTeX, TTS, learner panel
-├── schema/primitives.json    primitive schema used by parser and renderer
-├── training/                 dataset preparation and Unsloth notebook
-├── models/                   Ollama Modelfile for the fine-tuned slot
-├── docs/                     architecture, Kaggle writeup, submission notes
-└── assets/                   local demo videos
+api/learner_adapter.py        9.43M global model + functional rank-4 LoRA
+api/learner.py                evidence validation, state, adaptation, persistence
+api/teacher.py                GPT-5.6 Responses API + Gemma providers
+api/speech.py                 Moonshine/Kokoro service, cache, asset audit
+api/main.py                   lesson, assess, learner, speech, health contracts
+web/src/app/app/page.tsx      whiteboard lesson/assessment orchestration
+training/                     corpus, global training, prequential evaluation
+deploy/modal_train_learner.py Modal A10G training job
+docs/architecture.md          detailed data and event flow
+docs/codex-decision-log.md    implementation choices and Codex contribution
 ```
 
-## Limitations
+## Privacy and scope
 
-Y is a prototype. It can misread handwriting, solve incorrectly, or produce a rough layout. The default model is small enough to run locally, so the system trades maximum reasoning quality for privacy, cost, and latency. The current primitive protocol is strong for equations, flowcharts, graph-like diagrams, and simple whiteboard explanations; richer chemistry/anatomy/freeform SVG drawing is the next research step.
+Cloud mode sends the current canvas to OpenAI and is clearly labeled. Local
+Gemma mode keeps canvas interpretation local. Learner profiles and LoRA weights
+stay on the backend filesystem in both modes. Evidence is concept-specific and
+probabilistic; the system does not infer personality, intelligence, or fixed
+ability axes.
 
-## Ethics
-
-Y is designed around local inference and local memory. Learner profiles are JSON files on disk. The cloud path is optional. For a tool aimed at children, privacy and cost control are not nice-to-haves; they are core product requirements.
+Y is an educational prototype, not an authoritative grader. Handwriting and
+model judgments can be wrong, which is why uncertain evidence is retained as
+history but cannot adapt fast weights.

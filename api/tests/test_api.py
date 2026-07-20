@@ -119,3 +119,83 @@ def test_assess_rejects_unknown_checkpoint(monkeypatch) -> None:
             data={"user_id": "missing", "conversation_id": "c", "checkpoint_id": "not-there"},
         )
     assert response.status_code == 404
+
+
+def test_assess_rejects_checkpoint_from_another_conversation(tmp_path, monkeypatch) -> None:
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=AdapterConfig(
+            embedding_dim=32, numeric_dim=8, model_dim=32, latent_dim=16,
+            ff_dim=64, heads=4, layers=4, max_events=16, lora_rank=2,
+        ),
+    )
+    checkpoint = store.save_checkpoint(
+        "test-user",
+        {
+            "conversation_id": "original-conversation",
+            "question": "Show how to add one half and one third.",
+            "concepts": ["fraction addition"],
+        },
+    )
+    monkeypatch.setattr(main, "get_teacher", lambda choice="edge": FakeTeacher())
+    monkeypatch.setattr(main, "_learner_store", store)
+
+    with TestClient(main.app) as client:
+        response = client.post(
+            "/assess",
+            files={"image": ("answer.png", b"png", "image/png")},
+            data={
+                "user_id": "test-user",
+                "conversation_id": "different-conversation",
+                "checkpoint_id": checkpoint["checkpoint_id"],
+            },
+        )
+
+    assert response.status_code == 409
+    assert store.get("test-user").evidence == []
+
+
+def test_safety_identifier_is_stable_salted_and_private(monkeypatch) -> None:
+    raw_user_id = "student@example.edu"
+    monkeypatch.setenv("SAFETY_ID_SALT", "first-secret")
+    first = main._safety_identifier(raw_user_id)
+    repeated = main._safety_identifier(raw_user_id)
+    other_user = main._safety_identifier("other@example.edu")
+    monkeypatch.setenv("SAFETY_ID_SALT", "second-secret")
+    resalted = main._safety_identifier(raw_user_id)
+
+    assert first == repeated
+    assert first.startswith("y_") and len(first) == 26
+    assert raw_user_id not in first
+    assert len({first, other_user, resalted}) == 3
+
+
+def test_reset_endpoint_removes_profile_checkpoint_and_fast_weights(tmp_path, monkeypatch) -> None:
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=AdapterConfig(
+            embedding_dim=32, numeric_dim=8, model_dim=32, latent_dim=16,
+            ff_dim=64, heads=4, layers=4, max_events=16, lora_rank=2,
+        ),
+    )
+    store.save_checkpoint(
+        "test-user",
+        {"conversation_id": "c", "question": "Q", "concepts": ["fractions"]},
+    )
+    store._save_fast("test-user", store._load_fast("test-user"))
+    fast_path = store._fast_path("test-user")
+    assert fast_path.exists()
+    monkeypatch.setattr(main, "get_teacher", lambda choice="edge": FakeTeacher())
+    monkeypatch.setattr(main, "_learner_store", store)
+
+    with TestClient(main.app) as client:
+        response = client.delete("/learner/test-user")
+        profile = client.get("/learner/test-user").json()
+
+    assert response.status_code == 200
+    assert profile["evidence"] == []
+    assert profile["checkpoints"] == []
+    assert profile["online_step_count"] == 0
+    assert not fast_path.exists()

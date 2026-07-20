@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import wave
 from io import BytesIO
 
@@ -43,3 +44,27 @@ def test_speech_rejects_unapproved_voice_and_long_text(tmp_path) -> None:
         engine.synthesize_sync("hello", voice="piper_voice")
     with pytest.raises(SpeechError, match="500"):
         engine.synthesize_sync("x" * 501)
+
+
+def test_speech_asset_audit_rejects_forbidden_and_modified_files(tmp_path) -> None:
+    engine = MoonshineSpeechEngine()
+    engine.asset_root = tmp_path / "assets"
+    engine.asset_root.mkdir()
+    engine.lock_path = tmp_path / "speech_assets.lock.json"
+
+    forbidden = engine.asset_root / "piper_voice.onnx"
+    forbidden.write_bytes(b"forbidden")
+    with pytest.raises(SpeechError, match="forbidden speech assets"):
+        engine.audit_assets()
+
+    forbidden.unlink()
+    allowed = engine.asset_root / "kokoro_model.onnx"
+    allowed.write_bytes(b"known-model")
+    engine.write_asset_lock()
+    lock = json.loads(engine.lock_path.read_text(encoding="utf-8"))
+    assert lock["files"]["kokoro_model.onnx"]
+    assert engine.audit_assets(require_lock=True)["locked"] is True
+
+    allowed.write_bytes(b"tampered-model")
+    with pytest.raises(SpeechError, match="asset lock mismatch"):
+        engine.audit_assets(require_lock=True)

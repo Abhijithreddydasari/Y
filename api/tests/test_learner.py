@@ -62,6 +62,21 @@ def test_probability_normalisation_and_evidence_gate() -> None:
     assert evidence.adapts_fast_weights
 
 
+def test_help_request_never_updates_fast_weights() -> None:
+    evidence = normalise_evidence(
+        {
+            "concepts": ["vector decomposition"],
+            "outcome": {"correct": 1, "partial": 0, "incorrect": 0},
+            "independence": 1,
+            "evidence_strength": 0.99,
+        },
+        user_id="u",
+        conversation_id="c",
+        source="help_request",
+    )
+    assert evidence.adapts_fast_weights is False
+
+
 def test_variational_shapes_and_uncertainty() -> None:
     cfg = tiny_config()
     model = LearnerAdapterModel(cfg)
@@ -133,6 +148,52 @@ def test_rollback_restores_fast_weights(tmp_path: Path) -> None:
     result = store.adapt_fast_weights(profile)
     assert result["rolled_back"] is True
     assert profile.adapter["rollback_count"] == 1
+
+
+def test_state_snapshot_sampling_is_deterministic(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+    profile = store.get("learner-a")
+    profile.evidence.append(ready_evidence(cfg).to_dict())
+
+    first = store.state_snapshot(profile)
+    second = store.state_snapshot(profile)
+
+    assert first["concept_beliefs"] == second["concept_beliefs"]
+    assert first["profile_text"] == second["profile_text"]
+    assert first["latent_trajectory"][-1]["x"] == pytest.approx(
+        second["latent_trajectory"][-1]["x"]
+    )
+    assert first["latent_trajectory"][-1]["y"] == pytest.approx(
+        second["latent_trajectory"][-1]["y"]
+    )
+    assert first["latent_trajectory"][-1]["z"] == pytest.approx(
+        second["latent_trajectory"][-1]["z"]
+    )
+
+
+def test_corrupt_fast_weights_fall_back_to_fresh_weights(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+    path = store._fast_path("learner-a")
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"not-a-safetensors-checkpoint")
+
+    recovered = store._load_fast("learner-a")
+    expected = store._model.init_fast_weights(device=store._device)
+
+    assert recovered.keys() == expected.keys()
+    for key in expected:
+        torch.testing.assert_close(recovered[key], expected[key])
+        assert torch.isfinite(recovered[key]).all()
 
 
 def test_legacy_migration_preserves_source(tmp_path: Path) -> None:

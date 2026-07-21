@@ -88,7 +88,16 @@ def collate(rows: list[dict], cfg: AdapterConfig, embedder: FrozenEmbedder) -> t
 def loss_for(model: LearnerAdapterModel, batch: tuple[torch.Tensor, ...], device: torch.device) -> torch.Tensor:
     events, features, lengths, concepts, targets, weights = (value.to(device) for value in batch)
     prediction, _, mu, logvar = model(events, features, concepts, lengths=lengths, samples=1)
-    bce = F.binary_cross_entropy(prediction.squeeze(1).clamp(1e-5, 1 - 1e-5), targets, reduction="none")
+    # The decoder intentionally returns calibrated probabilities rather than
+    # logits. Probability-form BCE is unsafe in CUDA autocast, so keep the
+    # expensive model forward mixed-precision and evaluate this small loss
+    # boundary in float32.
+    with torch.autocast(device_type=device.type, enabled=False):
+        bce = F.binary_cross_entropy(
+            prediction.float().squeeze(1).clamp(1e-5, 1 - 1e-5),
+            targets.float(),
+            reduction="none",
+        )
     fit = (bce * weights).sum() / weights.sum().clamp_min(1e-6)
     kl = -0.5 * torch.mean(1 + logvar - mu.square() - logvar.exp())
     return fit + 1e-4 * kl

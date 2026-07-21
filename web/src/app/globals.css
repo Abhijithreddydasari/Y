@@ -20,6 +20,38 @@ body {
   font-family: var(--font-app-sans);
 }
 
+@keyframes constellation-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.12); opacity: .82; }
+}
+
+@keyframes constellation-flow {
+  from { stroke-dashoffset: 16; }
+  to { stroke-dashoffset: 0; }
+}
+
+.constellation-node {
+  transition: transform 360ms ease, opacity 240ms ease;
+  transform-box: fill-box;
+}
+.constellation-node:hover,
+.constellation-node:focus-visible {
+  transform: scale(1.08);
+}
+.constellation-node-active {
+  animation: constellation-pulse 850ms ease-in-out 2;
+}
+.constellation-edge-active {
+  stroke-dasharray: 6 4;
+  animation: constellation-flow 700ms linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .constellation-node-active,
+  .constellation-edge-active {
+    animation: none;
+  }
+}
+
 /* Landing page helpers ported from the original HTML mockup. Scoped to the
  * landing components by class so the whiteboard app is unaffected. */
 

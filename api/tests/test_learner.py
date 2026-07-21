@@ -105,6 +105,7 @@ def test_guarded_update_save_load_and_reset(tmp_path: Path) -> None:
     assert not (tmp_path / "learner-a" / "fast_weights.safetensors").exists()
 
     strong = ready_evidence(cfg)
+    store._trained_checkpoint = True
     state, update = asyncio.run(store.record_evidence(strong, allow_adaptation=True))
     assert update["adapted"] is True
     assert state["concept_beliefs"][0]["evidence_count"] == 2
@@ -132,6 +133,7 @@ def test_rollback_restores_fast_weights(tmp_path: Path) -> None:
         adapter_checkpoint=tmp_path / "missing.safetensors",
         adapter_config=cfg,
     )
+    store._trained_checkpoint = True
     profile = store.get("learner-a")
     evidence = ready_evidence(cfg)
     profile.evidence.append(evidence.to_dict())
@@ -150,7 +152,9 @@ def test_rollback_restores_fast_weights(tmp_path: Path) -> None:
     assert profile.adapter["rollback_count"] == 1
 
 
-def test_state_snapshot_sampling_is_deterministic(tmp_path: Path) -> None:
+def test_untrained_state_snapshot_is_deterministic_without_neural_forward(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     cfg = tiny_config()
     store = LearnerStore(
         root=tmp_path,
@@ -159,6 +163,11 @@ def test_state_snapshot_sampling_is_deterministic(tmp_path: Path) -> None:
     )
     profile = store.get("learner-a")
     profile.evidence.append(ready_evidence(cfg).to_dict())
+
+    def fail_neural_forward(*args, **kwargs):
+        raise AssertionError("untrained Bayesian state must not run the neural encoder")
+
+    monkeypatch.setattr(store._model, "encode", fail_neural_forward)
 
     first = store.state_snapshot(profile)
     second = store.state_snapshot(profile)
@@ -216,3 +225,112 @@ def test_legacy_migration_preserves_source(tmp_path: Path) -> None:
     store.reset("legacy-user")
     assert legacy.exists()
     assert store.get("legacy-user").evidence == []
+
+
+def test_untrained_checkpoint_gate_is_honest_and_revision_is_monotonic(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+    first, adaptation = asyncio.run(
+        store.record_evidence(ready_evidence(cfg), allow_adaptation=True)
+    )
+    second, _ = asyncio.run(
+        store.record_evidence(ready_evidence(cfg, strength=0.4), allow_adaptation=True)
+    )
+
+    assert first["revision"] == 1
+    assert second["revision"] == 2
+    assert adaptation["adapted"] is False
+    assert adaptation["representation"]["reason"] == "untrained-base"
+    assert adaptation["mastery"]["reason"] == "untrained-base"
+    assert first["adapter"]["trained_checkpoint"] is False
+    assert not store._fast_path("learner-a").exists()
+
+
+def test_representation_step_leaves_decoder_fast_weights_unchanged(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+    store._trained_checkpoint = True
+    evidence = ready_evidence(cfg)
+    evidence.source = "help_request"
+    evidence.evidence_strength = 0.2
+    before = {
+        key: value.detach().clone()
+        for key, value in store._load_fast("learner-a").items()
+    }
+
+    state, adaptation = asyncio.run(
+        store.record_evidence(evidence, allow_adaptation=False)
+    )
+    after = store._load_fast("learner-a")
+
+    assert adaptation["representation"]["adapted"] is True
+    assert adaptation["mastery"]["adapted"] is False
+    assert state["adapter"]["representation_steps"] == 1
+    for key in ("decoder1.A", "decoder1.B"):
+        torch.testing.assert_close(after[key], before[key])
+    assert any(
+        not torch.equal(after[key], before[key])
+        for key in after if key.startswith("blocks.")
+    )
+
+
+def test_concept_relations_and_live_evidence_counters(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+    evidence = ready_evidence(cfg)
+    evidence.source = "help_request"
+    evidence.evidence_strength = 0.2
+    evidence.concepts.append(type(evidence.concepts[0])(
+        name="common-denominators",
+        description="",
+        confidence=0.9,
+        embedding=[0.1] * cfg.embedding_dim,
+    ))
+    state, _ = asyncio.run(store.record_evidence(evidence, allow_adaptation=False))
+
+    assert state["concept_relations"][0]["kind"] in {"co-occurrence", "mixed"}
+    assert {item["name"] for item in state["concept_beliefs"]} == {
+        "fraction-addition", "common-denominators",
+    }
+    assert all(item["help_evidence_count"] == 1 for item in state["concept_beliefs"])
+    assert all(item["strong_evidence_count"] == 0 for item in state["concept_beliefs"])
+
+
+def test_cached_pre_stabilization_state_is_rebuilt_from_evidence(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    user_dir = tmp_path / "learner-a"
+    user_dir.mkdir()
+    evidence = ready_evidence(cfg)
+    (user_dir / "profile.json").write_text(json.dumps({
+        "schema_version": 2,
+        "state_revision": 4,
+        "evidence": [evidence.to_dict()],
+        "last_state": {
+            "schema_version": 2,
+            "concept_beliefs": [{"name": "fraction-addition", "evidence_count": 1}],
+        },
+    }), encoding="utf-8")
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+
+    profile = store.get("learner-a")
+    assert profile.last_state == {}
+    rebuilt = store.state_snapshot(profile)
+    assert rebuilt["revision"] == 4
+    assert rebuilt["concept_beliefs"][0]["help_evidence_count"] == 0
+    assert "concept_relations" in rebuilt

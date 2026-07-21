@@ -59,7 +59,18 @@ export interface LearningEvidence {
     reason?: string;
     steps?: number;
     rolled_back?: boolean;
+    representation?: AdaptationOutcome;
+    mastery?: AdaptationOutcome;
   };
+}
+
+export interface AdaptationOutcome {
+  adapted: boolean;
+  reason?: string;
+  steps?: number;
+  rolled_back?: boolean;
+  before_loss?: number;
+  after_loss?: number;
 }
 
 export interface ConceptBelief {
@@ -69,8 +80,29 @@ export interface ConceptBelief {
   credible_low: number;
   credible_high: number;
   evidence_count: number;
+  help_evidence_count: number;
+  strong_evidence_count: number;
+  last_evidence_at: string;
+  mastery_delta: number;
+  uncertainty_delta: number;
   trend: number;
   misconception?: string;
+}
+
+export interface ConceptRelation {
+  source: string;
+  target: string;
+  strength: number;
+  kind: "semantic" | "co-occurrence" | "mixed" | string;
+}
+
+export interface LearnerActivity {
+  evidence_id?: string;
+  source?: LearningEvidence["source"];
+  timestamp?: string;
+  concepts?: string[];
+  representation_adapted?: boolean;
+  mastery_adapted?: boolean;
 }
 
 export interface LatentPoint {
@@ -83,17 +115,22 @@ export interface LatentPoint {
 
 export interface LearnerState {
   schema_version: number;
+  revision: number;
   updated_at: string;
   observations: number;
   concept_beliefs: ConceptBelief[];
   latent_point: LatentPoint;
   latent_trajectory: LatentPoint[];
+  concept_relations: ConceptRelation[];
+  last_activity: LearnerActivity;
   profile_text: string;
   adapter: {
     base_version: string;
     parameter_count?: number;
     online_steps: number;
     rollback_count: number;
+    representation_steps: number;
+    representation_rollbacks: number;
     trained_checkpoint?: boolean;
   };
 }

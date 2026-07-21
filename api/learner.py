@@ -240,15 +240,19 @@ class SessionRecord:
 class LearnerProfile:
     user_id: str
     schema_version: int = SCHEMA_VERSION
+    state_revision: int = 0
     sessions: list[dict] = field(default_factory=list)
     evidence: list[dict] = field(default_factory=list)
     latent_trajectory: list[dict] = field(default_factory=list)
     checkpoints: list[dict] = field(default_factory=list)
     last_state: dict = field(default_factory=dict)
+    last_activity: dict = field(default_factory=dict)
     adapter: dict = field(default_factory=lambda: {
         "base_version": AdapterConfig().version,
         "online_steps": 0,
         "rollback_count": 0,
+        "representation_steps": 0,
+        "representation_rollbacks": 0,
         "trained_checkpoint": False,
     })
 
@@ -409,11 +413,13 @@ class LearnerStore:
                 profile = LearnerProfile(
                     user_id=user_id,
                     schema_version=int(raw.get("schema_version", SCHEMA_VERSION)),
+                    state_revision=int(raw.get("state_revision", 0)),
                     sessions=list(raw.get("sessions") or []),
                     evidence=list(raw.get("evidence") or []),
                     latent_trajectory=list(raw.get("latent_trajectory") or []),
                     checkpoints=list(raw.get("checkpoints") or []),
                     last_state=dict(raw.get("last_state") or {}),
+                    last_activity=dict(raw.get("last_activity") or {}),
                     adapter=dict(raw.get("adapter") or {}),
                 )
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
@@ -424,7 +430,24 @@ class LearnerStore:
         profile.adapter.setdefault("base_version", self._model.cfg.version)
         profile.adapter.setdefault("online_steps", 0)
         profile.adapter.setdefault("rollback_count", 0)
+        profile.adapter.setdefault("representation_steps", 0)
+        profile.adapter.setdefault("representation_rollbacks", 0)
         profile.adapter["trained_checkpoint"] = self._trained_checkpoint
+        # v2 profiles written before the stabilization schema may contain a
+        # valid evidence log but a cached snapshot without revision/graph
+        # metadata. Discard only that derived cache; state_snapshot rebuilds
+        # it deterministically from the original evidence.
+        if profile.last_state and (
+            "revision" not in profile.last_state
+            or "concept_relations" not in profile.last_state
+            or "last_activity" not in profile.last_state
+            or any(
+                "help_evidence_count" not in belief
+                for belief in profile.last_state.get("concept_beliefs", [])
+                if isinstance(belief, dict)
+            )
+        ):
+            profile.last_state = {}
         self._cache[user_id] = profile
         return profile
 
@@ -667,11 +690,181 @@ class LearnerStore:
             )
         return weighted
 
+    @staticmethod
+    def _representation_fast(fast: dict[str, Tensor]) -> dict[str, Tensor]:
+        return {key: value for key, value in fast.items() if key.startswith("blocks.")}
+
+    def _representation_batch(
+        self,
+        events: list[LearningEvidence],
+        *,
+        seed: int,
+    ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
+        """Build deterministic clean/noisy sequence views for consistency TTA."""
+        if not events:
+            raise ValueError("representation adaptation requires at least one event")
+        endpoints = list(range(max(1, len(events) - 7), len(events) + 1))
+        histories = [events[max(0, end - self._model.cfg.max_events):end] for end in endpoints]
+        max_time = max(len(history) for history in histories)
+        batch = len(histories)
+        clean = torch.zeros(
+            batch, max_time, self._model.cfg.embedding_dim, device=self._device
+        )
+        numeric = torch.zeros(
+            batch, max_time, self._model.cfg.numeric_dim, device=self._device
+        )
+        lengths = torch.zeros(batch, dtype=torch.long, device=self._device)
+        for row, history in enumerate(histories):
+            clean[row, :len(history)] = torch.tensor(
+                [item.event_embedding for item in history],
+                dtype=torch.float32,
+                device=self._device,
+            )
+            numeric[row, :len(history)] = torch.tensor(
+                [item.numeric_features() for item in history],
+                dtype=torch.float32,
+                device=self._device,
+            )
+            lengths[row] = len(history)
+
+        generator = torch.Generator(device=self._device)
+        generator.manual_seed(seed)
+
+        def noisy_view() -> Tensor:
+            keep = (
+                torch.rand(clean.shape, generator=generator, device=self._device) > 0.08
+            ).to(clean.dtype)
+            noise = torch.randn(
+                clean.shape, generator=generator, device=self._device
+            ) * 0.01
+            return clean * keep + noise
+
+        return clean, noisy_view(), noisy_view(), numeric, lengths
+
+    def _representation_consistency_loss(
+        self,
+        batch: tuple[Tensor, Tensor, Tensor, Tensor, Tensor],
+        fast: dict[str, Tensor],
+        target_mu: Tensor,
+        target_logvar: Tensor,
+        *,
+        anchor: float,
+    ) -> Tensor:
+        _, view_a, view_b, numeric, lengths = batch
+        mu_a, logvar_a = self._model.encode(
+            view_a, numeric, lengths=lengths, fast=fast
+        )
+        mu_b, logvar_b = self._model.encode(
+            view_b, numeric, lengths=lengths, fast=fast
+        )
+        cosine = (
+            2.0
+            - F.cosine_similarity(mu_a, target_mu, dim=-1).mean()
+            - F.cosine_similarity(mu_b, target_mu, dim=-1).mean()
+        )
+        posterior = 0.05 * (
+            F.mse_loss(logvar_a, target_logvar)
+            + F.mse_loss(logvar_b, target_logvar)
+        )
+        loss = cosine + posterior
+        if anchor:
+            representation = self._representation_fast(fast)
+            loss = loss + anchor * sum(
+                tensor.square().mean() for tensor in representation.values()
+            )
+        return loss
+
+    def adapt_representation(self, profile: LearnerProfile) -> dict:
+        """One guarded self-supervised LoRA step for every new interaction."""
+        if not self._trained_checkpoint:
+            return {
+                "adapted": False, "reason": "untrained-base", "steps": 0,
+                "rolled_back": False,
+            }
+        events = self._events(profile)
+        if not events:
+            return {
+                "adapted": False, "reason": "no-events", "steps": 0,
+                "rolled_back": False,
+            }
+        seed_text = profile.user_id + "|" + events[-1].evidence_id
+        seed = int(hashlib.sha256(seed_text.encode()).hexdigest()[:8], 16)
+        batch = self._representation_batch(events, seed=seed)
+        clean, _, _, numeric, lengths = batch
+        fast = self._load_fast(profile.user_id)
+        representation = self._representation_fast(fast)
+        before_state = {
+            key: value.detach().clone().requires_grad_(True)
+            for key, value in representation.items()
+        }
+        with torch.no_grad():
+            target_mu, target_logvar = self._model.encode(
+                clean, numeric, lengths=lengths, fast=fast
+            )
+            target_mu = target_mu.detach()
+            target_logvar = target_logvar.detach()
+            before_loss = float(
+                self._representation_consistency_loss(
+                    batch, fast, target_mu, target_logvar, anchor=0.0
+                ).item()
+            )
+
+        optimiser = torch.optim.AdamW(
+            list(representation.values()), lr=2e-4, weight_decay=0.0
+        )
+        optimiser.zero_grad(set_to_none=True)
+        loss = self._representation_consistency_loss(
+            batch, fast, target_mu, target_logvar, anchor=1e-4
+        )
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(list(representation.values()), max_norm=0.5)
+        optimiser.step()
+
+        with torch.no_grad():
+            after_loss = float(
+                self._representation_consistency_loss(
+                    batch, fast, target_mu, target_logvar, anchor=0.0
+                ).item()
+            )
+        if not math.isfinite(after_loss) or after_loss > before_loss * 1.05:
+            for key, value in before_state.items():
+                fast[key] = value
+            profile.adapter["representation_rollbacks"] = int(
+                profile.adapter.get("representation_rollbacks", 0)
+            ) + 1
+            return {
+                "adapted": False,
+                "rolled_back": True,
+                "steps": 0,
+                "before_loss": before_loss,
+                "after_loss": after_loss,
+            }
+
+        profile.adapter["representation_steps"] = int(
+            profile.adapter.get("representation_steps", 0)
+        ) + 1
+        self._save_fast(profile.user_id, fast)
+        return {
+            "adapted": True,
+            "rolled_back": False,
+            "steps": 1,
+            "before_loss": before_loss,
+            "after_loss": after_loss,
+        }
+
     def adapt_fast_weights(self, profile: LearnerProfile) -> dict:
+        if not self._trained_checkpoint:
+            return {
+                "adapted": False, "reason": "untrained-base", "steps": 0,
+                "rolled_back": False,
+            }
         events = self._events(profile)
         strong = [i for i, event in enumerate(events) if event.adapts_fast_weights]
         if not strong:
-            return {"adapted": False, "reason": "no-strong-evidence"}
+            return {
+                "adapted": False, "reason": "no-strong-evidence", "steps": 0,
+                "rolled_back": False,
+            }
         recent = strong[-8:]
         replay_pool = strong[:-8]
         # Deterministic replay makes tests and paper runs reproducible.
@@ -729,20 +922,107 @@ class LearnerStore:
                 )
         return [name for name, _ in sorted(score.items(), key=lambda item: -item[1])[:12]]
 
+    @staticmethod
+    def _concept_relations(
+        events: list[LearningEvidence],
+        names: list[str],
+        vectors: dict[str, list[float]],
+    ) -> list[dict]:
+        cooccurrence: dict[tuple[str, str], int] = {}
+        allowed = set(names)
+        for event in events:
+            present = sorted({c.name for c in event.concepts if c.name in allowed})
+            for left_index, left in enumerate(present):
+                for right in present[left_index + 1:]:
+                    cooccurrence[(left, right)] = cooccurrence.get((left, right), 0) + 1
+
+        candidates: list[dict] = []
+        for left_index, left in enumerate(names):
+            left_vector = vectors.get(left) or []
+            for right in names[left_index + 1:]:
+                right_vector = vectors.get(right) or []
+                semantic = 0.0
+                if left_vector and len(left_vector) == len(right_vector):
+                    semantic = max(
+                        0.0,
+                        sum(a * b for a, b in zip(left_vector, right_vector)),
+                    )
+                pair = tuple(sorted((left, right)))
+                together = cooccurrence.get(pair, 0)
+                co_strength = min(1.0, together / 3.0)
+                strength = min(1.0, max(semantic, co_strength))
+                if strength < 0.12 and together == 0:
+                    continue
+                kind = "mixed" if semantic >= 0.12 and together else (
+                    "co-occurrence" if together else "semantic"
+                )
+                candidates.append({
+                    "source": left,
+                    "target": right,
+                    "strength": round(strength, 4),
+                    "kind": kind,
+                })
+
+        candidates.sort(key=lambda item: item["strength"], reverse=True)
+        degree = {name: 0 for name in names}
+        selected: list[dict] = []
+        for relation in candidates:
+            source, target = relation["source"], relation["target"]
+            if degree[source] >= 3 or degree[target] >= 3:
+                continue
+            selected.append(relation)
+            degree[source] += 1
+            degree[target] += 1
+            if len(selected) >= 18:
+                break
+        return selected
+
+    @staticmethod
+    def _bayesian_latent_point(events: list[LearningEvidence]) -> list[float]:
+        """Project frozen event embeddings without evaluating an untrained net."""
+        totals = [0.0, 0.0, 0.0]
+        total_weight = 0.0
+        recent = events[-64:]
+        for index, event in enumerate(recent):
+            vector = event.event_embedding
+            if not vector:
+                continue
+            recency = 0.5 + 0.5 * ((index + 1) / len(recent))
+            weight = max(0.05, event.evidence_strength) * recency
+            total_weight += weight
+            for axis in range(3):
+                projection = sum(vector[axis::3]) / math.sqrt(
+                    max(1, len(vector[axis::3]))
+                )
+                totals[axis] += weight * projection
+        if not total_weight:
+            return [0.0, 0.0, 0.0]
+        return [round(math.tanh(value / total_weight), 5) for value in totals]
+
     def state_snapshot(self, profile: LearnerProfile) -> dict:
         events = self._events(profile)
         concept_names = self._concept_names(events)
-        fast = self._load_fast(profile.user_id)
-        event_tensor, numeric, lengths = self._event_tensors(events)
-        with torch.no_grad():
-            mu, logvar = self._model.encode(
-                event_tensor,
-                numeric,
-                lengths=lengths,
-                fast=fast,
-            )
+        previous_beliefs = {
+            belief.get("name"): belief
+            for belief in profile.last_state.get("concept_beliefs", [])
+            if isinstance(belief, dict) and belief.get("name")
+        }
+        fast: dict[str, Tensor] | None = None
+        mu: Tensor | None = None
+        logvar: Tensor | None = None
+        if self._trained_checkpoint:
+            fast = self._load_fast(profile.user_id)
+            event_tensor, numeric, lengths = self._event_tensors(events)
+            with torch.no_grad():
+                mu, logvar = self._model.encode(
+                    event_tensor,
+                    numeric,
+                    lengths=lengths,
+                    fast=fast,
+                )
 
         beliefs: list[dict] = []
+        concept_vector_map: dict[str, list[float]] = {}
         if concept_names:
             concept_vectors: list[list[float]] = []
             for name in concept_names:
@@ -753,35 +1033,45 @@ class LearnerStore:
                         vector = found.embedding
                         break
                 concept_vectors.append(vector or _hash_embedding(f"search_query: {name}"))
+                concept_vector_map[name] = concept_vectors[-1]
             queries = torch.tensor(
                 [concept_vectors], dtype=torch.float32, device=self._device
             )
-            seed_text = profile.user_id + "|" + "|".join(
-                event.evidence_id for event in events[-16:]
-            )
-            sample_seed = int(hashlib.sha256(seed_text.encode()).hexdigest()[:8], 16)
-            cuda_devices = [self._device.index or 0] if self._device.type == "cuda" else []
-            with torch.no_grad(), torch.random.fork_rng(devices=cuda_devices):
-                torch.manual_seed(sample_seed)
-                neural_mean, neural_std = self._model.query(
-                    mu,
-                    logvar,
-                    queries,
-                    fast=fast,
-                    samples=16,
+            neural_mean: Tensor | None = None
+            neural_std: Tensor | None = None
+            if self._trained_checkpoint and mu is not None and logvar is not None:
+                seed_text = profile.user_id + "|" + "|".join(
+                    event.evidence_id for event in events[-16:]
                 )
-            neural_weight = 0.5 if self._trained_checkpoint else 0.15
+                sample_seed = int(hashlib.sha256(seed_text.encode()).hexdigest()[:8], 16)
+                cuda_devices = [self._device.index or 0] if self._device.type == "cuda" else []
+                with torch.no_grad(), torch.random.fork_rng(devices=cuda_devices):
+                    torch.manual_seed(sample_seed)
+                    neural_mean, neural_std = self._model.query(
+                        mu,
+                        logvar,
+                        queries,
+                        fast=fast,
+                        samples=16,
+                    )
+            neural_weight = 0.5 if self._trained_checkpoint else 0.0
             for column, name in enumerate(concept_names):
                 relevant = [
                     event
                     for event in events
                     if any(concept.name == name for concept in event.concepts)
                 ]
+                assessed = [event for event in relevant if event.source == "checkpoint_answer"]
+                strong = [
+                    event for event in assessed
+                    if event.evidence_strength >= EVIDENCE_THRESHOLD
+                ]
+                help_events = [event for event in relevant if event.source == "help_request"]
                 alpha = 1.0
                 beta = 1.0
                 weighted_scores: list[float] = []
                 misconception = ""
-                for event in relevant:
+                for event in assessed:
                     weight = event.evidence_strength * max(0.25, event.independence)
                     score = event.outcome.soft_score
                     alpha += weight * score
@@ -794,14 +1084,24 @@ class LearnerStore:
                     alpha * beta
                     / (((alpha + beta) ** 2) * (alpha + beta + 1.0))
                 )
-                model_mean = float(neural_mean[0, column].item())
-                model_std = float(neural_std[0, column].item())
-                mastery = (1 - neural_weight) * bayes_mean + neural_weight * model_mean
+                model_mean = (
+                    float(neural_mean[0, column].item())
+                    if neural_mean is not None else bayes_mean
+                )
+                model_std = (
+                    float(neural_std[0, column].item())
+                    if neural_std is not None else bayes_std
+                )
+                concept_neural_weight = neural_weight if assessed else 0.0
+                mastery = (
+                    (1 - concept_neural_weight) * bayes_mean
+                    + concept_neural_weight * model_mean
+                )
                 uncertainty = min(
                     0.5,
                     math.sqrt(
-                        ((1 - neural_weight) * bayes_std) ** 2
-                        + (neural_weight * model_std) ** 2
+                        ((1 - concept_neural_weight) * bayes_std) ** 2
+                        + (concept_neural_weight * model_std) ** 2
                     ),
                 )
                 trend = 0.0
@@ -811,6 +1111,15 @@ class LearnerStore:
                         sum(weighted_scores[midpoint:]) / len(weighted_scores[midpoint:])
                         - sum(weighted_scores[:midpoint]) / midpoint
                     )
+                previous = previous_beliefs.get(name, {})
+                # A help request may reshape the latent representation and its
+                # uncertainty, but must never masquerade as new mastery proof.
+                if (
+                    relevant
+                    and relevant[-1].source == "help_request"
+                    and previous
+                ):
+                    mastery = float(previous.get("mastery_mean", mastery))
                 beliefs.append({
                     "name": name,
                     "mastery_mean": round(mastery, 4),
@@ -818,11 +1127,24 @@ class LearnerStore:
                     "credible_low": round(max(0.0, mastery - 1.96 * uncertainty), 4),
                     "credible_high": round(min(1.0, mastery + 1.96 * uncertainty), 4),
                     "evidence_count": len(relevant),
+                    "help_evidence_count": len(help_events),
+                    "strong_evidence_count": len(strong),
+                    "last_evidence_at": relevant[-1].timestamp if relevant else "",
+                    "mastery_delta": round(
+                        mastery - float(previous.get("mastery_mean", mastery)), 4
+                    ),
+                    "uncertainty_delta": round(
+                        uncertainty - float(previous.get("mastery_std", uncertainty)), 4
+                    ),
                     "trend": round(trend, 4),
                     "misconception": misconception,
                 })
 
-        point = [round(math.tanh(float(mu[0, i].item())), 5) for i in range(3)]
+        point = (
+            [round(math.tanh(float(mu[0, i].item())), 5) for i in range(3)]
+            if mu is not None
+            else self._bayesian_latent_point(events)
+        )
         trajectory_entry = {
             "ts": _now(),
             "x": point[0],
@@ -839,11 +1161,16 @@ class LearnerStore:
 
         state = {
             "schema_version": SCHEMA_VERSION,
+            "revision": profile.state_revision,
             "updated_at": _now(),
             "observations": len(events),
             "concept_beliefs": beliefs,
             "latent_point": trajectory_entry,
             "latent_trajectory": profile.latent_trajectory,
+            "concept_relations": self._concept_relations(
+                events, concept_names, concept_vector_map
+            ),
+            "last_activity": profile.last_activity,
             "profile_text": self._profile_text(beliefs),
             "adapter": {
                 **profile.adapter,
@@ -903,9 +1230,28 @@ class LearnerStore:
         evidence = await self.prepare_evidence(evidence)
         profile.evidence.append(evidence.to_dict())
         profile.evidence = profile.evidence[-500:]
-        adaptation = {"adapted": False, "reason": "not-authorised"}
+        representation = self.adapt_representation(profile)
+        mastery = {"adapted": False, "reason": "not-authorised", "steps": 0}
         if allow_adaptation and evidence.adapts_fast_weights:
-            adaptation = self.adapt_fast_weights(profile)
+            mastery = self.adapt_fast_weights(profile)
+        adaptation = {
+            "adapted": bool(representation.get("adapted") or mastery.get("adapted")),
+            "steps": int(representation.get("steps", 0)) + int(mastery.get("steps", 0)),
+            "rolled_back": bool(
+                representation.get("rolled_back") or mastery.get("rolled_back")
+            ),
+            "representation": representation,
+            "mastery": mastery,
+        }
+        profile.state_revision += 1
+        profile.last_activity = {
+            "evidence_id": evidence.evidence_id,
+            "source": evidence.source,
+            "timestamp": evidence.timestamp,
+            "concepts": [concept.name for concept in evidence.concepts],
+            "representation_adapted": bool(representation.get("adapted")),
+            "mastery_adapted": bool(mastery.get("adapted")),
+        }
         state = self.state_snapshot(profile)
         self._save_profile(profile)
         return state, adaptation

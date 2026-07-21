@@ -11,6 +11,12 @@ export interface SpeakOptions {
   onProgress?: (charsSpoken: number) => void;
 }
 
+export interface WarmSpeechOptions {
+  voiceName?: string;
+  rate?: number;
+  signal?: AbortSignal;
+}
+
 interface SpeechSession {
   cancelled: boolean;
   voiceName: string;
@@ -62,6 +68,28 @@ export function cancelSpeech(): void {
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
+}
+
+/** Prime the backend's deterministic WAV cache without touching playback. */
+export async function warmSpeech(
+  text: string,
+  opts: WarmSpeechOptions = {},
+): Promise<void> {
+  const clean = text.trim().slice(0, 500);
+  if (!clean || opts.signal?.aborted) return;
+  const response = await fetch(`${API_BASE}/speech`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text: clean,
+      voice: opts.voiceName ?? preferredVoiceName,
+      speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
+    }),
+    signal: opts.signal,
+  });
+  if (!response.ok) throw new Error(`speech warmup returned ${response.status}`);
+  // Reading the body completes synthesis and stores the result server-side.
+  await response.arrayBuffer();
 }
 
 function resumeBoundaryAt(text: string, estimate: number): number {

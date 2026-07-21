@@ -9,6 +9,7 @@ import CheckpointCard from "@/components/CheckpointCard";
 import { fetchHealth, fetchLearner, resetLearner, streamAssessment, streamLesson } from "@/lib/api";
 import { getAnswerRegion, getStudentBbox } from "@/lib/layout";
 import { LessonPlayer } from "@/lib/lesson-player";
+import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 
@@ -91,6 +92,7 @@ export default function AppPage() {
   const handleRef = useRef<WhiteboardHandle | null>(null);
   const [status, setStatus] = useState("Connecting to backend...");
   const [busy, setBusy] = useState(false);
+  const [narrating, setNarrating] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [voice, setVoice] = useState("kokoro_af_heart");
   const voiceRef = useRef("kokoro_af_heart");
@@ -113,7 +115,7 @@ export default function AppPage() {
     const id = userIdRef.current;
     if (!id || id === "anon") return;
     const snap = await fetchLearner(id);
-    if (snap) setLearnerSnapshot(snap);
+    if (snap) setLearnerSnapshot((current) => applyLearnerSnapshot(current, snap));
   }, []);
 
   useEffect(() => {
@@ -198,6 +200,7 @@ export default function AppPage() {
     async (mode: "live" | "replay") => {
       const handle = handleRef.current;
       if (!handle || busy) return;
+      playerRef.current?.cancel();
       cancelSpeech();
       setBusy(true);
       setEducatorNotes(null);
@@ -238,6 +241,7 @@ export default function AppPage() {
         ttsEnabled,
         voiceName: voiceRef.current,
         onProgress: setStatus,
+        onNarratingChange: setNarrating,
         signal: controller.signal,
       });
       playerRef.current = player;
@@ -259,10 +263,9 @@ export default function AppPage() {
                 setEducatorNotes(notes);
                 setEducatorBusy(false);
               },
-              onLearnerUpdate: () => {
-                void refreshLearner();
-              },
-              onLearnerState: () => void refreshLearner(),
+              onLearnerState: (state) => setLearnerSnapshot((current) =>
+                applyLearnerState(current, state, userIdRef.current),
+              ),
               onCheckpoint: (next) => {
                 setCheckpoint(next);
                 const checkpointTag: PrimitiveTag = {
@@ -289,13 +292,13 @@ export default function AppPage() {
         } else {
           for (const tag of cachedPrims) player.enqueue(tag);
         }
-        await player.finish();
+        await player.finishDrawing();
         setStatus(
           streamError
             ? `Error: ${streamError}`
             : mode === "live"
-            ? `Lesson complete. ${collect.length} primitives drawn.`
-            : `Replay complete.`,
+            ? `Lesson drawn. ${collect.length} primitives; narration continues independently.`
+            : `Replay drawn; narration continues independently.`,
         );
         if (mode === "live" && collect.length) {
           cachedRef.current = {
@@ -305,21 +308,26 @@ export default function AppPage() {
           };
           setHasReplay(true);
         }
+        setBusy(false);
+        void player.finishNarration().finally(() => {
+          if (playerRef.current === player) playerRef.current = null;
+          setNarrating(false);
+        });
       } catch (exc) {
         setStatus(`Stream failed: ${(exc as Error).message}`);
       } finally {
-        if (playerRef.current === player) playerRef.current = null;
         setBusy(false);
         setEducatorBusy(false);
         abortRef.current = null;
       }
     },
-    [busy, ttsEnabled, teacherMode, modelChoice, refreshLearner],
+    [busy, ttsEnabled, teacherMode, modelChoice],
   );
 
   const assessWork = useCallback(async () => {
     const handle = handleRef.current;
     if (!handle || busy || !checkpoint) return;
+    playerRef.current?.cancel();
     cancelSpeech();
     setBusy(true);
     setStatus("Sending your checkpoint answer for evidence-based assessment...");
@@ -338,6 +346,7 @@ export default function AppPage() {
       ttsEnabled,
       voiceName: voiceRef.current,
       onProgress: setStatus,
+      onNarratingChange: setNarrating,
       signal: controller.signal,
     });
     playerRef.current = player;
@@ -351,7 +360,9 @@ export default function AppPage() {
             setLastEvidence(evidence);
             setStatus(evidence.adaptation?.adapted ? "Strong evidence accepted; learner fast weights updated." : "Assessment recorded; adaptation guard kept fast weights unchanged.");
           },
-          onLearnerState: () => void refreshLearner(),
+          onLearnerState: (state) => setLearnerSnapshot((current) =>
+            applyLearnerState(current, state, userIdRef.current),
+          ),
           onCheckpoint: (next) => {
             setCheckpoint(next);
             player.enqueue({
@@ -373,19 +384,22 @@ export default function AppPage() {
           modelChoice,
         },
       );
-      await player.finish();
-      await refreshLearner();
+      await player.finishDrawing();
       if (!assessmentError) {
         setStatus("Assessment complete. Try the next checkpoint on the canvas.");
       }
+      setBusy(false);
+      void player.finishNarration().finally(() => {
+        if (playerRef.current === player) playerRef.current = null;
+        setNarrating(false);
+      });
     } catch (error) {
       if (!controller.signal.aborted) setStatus(`Assessment failed: ${(error as Error).message}`);
     } finally {
-      if (playerRef.current === player) playerRef.current = null;
       abortRef.current = null;
       setBusy(false);
     }
-  }, [busy, checkpoint, modelChoice, refreshLearner, ttsEnabled]);
+  }, [busy, checkpoint, modelChoice, ttsEnabled]);
 
   const onResetLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -421,6 +435,7 @@ export default function AppPage() {
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
+    playerRef.current?.cancel();
     cancelSpeech();
     setStatus("Stopped.");
     setBusy(false);
@@ -431,6 +446,7 @@ export default function AppPage() {
     <div className="relative h-dvh w-full">
       <Toolbar
         busy={busy}
+        narrating={narrating}
         status={status}
         ttsEnabled={ttsEnabled}
         teacherMode={teacherMode}

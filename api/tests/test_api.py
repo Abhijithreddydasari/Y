@@ -62,6 +62,7 @@ def test_lesson_and_assessment_sse_contract(tmp_path, monkeypatch) -> None:
         adapter_checkpoint=tmp_path / "missing.safetensors",
         adapter_config=cfg,
     )
+    store._trained_checkpoint = True
 
     async def embed(_text: str, *, query: bool = False):
         return ([0.05] * cfg.embedding_dim, "test")

@@ -72,6 +72,41 @@ def adapter_prediction(model, history, target, fast, cfg, device, samples: int) 
     return float(mean.item()), float(uncertainty.item())
 
 
+def representation_batch(history: list[dict], cfg: AdapterConfig, device: torch.device, seed: int):
+    """Two deterministic masked/noisy views for representation-only TTA."""
+    history = history[-cfg.max_events:]
+    clean = torch.tensor(
+        [[event_embedding(event, cfg.embedding_dim) for event in history]],
+        dtype=torch.float32,
+        device=device,
+    )
+    features = torch.tensor(
+        [[numeric(event) for event in history]], dtype=torch.float32, device=device,
+    )
+    lengths = torch.tensor([len(history)], dtype=torch.long, device=device)
+    generator = torch.Generator(device=device)
+    generator.manual_seed(seed)
+
+    def noisy():
+        keep = (torch.rand(clean.shape, generator=generator, device=device) > 0.08).to(clean.dtype)
+        noise = torch.randn(clean.shape, generator=generator, device=device) * 0.01
+        return clean * keep + noise
+
+    return clean, noisy(), noisy(), features, lengths
+
+
+def representation_loss(model, batch, fast, target_mu, target_logvar):
+    _, first, second, features, lengths = batch
+    mu_a, logvar_a = model.encode(first, features, lengths=lengths, fast=fast)
+    mu_b, logvar_b = model.encode(second, features, lengths=lengths, fast=fast)
+    return (
+        2
+        - F.cosine_similarity(mu_a, target_mu, dim=-1).mean()
+        - F.cosine_similarity(mu_b, target_mu, dim=-1).mean()
+        + 0.05 * (F.mse_loss(logvar_a, target_logvar) + F.mse_loss(logvar_b, target_logvar))
+    )
+
+
 class HashDKT(nn.Module):
     def __init__(self, width: int = 32, hidden: int = 64) -> None:
         super().__init__()
@@ -175,8 +210,9 @@ def main() -> None:
     ADAPTER_EMBEDDER = FrozenEmbedder(args.embedder, str(device))
     model, trained = load_adapter(args.checkpoint, device=device, cfg=cfg)
     predictions: dict[str, list[dict]] = {name: [] for name in ["heuristic", "bkt", "dkt_lstm", "frozen_adapter", "adapter_without_uncertainty", "full_level2"]}
-    rollback_count = update_count = 0
-    for events in trajectories:
+    mastery_rollbacks = mastery_updates = 0
+    representation_rollbacks = representation_updates = 0
+    for learner_index, events in enumerate(trajectories):
         averages: dict[str, list[float]] = {}
         bkt: dict[str, float] = {}
         dkt_state = (torch.zeros(1, 64), torch.zeros(1, 64))
@@ -203,6 +239,37 @@ def main() -> None:
             dkt_state = tuple(value.detach() for value in dkt.observe(event, dkt_state))
             records.append((list(history), event))
             history.append(event)
+            # Speed 1: every observation updates encoder LoRA using no labels.
+            rep_batch = representation_batch(
+                history, cfg, device, seed=17 + learner_index * 1000 + int(event["turn"])
+            )
+            clean, _, _, rep_features, rep_lengths = rep_batch
+            with torch.no_grad():
+                target_mu, target_logvar = model.encode(
+                    clean, rep_features, lengths=rep_lengths, fast=fast
+                )
+                rep_before_loss = float(representation_loss(
+                    model, rep_batch, fast, target_mu, target_logvar
+                ).item())
+            rep_keys = [key for key in fast if key.startswith("blocks.")]
+            rep_before = {key: fast[key].detach().clone().requires_grad_(True) for key in rep_keys}
+            rep_optimiser = torch.optim.AdamW([fast[key] for key in rep_keys], lr=2e-4)
+            rep_optimiser.zero_grad(set_to_none=True)
+            rep_loss = representation_loss(model, rep_batch, fast, target_mu, target_logvar)
+            rep_loss.backward()
+            torch.nn.utils.clip_grad_norm_([fast[key] for key in rep_keys], 0.5)
+            rep_optimiser.step()
+            with torch.no_grad():
+                rep_after_loss = float(representation_loss(
+                    model, rep_batch, fast, target_mu, target_logvar
+                ).item())
+            representation_updates += 1
+            if not math.isfinite(rep_after_loss) or rep_after_loss > rep_before_loss * 1.05:
+                fast.update(rep_before)
+                representation_rollbacks += 1
+
+            # Speed 2: trustworthy assessed evidence additionally tunes the
+            # query decoder and encoder over replay.
             if event["evidence_strength"] >= 0.65:
                 batch = records[-16:]
                 before = clone_fast_weights(fast)
@@ -217,10 +284,10 @@ def main() -> None:
                     optimiser.step()
                 with torch.no_grad():
                     after_loss = float(adapter_loss(model, batch, fast, cfg, device).item())
-                update_count += 1
+                mastery_updates += 1
                 if not math.isfinite(after_loss) or after_loss > before_loss * 1.05:
                     fast = before
-                    rollback_count += 1
+                    mastery_rollbacks += 1
     report = {
         "checkpoint_trained": trained,
         "device": str(device),
@@ -233,7 +300,36 @@ def main() -> None:
             "held_out_concept": metrics([row for row in rows if row["split"] == "test_concept"]),
             "held_out_domain": metrics([row for row in rows if row["split"] == "test_domain"]),
         }
-    report["full_level2_update_guard"] = {"updates": update_count, "rollbacks": rollback_count, "rollback_rate": rollback_count / max(1, update_count)}
+    report["full_level2_update_guard"] = {
+        "representation": {
+            "updates": representation_updates,
+            "rollbacks": representation_rollbacks,
+            "rollback_rate": representation_rollbacks / max(1, representation_updates),
+        },
+        "mastery": {
+            "updates": mastery_updates,
+            "rollbacks": mastery_rollbacks,
+            "rollback_rate": mastery_rollbacks / max(1, mastery_updates),
+        },
+    }
+    frozen = report["models"]["frozen_adapter"]
+    full = report["models"]["full_level2"]
+    held_out_beats_frozen = all(
+        full[split]["log_loss"] < frozen[split]["log_loss"]
+        for split in ("held_out_concept", "held_out_domain")
+    )
+    calibration_ok = full["all"]["ece_10"] <= frozen["all"]["ece_10"] + 0.02
+    rollback_ok = all(
+        report["full_level2_update_guard"][kind]["rollback_rate"] <= 0.25
+        for kind in ("representation", "mastery")
+    )
+    report["promotion_gate"] = {
+        "passed": bool(trained and held_out_beats_frozen and calibration_ok and rollback_ok),
+        "checkpoint_trained": trained,
+        "held_out_beats_frozen": held_out_beats_frozen,
+        "calibration_ok": calibration_ok,
+        "rollback_ok": rollback_ok,
+    }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps(report, indent=2))

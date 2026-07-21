@@ -26,17 +26,19 @@ sequenceDiagram
     L->>W: Draw question + ?
     W->>T: POST /lesson (PNG, conversation, hashed safety id)
     T-->>W: SSE primitive stream
+    W->>W: draw immediately on an independent queue
     T-->>W: personalized checkpoint
-    W->>S: POST /speech per caption
-    S-->>W: WAV; reveal follows playback time
-    Note over A: Help request becomes weak history only
+    W->>S: ordered POST /speech queue, two segments prefetched
+    S-->>W: WAV narration (never blocks drawing)
+    A->>A: one representation-consistency step + replay guard
+    Note over A: Help changes representation/activity, not mastery
     L->>W: Draw checkpoint answer
     W->>T: POST /assess
     T-->>A: validated LearningEvidence
     alt strong checkpoint evidence
-        A->>A: three fast-weight steps + replay guard
+        A->>A: representation step + three mastery steps
     else ambiguous or helped
-        A->>A: history only
+        A->>A: representation step only
     end
     A-->>T: deterministic probabilistic profile
     T-->>W: corrective primitives + next checkpoint
@@ -56,20 +58,25 @@ Default configuration:
 | Concept query | arbitrary concept text, 768 to 256 |
 | Decoder | concatenated latent/query to 256 to probability |
 | Global parameters | 9,433,857 |
-| Fast parameters | rank-4 LoRA in blocks 3–4 and decoder |
+| Representation fast parameters | rank-4 LoRA in blocks 3-4 |
+| Mastery fast parameters | rank-4 LoRA in decoder |
 
 The event stream is causal. For an arbitrary concept query, 16 posterior
 samples produce mastery mean and uncertainty. The UI reports a 95% interval
 and evidence context, never a categorical declaration of ability.
 
-### Online update guard
+### Two-speed online update guards
 
-A checkpoint can adapt only when `evidence_strength >= 0.65`. The batch is the
-latest eight strong events plus up to eight replay events. It uses soft
-correctness (`P(correct) + 0.5 P(partial)`), confidence and independence
-weights, AdamW, three steps, gradient norm 1, and L2 anchoring. Replay loss is
-measured before and after; more than 5% degradation restores a cloned fast
-checkpoint and increments `rollback_count`.
+Every interaction builds two deterministic masked/noisy views of recent history
+and takes one posterior-consistency step over Transformer LoRA only. Strong
+checkpoint evidence (`evidence_strength >= 0.65`) additionally takes three
+mastery steps over representation and decoder LoRA using soft correctness
+(`P(correct) + 0.5 P(partial)`). Both paths use replay, clipping, L2 anchoring,
+and independent 5% degradation rollback guards and counters.
+
+When no promoted global checkpoint exists, neural updates are disabled and the
+state is derived from the honest Bayesian path. The adapter reports
+`untrained-base`; seeded random weights are never presented as learned state.
 
 ## Durable state
 
@@ -83,6 +90,9 @@ Both files use temporary-file plus `os.replace` writes. Loading validates
 tensor names/shapes against the global adapter. Reset removes fast weights and
 replaces the v2 state with an empty profile; an original legacy
 `<safe-id>.json` remains preserved but is not re-migrated.
+
+`profile.json` also stores a monotonic revision, last activity, separate
+representation/mastery counters, evidence deltas, and concept relations.
 
 ## Teacher providers
 
@@ -112,7 +122,8 @@ evidence -> token/primitive* -> learner_state -> checkpoint -> done
 ```
 
 Every stream may terminate with `error`. Frontend contracts are mirrored in
-`web/src/lib/types.ts`.
+`web/src/lib/types.ts`. The frontend applies `learner_state` directly and
+rejects any SSE or GET snapshot whose revision is older than the displayed one.
 
 ## Speech boundary
 
@@ -120,6 +131,8 @@ Every stream may terminate with `error`. Frontend contracts are mirrored in
 called only through an allowlisted Kokoro id. `prefetch_speech.py` loads both,
 rejects paths containing Piper, ZipVoice, or eSpeak, and writes hashes. WAV
 responses are cached by normalized text, voice, speed, and model version.
+The frontend owns one ordered narration queue, aborts stale voice prefetches,
+and preserves word-resume semantics when Heart/Michael changes.
 
 ## Research data flow
 

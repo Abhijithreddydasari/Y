@@ -5,7 +5,8 @@
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import { LessonRenderer, type RenderResult } from "./renderer";
 import { stripMarkdown } from "./sanitize";
-import { cancelSpeech, sleep, speak, switchSpeechVoice, ttsAvailable } from "./tts";
+import { NarrationQueue } from "./narration-queue";
+import { sleep } from "./tts";
 import type { PrimitiveTag } from "./types";
 
 // Cache the dynamic Excalidraw import at module scope. Without this every
@@ -22,14 +23,10 @@ function loadExcalidraw() {
 }
 
 /**
- * Smooth character-by-character text reveal. A setInterval loop advances one
- * character per tick toward a `target` position that the caller updates (e.g.
- * from TTS word-boundary events). The result: text "writes itself" on the
- * board in lockstep with the narrator's voice.
+ * A deliberately short character reveal. Drawing is never paced by audio.
  */
 class TextRevealer {
   private current = 0;
-  private target = 0;
   private intervalId: number | undefined;
   private completionCb: (() => void) | null = null;
 
@@ -38,15 +35,11 @@ class TextRevealer {
     private readonly onReveal: (partial: string) => void,
     private readonly charMs: number,
     private readonly signal?: AbortSignal,
-    private readonly followAudio = false,
+    private readonly step = 1,
   ) {}
 
   start(): void {
     this.intervalId = window.setInterval(() => this.tick(), this.charMs);
-  }
-
-  setTarget(chars: number): void {
-    this.target = Math.min(this.fullText.length, Math.max(0, Math.floor(chars)));
   }
 
   /** Snap to full text and stop. */
@@ -61,7 +54,6 @@ class TextRevealer {
   /** Set target to end and return a Promise that resolves when the reveal
    *  interval naturally reaches the last character. */
   revealAll(): Promise<void> {
-    this.target = this.fullText.length;
     if (this.current >= this.fullText.length) {
       this.stop();
       return Promise.resolve();
@@ -77,12 +69,8 @@ class TextRevealer {
       this.completionCb?.();
       return;
     }
-    if (this.current < this.target) {
-      const gap = this.target - this.current;
-      // Audio progress arrives continuously. Catch up within a few animation
-      // frames instead of accumulating a multi-second one-character backlog.
-      const step = this.followAudio ? Math.max(1, Math.ceil(gap * 0.45)) : 1;
-      this.current = Math.min(this.target, this.current + step);
+    if (this.current < this.fullText.length) {
+      this.current = Math.min(this.fullText.length, this.current + this.step);
       this.paint();
       if (this.current >= this.fullText.length) {
         this.stop();
@@ -113,24 +101,26 @@ interface PlayerOptions {
   /** ms after a [text] primitive renders before its narration starts. */
   speakHeadStartMs?: number;
   onProgress?: (status: string) => void;
+  onNarratingChange?: (narrating: boolean) => void;
   signal?: AbortSignal;
 }
 
 export class LessonPlayer {
-  private readonly opts: Required<Omit<PlayerOptions, "signal" | "onProgress" | "voiceName">> & {
+  private readonly opts: Required<Omit<PlayerOptions, "signal" | "onProgress" | "onNarratingChange" | "voiceName">> & {
     signal?: AbortSignal;
     onProgress?: (status: string) => void;
+    onNarratingChange?: (narrating: boolean) => void;
     voiceName?: string;
   };
   private readonly renderer: LessonRenderer;
-  private chain: Promise<void> = Promise.resolve();
+  private drawChain: Promise<void> = Promise.resolve();
+  private readonly narration: NarrationQueue;
   private rendered = 0;
-  private speaks = 0;
 
   constructor(opts: PlayerOptions) {
     this.opts = {
-      visualGapMs: 200,
-      speakHeadStartMs: 80,
+      visualGapMs: 20,
+      speakHeadStartMs: 0,
       ttsEnabled: opts.ttsEnabled,
       voiceName: opts.voiceName,
       origin: opts.origin,
@@ -139,27 +129,42 @@ export class LessonPlayer {
       signal: opts.signal,
     };
     this.renderer = new LessonRenderer(opts.origin);
+    this.narration = new NarrationQueue({
+      enabled: opts.ttsEnabled,
+      voiceName: opts.voiceName,
+      signal: opts.signal,
+      onActivity: opts.onNarratingChange,
+    });
   }
 
   /** Enqueue a primitive. Returns immediately; rendering is sequential. */
   enqueue(tag: PrimitiveTag): void {
-    this.chain = this.chain.then(() => this.playOne(tag));
+    this.drawChain = this.drawChain.then(() => this.playOne(tag));
   }
 
   /** Resolve once every queued primitive has finished playing. */
+  async finishDrawing(): Promise<void> {
+    await this.drawChain;
+  }
+
+  /** Compatibility alias: completion now means visual completion only. */
   async finish(): Promise<void> {
-    await this.chain;
+    await this.finishDrawing();
+  }
+
+  async finishNarration(): Promise<void> {
+    await this.narration.finish();
   }
 
   /** Stop any in-flight speech immediately. Future primitives still play. */
   cancel(): void {
-    cancelSpeech();
+    this.narration.cancel();
   }
 
   /** Update both the active sentence and all queued narration. */
   setVoice(voiceName: string): boolean {
     this.opts.voiceName = voiceName;
-    return switchSpeechVoice(voiceName);
+    return this.narration.setVoice(voiceName);
   }
 
   private async playOne(tag: PrimitiveTag): Promise<void> {
@@ -196,11 +201,11 @@ export class LessonPlayer {
       // stroke reveal BEFORE we move on (or in parallel with the caption TTS
       // when the part has a name).
       if (drawAnimation) {
+        if (drawAnimation.caption) this.narration.enqueue(drawAnimation.caption);
         await this.playStrokeAnimation(result);
       }
 
       const hasReveal = !!revealText && !!revealId;
-      const willSpeak = hasReveal && this.opts.ttsEnabled && ttsAvailable();
 
       // Build a mutation helper that always pins width/height so Excalidraw
       // never auto-resizes the element as partial text is shorter than final.
@@ -221,29 +226,15 @@ export class LessonPlayer {
       // flash before the tutor starts "writing".
       if (hasReveal) mutate!(" ");
 
-      if (willSpeak) {
-        // --- TTS on: character reveal synced to speech ---
-        await sleep(this.opts.speakHeadStartMs);
-        if (this.opts.signal?.aborted) return;
-        this.speaks += 1;
+      if (hasReveal) {
         const fullText = revealText!;
-        const revealer = new TextRevealer(fullText, mutate!, 16, this.opts.signal, true);
-        revealer.start();
-        await speak(fullText, {
-          voiceName: this.opts.voiceName,
-          onProgress: (chars) => revealer.setTarget(chars),
-        });
-        revealer.finish();
-        // Small gap so the speech engine fully stops before the next
-        // primitive's TTS starts (prevents audio clipping between sections).
-        await sleep(120);
-      } else if (hasReveal) {
-        // --- TTS off: character reveal at a brisk reading pace ---
-        const fullText = revealText!;
-        const revealer = new TextRevealer(fullText, mutate!, 30, this.opts.signal);
+        // Finish within 250-400 ms even for long equations or paragraphs.
+        const ticks = Math.max(1, Math.ceil(fullText.length / 30));
+        const revealer = new TextRevealer(fullText, mutate!, 12, this.opts.signal, ticks);
         revealer.start();
         await revealer.revealAll();
         revealer.finish();
+        this.narration.enqueue(fullText);
       } else {
         // Diagram primitive (equation / box / node / arrow / line).
         await sleep(this.opts.visualGapMs);
@@ -268,7 +259,7 @@ export class LessonPlayer {
   private async playStrokeAnimation(result: RenderResult): Promise<void> {
     if (this.opts.signal?.aborted) return;
     if (!result.drawAnimation) return;
-    const { parsedSvg, imageId, caption } = result.drawAnimation;
+    const { parsedSvg, imageId } = result.drawAnimation;
     const paths = parsedSvg.paths;
     if (!paths.length) {
       // Nothing to animate (e.g. draw_part with only <text> elements).
@@ -327,17 +318,9 @@ export class LessonPlayer {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       svg && svg.getBoundingClientRect();
 
-      // Pace the animation: total ~1.6s baseline, longer if many paths.
-      const totalMs = Math.min(2400, Math.max(900, 240 + 110 * pathEls.length));
+      // Diagram animation remains legible but never stalls streaming.
+      const totalMs = Math.min(900, Math.max(360, 100 + 55 * pathEls.length));
       const perPathMs = totalMs / Math.max(1, pathEls.length);
-
-      // Speak the part name in parallel (best effort) while strokes appear.
-      const speakPromise: Promise<void> = (caption && this.opts.ttsEnabled && ttsAvailable())
-        ? (async () => {
-            await sleep(40);
-            try { await speak(caption, { voiceName: this.opts.voiceName }); } catch { /* swallow */ }
-          })()
-        : Promise.resolve();
 
       // Animate each path sequentially: kick off transition, wait for it.
       for (let i = 0; i < pathEls.length; i++) {
@@ -351,13 +334,12 @@ export class LessonPlayer {
         await sleep(perPathMs);
       }
 
-      await speakPromise;
     } finally {
       // Fade in the underlying rasterised image and fade out the overlay
       // simultaneously to mask the swap.
       this.opts.handle.mutateElement(imageId, { opacity: 100 });
       overlay.style.opacity = "0";
-      await sleep(300);
+      await sleep(120);
       overlay.remove();
     }
   }

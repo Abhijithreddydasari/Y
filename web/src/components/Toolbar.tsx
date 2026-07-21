@@ -23,6 +23,7 @@ export const SAMPLE_SUBJECTS: { id: SampleSubject; label: string }[] = [
 
 interface Props {
   busy: boolean;
+  narrating: boolean;
   status: string;
   ttsEnabled: boolean;
   teacherMode: boolean;
@@ -45,6 +46,7 @@ interface Props {
 
 export default function Toolbar({
   busy,
+  narrating,
   status,
   ttsEnabled,
   teacherMode,
@@ -171,7 +173,7 @@ export default function Toolbar({
             <button
               type="button"
               onClick={onStop}
-              disabled={!busy}
+              disabled={!busy && !narrating}
               className="rounded-lg bg-rose-600 px-2 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
             >
               Stop

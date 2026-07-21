@@ -13,7 +13,9 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import asyncio
 from contextlib import asynccontextmanager
+from contextlib import suppress
 from pathlib import Path
 
 API_ROOT = Path(__file__).resolve().parent
@@ -73,12 +75,29 @@ async def _lifespan(_app: FastAPI):
         get_teacher("edge").warmup()
     except Exception as exc:
         print(f"[warmup] non-fatal: {exc}")
-    if os.environ.get("SPEECH_PREFETCH", "").lower() in {"1", "true", "yes"}:
-        try:
-            await get_speech_engine().prefetch()
-        except Exception as exc:
-            print(f"[speech-prefetch] non-fatal: {exc}")
-    yield
+    warm_task: asyncio.Task | None = None
+    speech = get_speech_engine()
+    prefetch_setting = os.environ.get("SPEECH_PREFETCH", "auto").lower()
+    if (
+        prefetch_setting not in {"0", "false", "no"}
+        and speech.available
+        and speech.lock_path.exists()
+    ):
+        async def _warm_speech() -> None:
+            try:
+                await speech.prefetch()
+            except Exception as exc:
+                print(f"[speech-prefetch] non-fatal: {exc}")
+
+        # Do not delay API readiness while ONNX/G2P assets load on CPU.
+        warm_task = asyncio.create_task(_warm_speech())
+    try:
+        yield
+    finally:
+        if warm_task and not warm_task.done():
+            warm_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await warm_task
 
 
 app = FastAPI(title="Y API", version="0.2.0", lifespan=_lifespan)

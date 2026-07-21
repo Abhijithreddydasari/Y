@@ -5,7 +5,7 @@
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import { LessonRenderer, type RenderResult } from "./renderer";
 import { stripMarkdown } from "./sanitize";
-import { cancelSpeech, sleep, speak, ttsAvailable } from "./tts";
+import { cancelSpeech, sleep, speak, switchSpeechVoice, ttsAvailable } from "./tts";
 import type { PrimitiveTag } from "./types";
 
 // Cache the dynamic Excalidraw import at module scope. Without this every
@@ -38,6 +38,7 @@ class TextRevealer {
     private readonly onReveal: (partial: string) => void,
     private readonly charMs: number,
     private readonly signal?: AbortSignal,
+    private readonly followAudio = false,
   ) {}
 
   start(): void {
@@ -77,7 +78,11 @@ class TextRevealer {
       return;
     }
     if (this.current < this.target) {
-      this.current++;
+      const gap = this.target - this.current;
+      // Audio progress arrives continuously. Catch up within a few animation
+      // frames instead of accumulating a multi-second one-character backlog.
+      const step = this.followAudio ? Math.max(1, Math.ceil(gap * 0.45)) : 1;
+      this.current = Math.min(this.target, this.current + step);
       this.paint();
       if (this.current >= this.fullText.length) {
         this.stop();
@@ -151,6 +156,12 @@ export class LessonPlayer {
     cancelSpeech();
   }
 
+  /** Update both the active sentence and all queued narration. */
+  setVoice(voiceName: string): boolean {
+    this.opts.voiceName = voiceName;
+    return switchSpeechVoice(voiceName);
+  }
+
   private async playOne(tag: PrimitiveTag): Promise<void> {
     if (this.opts.signal?.aborted) return;
     try {
@@ -216,7 +227,7 @@ export class LessonPlayer {
         if (this.opts.signal?.aborted) return;
         this.speaks += 1;
         const fullText = revealText!;
-        const revealer = new TextRevealer(fullText, mutate!, 45, this.opts.signal);
+        const revealer = new TextRevealer(fullText, mutate!, 16, this.opts.signal, true);
         revealer.start();
         await speak(fullText, {
           voiceName: this.opts.voiceName,

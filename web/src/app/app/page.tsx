@@ -104,6 +104,7 @@ export default function AppPage() {
   const [lastEvidence, setLastEvidence] = useState<LearningEvidence | null>(null);
   const cachedRef = useRef<CachedLesson | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const playerRef = useRef<LessonPlayer | null>(null);
   const userIdRef = useRef<string>("anon");
   const conversationIdRef = useRef<string>("default");
 
@@ -238,6 +239,7 @@ export default function AppPage() {
         onProgress: setStatus,
         signal: controller.signal,
       });
+      playerRef.current = player;
 
       const collect: PrimitiveTag[] = [];
       let streamError = "";
@@ -305,6 +307,7 @@ export default function AppPage() {
       } catch (exc) {
         setStatus(`Stream failed: ${(exc as Error).message}`);
       } finally {
+        if (playerRef.current === player) playerRef.current = null;
         setBusy(false);
         setEducatorBusy(false);
         abortRef.current = null;
@@ -336,6 +339,7 @@ export default function AppPage() {
       onProgress: setStatus,
       signal: controller.signal,
     });
+    playerRef.current = player;
     let assessmentError = "";
     try {
       await streamAssessment(
@@ -376,6 +380,7 @@ export default function AppPage() {
     } catch (error) {
       if (!controller.signal.aborted) setStatus(`Assessment failed: ${(error as Error).message}`);
     } finally {
+      if (playerRef.current === player) playerRef.current = null;
       abortRef.current = null;
       setBusy(false);
     }
@@ -400,6 +405,17 @@ export default function AppPage() {
   const replay = useCallback(() => {
     void runLesson("replay");
   }, [runLesson]);
+
+  const changeVoice = useCallback((nextVoice: string) => {
+    setVoice(nextVoice);
+    const resumed = playerRef.current?.setVoice(nextVoice) ?? false;
+    const label = nextVoice === "kokoro_am_michael" ? "Michael" : "Heart";
+    setStatus(
+      resumed
+        ? `Switching to ${label}; narration will resume from the next word...`
+        : `Kokoro voice set to ${label}.`,
+    );
+  }, []);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -430,7 +446,7 @@ export default function AppPage() {
         onToggleTts={() => setTtsEnabled((v) => !v)}
         onToggleTeacherMode={() => setTeacherMode((v) => !v)}
         onModelChange={setModelChoice}
-        onVoiceChange={setVoice}
+        onVoiceChange={changeVoice}
       />
       <LearnerPanel snapshot={learnerSnapshot} onReset={onResetLearner} />
       <CheckpointCard checkpoint={checkpoint} evidence={lastEvidence} />

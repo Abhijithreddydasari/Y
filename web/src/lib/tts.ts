@@ -1,5 +1,6 @@
 // Backend Kokoro narration with a best-effort browser Speech fallback.
-// The active fetch and audio element are both cancellable so Stop is immediate.
+// A speech session can be interrupted to change voice without completing the
+// surrounding lesson primitive: synthesis resumes from the next word.
 
 import { API_BASE } from "./api";
 
@@ -10,9 +11,21 @@ export interface SpeakOptions {
   onProgress?: (charsSpoken: number) => void;
 }
 
-let activeController: AbortController | null = null;
-let activeAudio: HTMLAudioElement | null = null;
-let activeResolve: (() => void) | null = null;
+interface SpeechSession {
+  cancelled: boolean;
+  voiceName: string;
+  revision: number;
+  controller: AbortController | null;
+  audio: HTMLAudioElement | null;
+  interrupt: (() => void) | null;
+}
+
+interface SegmentResult {
+  ended: boolean;
+  charsSpoken: number;
+}
+
+let activeSession: SpeechSession | null = null;
 
 export function ttsAvailable(): boolean {
   return typeof window !== "undefined" && (
@@ -20,125 +33,244 @@ export function ttsAvailable(): boolean {
   );
 }
 
+/**
+ * Change the voice used by the active narration. The current transport is
+ * stopped, but the speech session remains alive and resumes at the next word.
+ * Returns true when narration was active and a resume was requested.
+ */
+export function switchSpeechVoice(voiceName: string): boolean {
+  const session = activeSession;
+  if (!session || session.cancelled || session.voiceName === voiceName) return false;
+  session.voiceName = voiceName;
+  session.revision += 1;
+  session.controller?.abort();
+  session.interrupt?.();
+  return true;
+}
+
 export function cancelSpeech(): void {
-  activeController?.abort();
-  activeController = null;
-  if (activeAudio) {
-    activeAudio.pause();
-    activeAudio.removeAttribute("src");
-    activeAudio.load();
-    activeAudio = null;
+  const session = activeSession;
+  activeSession = null;
+  if (session) {
+    session.cancelled = true;
+    session.revision += 1;
+    session.controller?.abort();
+    session.interrupt?.();
   }
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     window.speechSynthesis.cancel();
   }
-  activeResolve?.();
-  activeResolve = null;
 }
 
-function wordBoundaryAt(text: string, estimate: number): number {
+function resumeBoundaryAt(text: string, estimate: number): number {
   let index = Math.max(0, Math.min(text.length, Math.floor(estimate)));
-  while (index < text.length && !/\s/.test(text[index])) index++;
+  if (index === 0 || index >= text.length) return index;
+  // Avoid restarting halfway through a word. The part already spoken remains
+  // visible and the replacement voice starts cleanly at the following word.
+  while (index < text.length && !/\s/.test(text[index])) index += 1;
+  while (index < text.length && /\s/.test(text[index])) index += 1;
   return index;
 }
 
-async function speakWithKokoro(text: string, opts: SpeakOptions): Promise<void> {
+async function playKokoroSegment(
+  session: SpeechSession,
+  text: string,
+  baseOffset: number,
+  opts: SpeakOptions,
+): Promise<SegmentResult> {
+  const revision = session.revision;
   const controller = new AbortController();
-  activeController = controller;
-  const response = await fetch(`${API_BASE}/speech`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      text,
-      voice: opts.voiceName ?? "kokoro_af_heart",
-      speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
-    }),
-    signal: controller.signal,
-  });
-  if (!response.ok) throw new Error(`speech backend returned ${response.status}`);
+  const abortFetch = () => controller.abort();
+  session.controller = controller;
+  session.interrupt = abortFetch;
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}/speech`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text,
+        voice: session.voiceName,
+        speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
+      }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (session.controller === controller) session.controller = null;
+    if (session.interrupt === abortFetch) session.interrupt = null;
+    if (controller.signal.aborted || session.cancelled || revision !== session.revision) {
+      return { ended: false, charsSpoken: 0 };
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    if (session.controller === controller) session.controller = null;
+    if (session.interrupt === abortFetch) session.interrupt = null;
+    throw new Error(`speech backend returned ${response.status}`);
+  }
+
   const blob = await response.blob();
-  if (controller.signal.aborted) return;
+  if (session.controller === controller) session.controller = null;
+  if (session.interrupt === abortFetch) session.interrupt = null;
+  if (session.cancelled || revision !== session.revision) {
+    return { ended: false, charsSpoken: 0 };
+  }
+
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
-  activeAudio = audio;
-  await new Promise<void>((resolve, reject) => {
-    let lastProgress = 0;
+  session.audio = audio;
+
+  return new Promise<SegmentResult>((resolve, reject) => {
+    let charsSpoken = 0;
+    let frame = 0;
     let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      URL.revokeObjectURL(url);
-      if (activeAudio === audio) activeAudio = null;
-      if (activeController === controller) activeController = null;
-      if (activeResolve === finish) activeResolve = null;
-      resolve();
-    };
-    const fail = (error: Error) => {
-      if (settled) return;
-      settled = true;
-      URL.revokeObjectURL(url);
-      if (activeAudio === audio) activeAudio = null;
-      if (activeController === controller) activeController = null;
-      if (activeResolve === finish) activeResolve = null;
-      reject(error);
-    };
-    activeResolve = finish;
-    audio.ontimeupdate = () => {
-      if (!opts.onProgress || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
-      const estimate = text.length * Math.min(1, audio.currentTime / audio.duration);
-      const boundary = wordBoundaryAt(text, estimate);
-      if (boundary > lastProgress) {
-        lastProgress = boundary;
-        opts.onProgress(boundary);
+
+    const reportProgress = () => {
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+      const ratio = Math.min(1, Math.max(0, audio.currentTime / audio.duration));
+      const next = Math.min(text.length, Math.floor(text.length * ratio));
+      if (next > charsSpoken) {
+        charsSpoken = next;
+        opts.onProgress?.(baseOffset + charsSpoken);
       }
     };
+
+    const cleanup = () => {
+      if (frame) cancelAnimationFrame(frame);
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+      URL.revokeObjectURL(url);
+      if (session.audio === audio) session.audio = null;
+      if (session.interrupt === interruptAudio) session.interrupt = null;
+    };
+
+    const finish = (ended: boolean, error?: Error) => {
+      if (settled) return;
+      settled = true;
+      reportProgress();
+      cleanup();
+      if (error) reject(error);
+      else resolve({ ended, charsSpoken });
+    };
+
+    const interruptAudio = () => finish(false);
+    const animateProgress = () => {
+      if (settled) return;
+      reportProgress();
+      frame = requestAnimationFrame(animateProgress);
+    };
+    session.interrupt = interruptAudio;
+    audio.onloadedmetadata = () => {
+      reportProgress();
+      frame = requestAnimationFrame(animateProgress);
+    };
     audio.onended = () => {
-      opts.onProgress?.(text.length);
-      finish();
+      charsSpoken = text.length;
+      opts.onProgress?.(baseOffset + text.length);
+      finish(true);
     };
     audio.onerror = () => {
-      fail(new Error("audio playback failed"));
+      if (session.cancelled || revision !== session.revision) finish(false);
+      else finish(false, new Error("audio playback failed"));
     };
-    void audio.play().catch((error) => fail(error as Error));
+    void audio.play().catch((error) => {
+      if (session.cancelled || revision !== session.revision) finish(false);
+      else finish(false, error as Error);
+    });
   });
 }
 
-async function speakWithBrowser(text: string, opts: SpeakOptions): Promise<void> {
+async function playBrowserSegment(
+  session: SpeechSession,
+  text: string,
+  baseOffset: number,
+  opts: SpeakOptions,
+): Promise<SegmentResult> {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    opts.onProgress?.(text.length);
-    return;
+    opts.onProgress?.(baseOffset + text.length);
+    return { ended: true, charsSpoken: text.length };
   }
-  await new Promise<void>((resolve) => {
+  const revision = session.revision;
+  return new Promise<SegmentResult>((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = opts.rate ?? 1.0;
     utterance.pitch = opts.pitch ?? 1.0;
-    utterance.onboundary = (event) => {
-      const start = event.charIndex ?? 0;
-      opts.onProgress?.(wordBoundaryAt(text, start));
-    };
+    let charsSpoken = 0;
     let settled = false;
-    const finish = () => {
+    const finish = (ended: boolean) => {
       if (settled) return;
       settled = true;
-      if (activeResolve === finish) activeResolve = null;
-      opts.onProgress?.(text.length);
-      resolve();
+      if (session.interrupt === interruptBrowser) session.interrupt = null;
+      resolve({ ended, charsSpoken });
     };
-    activeResolve = finish;
-    utterance.onend = utterance.onerror = finish;
+    const interruptBrowser = () => {
+      window.speechSynthesis.cancel();
+      finish(false);
+    };
+    session.interrupt = interruptBrowser;
+    utterance.onboundary = (event) => {
+      charsSpoken = Math.max(charsSpoken, event.charIndex ?? 0);
+      opts.onProgress?.(baseOffset + charsSpoken);
+    };
+    utterance.onend = () => {
+      charsSpoken = text.length;
+      opts.onProgress?.(baseOffset + text.length);
+      finish(true);
+    };
+    utterance.onerror = () => finish(
+      !session.cancelled && revision === session.revision,
+    );
     window.speechSynthesis.speak(utterance);
   });
 }
 
 export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
-  const clean = text.trim();
+  const clean = text.trim().slice(0, 500);
   if (!clean || !ttsAvailable()) return;
   cancelSpeech();
+  const session: SpeechSession = {
+    cancelled: false,
+    voiceName: opts.voiceName ?? "kokoro_af_heart",
+    revision: 0,
+    controller: null,
+    audio: null,
+    interrupt: null,
+  };
+  activeSession = session;
+  let cursor = 0;
+  let browserFallback = false;
+
   try {
-    await speakWithKokoro(clean.slice(0, 500), opts);
-  } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") return;
-    await speakWithBrowser(clean, opts);
+    while (cursor < clean.length && !session.cancelled) {
+      const remaining = clean.slice(cursor);
+      let result: SegmentResult;
+      try {
+        result = browserFallback
+          ? await playBrowserSegment(session, remaining, cursor, opts)
+          : await playKokoroSegment(session, remaining, cursor, opts);
+      } catch {
+        if (session.cancelled) return;
+        // A backend or media failure is non-blocking. Continue the same
+        // unfinished segment through the browser's speech engine.
+        browserFallback = true;
+        continue;
+      }
+      if (session.cancelled) return;
+      if (result.ended) {
+        cursor = clean.length;
+      } else {
+        const advance = resumeBoundaryAt(remaining, result.charsSpoken);
+        cursor += advance;
+        opts.onProgress?.(cursor);
+      }
+    }
+  } finally {
+    session.controller?.abort();
+    session.interrupt?.();
+    if (activeSession === session) activeSession = null;
   }
 }
 

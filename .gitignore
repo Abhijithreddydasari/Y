@@ -65,3 +65,8 @@ data/learners/
 data/speech-cache/
 data/tts-assets/
 api/data/
+
+# Cursor files
+Cursor1.md
+Cursor2.md
+Cursor3.md

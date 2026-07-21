@@ -44,6 +44,24 @@ class SpeechError(RuntimeError):
     pass
 
 
+def _configure_moonshine_windows_crt() -> None:
+    """Free Moonshine-owned buffers with the CRT used by its Windows DLL.
+
+    Moonshine Voice 0.0.69 loads ``msvcrt`` on Windows, but its native DLL is
+    built against the Universal CRT. Freeing the returned voice-catalog buffer
+    through the former raises an access violation before Kokoro can load.
+    """
+    if os.name != "nt":
+        return
+    import ctypes
+    import moonshine_voice.moonshine_api as moonshine_api
+
+    ucrt = ctypes.CDLL("ucrtbase")
+    ucrt.free.argtypes = [ctypes.c_void_p]
+    ucrt.free.restype = None
+    moonshine_api._libc = ucrt
+
+
 class MoonshineSpeechEngine:
     def __init__(self) -> None:
         repo_root = Path(__file__).resolve().parent.parent
@@ -68,10 +86,11 @@ class MoonshineSpeechEngine:
             self._import_error = ""
         except Exception as exc:  # optional dependency guard
             self._import_error = str(exc)
+        self._runtime_error = ""
 
     @property
     def available(self) -> bool:
-        return not self._import_error
+        return not self._import_error and not self._runtime_error
 
     def health(self) -> dict:
         return {
@@ -79,7 +98,7 @@ class MoonshineSpeechEngine:
             "model_version": MODEL_VERSION,
             "asset_root": str(self.asset_root),
             "loaded_voices": sorted(self._engines),
-            "error": self._import_error,
+            "error": self._runtime_error or self._import_error,
             "asset_lock": str(self.lock_path),
             "asset_lock_present": self.lock_path.exists(),
             "kokoro_upstream_sha256": KOKORO_UPSTREAM_SHA256,
@@ -97,15 +116,25 @@ class MoonshineSpeechEngine:
                 + self._import_error
             )
         if voice not in self._engines:
+            _configure_moonshine_windows_crt()
             from moonshine_voice import TextToSpeech
 
             self.asset_root.mkdir(parents=True, exist_ok=True)
-            self._engines[voice] = TextToSpeech(
-                "en-us",
-                voice=voice,
-                asset_root=self.asset_root,
-                download=True,
-            )
+            try:
+                engine = TextToSpeech(
+                    "en-us",
+                    voice=voice,
+                    asset_root=self.asset_root,
+                    download=True,
+                )
+            except Exception as exc:
+                # Some Moonshine Windows wheels currently fail inside their
+                # native voice-discovery call. Surface that as an optional
+                # service outage so the web client can use Web Speech instead
+                # of receiving an opaque 500 response.
+                self._runtime_error = f"Moonshine initialization failed: {exc}"
+                raise SpeechError(self._runtime_error) from exc
+            self._engines[voice] = engine
             self.audit_assets(require_lock=os.environ.get("SPEECH_REQUIRE_LOCK") == "1")
         return self._engines[voice]
 

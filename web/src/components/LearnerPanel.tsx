@@ -184,7 +184,7 @@ export default function LearnerPanel({ snapshot, onReset }: Props) {
   }, [open]);
 
   return (
-    <div className="pointer-events-none absolute bottom-16 left-4 z-40">
+    <div className="pointer-events-none absolute bottom-16 left-8 z-40">
       {open && (
         <aside
           id="learner-space"

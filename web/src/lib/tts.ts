@@ -26,6 +26,7 @@ interface SegmentResult {
 }
 
 let activeSession: SpeechSession | null = null;
+let preferredVoiceName = "kokoro_af_heart";
 
 export function ttsAvailable(): boolean {
   return typeof window !== "undefined" && (
@@ -39,6 +40,7 @@ export function ttsAvailable(): boolean {
  * Returns true when narration was active and a resume was requested.
  */
 export function switchSpeechVoice(voiceName: string): boolean {
+  preferredVoiceName = voiceName;
   const session = activeSession;
   if (!session || session.cancelled || session.voiceName === voiceName) return false;
   session.voiceName = voiceName;
@@ -79,6 +81,7 @@ async function playKokoroSegment(
   opts: SpeakOptions,
 ): Promise<SegmentResult> {
   const revision = session.revision;
+  const requestedVoice = session.voiceName;
   const controller = new AbortController();
   const abortFetch = () => controller.abort();
   session.controller = controller;
@@ -91,7 +94,7 @@ async function playKokoroSegment(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         text,
-        voice: session.voiceName,
+        voice: requestedVoice,
         speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
       }),
       signal: controller.signal,
@@ -109,6 +112,10 @@ async function playKokoroSegment(
     if (session.controller === controller) session.controller = null;
     if (session.interrupt === abortFetch) session.interrupt = null;
     throw new Error(`speech backend returned ${response.status}`);
+  }
+  const servedVoice = response.headers.get("X-Speech-Voice");
+  if (servedVoice && servedVoice !== requestedVoice) {
+    throw new Error(`speech backend returned ${servedVoice} instead of ${requestedVoice}`);
   }
 
   const blob = await response.blob();
@@ -194,10 +201,23 @@ async function playBrowserSegment(
     return { ended: true, charsSpoken: text.length };
   }
   const revision = session.revision;
+  const voices = await loadBrowserVoices();
+  if (session.cancelled || revision !== session.revision) {
+    return { ended: false, charsSpoken: 0 };
+  }
   return new Promise<SegmentResult>((resolve) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = opts.rate ?? 1.0;
-    utterance.pitch = opts.pitch ?? 1.0;
+    const isMichael = session.voiceName === "kokoro_am_michael";
+    utterance.pitch = opts.pitch ?? (isMichael ? 0.82 : 1.08);
+    const preferredNames = isMichael
+      ? ["guy", "david", "mark", "george", "male"]
+      : ["aria", "jenny", "zira", "samantha", "female"];
+    const browserVoice = voices.find((voice) => {
+      const name = voice.name.toLowerCase();
+      return preferredNames.some((candidate) => name.includes(candidate));
+    }) ?? voices.find((voice) => voice.lang.toLowerCase().startsWith("en"));
+    if (browserVoice) utterance.voice = browserVoice;
     let charsSpoken = 0;
     let settled = false;
     const finish = (ended: boolean) => {
@@ -227,13 +247,38 @@ async function playBrowserSegment(
   });
 }
 
+async function loadBrowserVoices(): Promise<SpeechSynthesisVoice[]> {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return [];
+  const speech = window.speechSynthesis;
+  const ready = speech.getVoices();
+  if (ready.length > 0) return ready;
+
+  // Chromium loads installed Windows voices asynchronously. Waiting for the
+  // catalogue prevents both fallback choices from silently using the same
+  // default voice on the first narration.
+  await new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      speech.removeEventListener("voiceschanged", finish);
+      resolve();
+    };
+    speech.addEventListener("voiceschanged", finish, { once: true });
+    window.setTimeout(finish, 350);
+  });
+  return speech.getVoices();
+}
+
 export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
   const clean = text.trim().slice(0, 500);
   if (!clean || !ttsAvailable()) return;
   cancelSpeech();
+  const requestedVoice = opts.voiceName ?? preferredVoiceName;
+  preferredVoiceName = requestedVoice;
   const session: SpeechSession = {
     cancelled: false,
-    voiceName: opts.voiceName ?? "kokoro_af_heart",
+    voiceName: requestedVoice,
     revision: 0,
     controller: null,
     audio: null,

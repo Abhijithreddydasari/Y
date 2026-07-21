@@ -68,3 +68,26 @@ def test_speech_asset_audit_rejects_forbidden_and_modified_files(tmp_path) -> No
     allowed.write_bytes(b"tampered-model")
     with pytest.raises(SpeechError, match="asset lock mismatch"):
         engine.audit_assets(require_lock=True)
+
+
+def test_native_initialization_failure_disables_optional_engine(
+    tmp_path, monkeypatch
+) -> None:
+    import moonshine_voice
+
+    engine = MoonshineSpeechEngine()
+    engine.asset_root = tmp_path / "assets"
+    engine._import_error = ""
+
+    class BrokenTextToSpeech:
+        def __init__(self, *args, **kwargs) -> None:
+            raise OSError("native voice discovery failed")
+
+    monkeypatch.setattr(moonshine_voice, "TextToSpeech", BrokenTextToSpeech)
+
+    with pytest.raises(SpeechError, match="Moonshine initialization failed"):
+        engine._engine("kokoro_af_heart")
+
+    assert engine.available is False
+    assert "native voice discovery failed" in engine.health()["error"]
+    assert engine.health()["loaded_voices"] == []

@@ -1,0 +1,24 @@
+{
+  "schema": "y-speech-assets-v1",
+  "moonshine_voice": "0.0.69",
+  "kokoro_upstream_sha256": "496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4",
+  "voices": [
+    "kokoro_af_heart",
+    "kokoro_am_michael"
+  ],
+  "files": {
+    "en_us/dict_filtered_heteronyms.tsv": "8fb0fa0e3ce1a74b864f03c06ace015257660fa2116c6157d11061f4e35bb6b7",
+    "en_us/g2p-config.json": "f10e652b28c49edd90a94ceb139b94d2368de5814650d81289fcb985fe1ca0f5",
+    "en_us/oov/model.onnx": "a77ba078d3e92938151d8c5aa87309e54d9cd222555628e1261b078a99b064c5",
+    "en_us/oov/onnx-config.json": "60a7cf2592ae66702f56e4368a8614e72235eef89205de96f4cf6bace96c5692",
+    "kokoro/config.json": "5abb01e2403b072bf03d04fde160443e209d7a0dad49a423be15196b9b43c17f",
+    "kokoro/model.onnx": "fbae9257e1e05ffc727e951ef9b9c98418e6d79f1c9b6b13bd59f5c9028a1478",
+    "kokoro/voices/af_heart.kokorovoice": "908e14de5b4709da55562129164e618f5d135fcc34dac419e0c3de5189b72d2c",
+    "kokoro/voices/am_michael.kokorovoice": "5656ad6770d9cce2bddf6c0d0446569151555a7d284971fe3cd763f4f74f726f"
+  },
+  "audit": {
+    "files": 8,
+    "forbidden": [],
+    "locked": false
+  }
+}

@@ -93,6 +93,7 @@ export default function AppPage() {
   const [busy, setBusy] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [voice, setVoice] = useState("kokoro_af_heart");
+  const voiceRef = useRef("kokoro_af_heart");
   const [teacherMode, setTeacherMode] = useState(false);
   const [modelChoice, setModelChoice] = useState<ModelChoice>("edge");
   const [modelReady, setModelReady] = useState<Partial<Record<ModelChoice, boolean>>>({});
@@ -235,7 +236,7 @@ export default function AppPage() {
         origin,
         handle,
         ttsEnabled,
-        voiceName: voice,
+        voiceName: voiceRef.current,
         onProgress: setStatus,
         signal: controller.signal,
       });
@@ -313,7 +314,7 @@ export default function AppPage() {
         abortRef.current = null;
       }
     },
-    [busy, ttsEnabled, voice, teacherMode, modelChoice, refreshLearner],
+    [busy, ttsEnabled, teacherMode, modelChoice, refreshLearner],
   );
 
   const assessWork = useCallback(async () => {
@@ -335,7 +336,7 @@ export default function AppPage() {
       origin: { x: region.x, y: region.y },
       handle,
       ttsEnabled,
-      voiceName: voice,
+      voiceName: voiceRef.current,
       onProgress: setStatus,
       signal: controller.signal,
     });
@@ -384,7 +385,7 @@ export default function AppPage() {
       abortRef.current = null;
       setBusy(false);
     }
-  }, [busy, checkpoint, modelChoice, refreshLearner, ttsEnabled, voice]);
+  }, [busy, checkpoint, modelChoice, refreshLearner, ttsEnabled]);
 
   const onResetLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -407,6 +408,7 @@ export default function AppPage() {
   }, [runLesson]);
 
   const changeVoice = useCallback((nextVoice: string) => {
+    voiceRef.current = nextVoice;
     setVoice(nextVoice);
     const resumed = playerRef.current?.setVoice(nextVoice) ?? false;
     const label = nextVoice === "kokoro_am_michael" ? "Michael" : "Heart";

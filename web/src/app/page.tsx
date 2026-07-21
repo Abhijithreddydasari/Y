@@ -16,7 +16,7 @@ import ScrollLine from "@/components/ScrollLine";
 export default function LandingPage() {
   return (
     <div
-      className="font-[var(--font-jakarta)] flex flex-col min-h-screen relative bg-white text-[#1a1c1c] antialiased"
+      className="font-[var(--font-app-sans)] flex flex-col min-h-screen relative bg-white text-[#1a1c1c] antialiased"
     >
       <ScrollLine />
 

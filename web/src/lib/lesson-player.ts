@@ -1,12 +1,24 @@
 // Coordinates renderer + TTS to play back a sequence of primitives at a
 // human pace. The same player powers both the live lesson (primitives
 // arriving from SSE) and the replay button (primitives cached in memory).
+//
+// Narration and writing advance TOGETHER: each [text]/[title] line is written
+// on the board in lockstep with the words being spoken (driven by the audio
+// clip's playback position), and the next primitive does not begin until the
+// current line has finished speaking. Non-spoken primitives (equations,
+// diagrams) hold for a short beat so they don't flash past the narration.
 
 import type { WhiteboardHandle } from "@/components/Whiteboard";
-import { LessonRenderer, type RenderResult } from "./renderer";
+import { LessonRenderer, wrapText, type RenderResult } from "./renderer";
 import { stripMarkdown } from "./sanitize";
-import { NarrationQueue } from "./narration-queue";
-import { sleep } from "./tts";
+import {
+  cancelSpeech,
+  prepareSpeech,
+  sleep,
+  speak,
+  switchSpeechVoice,
+  type PreparedSpeech,
+} from "./tts";
 import type { PrimitiveTag } from "./types";
 
 // Cache the dynamic Excalidraw import at module scope. Without this every
@@ -23,7 +35,9 @@ function loadExcalidraw() {
 }
 
 /**
- * A deliberately short character reveal. Drawing is never paced by audio.
+ * A timed character reveal. Used only when TTS is disabled, so a line still
+ * writes progressively instead of snapping in all at once. When TTS is on,
+ * the reveal is driven by audio position (see `LessonPlayer.narrate`).
  */
 class TextRevealer {
   private current = 0;
@@ -96,79 +110,156 @@ interface PlayerOptions {
   handle: WhiteboardHandle;
   ttsEnabled: boolean;
   voiceName?: string;
-  /** ms between non-speech primitives. */
+  /** ms to hold on a non-spoken primitive (equation/diagram) before moving on. */
   visualGapMs?: number;
-  /** ms after a [text] primitive renders before its narration starts. */
-  speakHeadStartMs?: number;
   onProgress?: (status: string) => void;
   onNarratingChange?: (narrating: boolean) => void;
   signal?: AbortSignal;
 }
 
 export class LessonPlayer {
-  private readonly opts: Required<Omit<PlayerOptions, "signal" | "onProgress" | "onNarratingChange" | "voiceName">> & {
-    signal?: AbortSignal;
-    onProgress?: (status: string) => void;
-    onNarratingChange?: (narrating: boolean) => void;
-    voiceName?: string;
-  };
+  private readonly origin: { x: number; y: number };
+  private readonly handle: WhiteboardHandle;
+  private readonly ttsEnabled: boolean;
+  private voiceName: string;
+  private readonly visualGapMs: number;
+  private readonly onProgress?: (status: string) => void;
+  private readonly onNarratingChange?: (narrating: boolean) => void;
+  private readonly signal?: AbortSignal;
+
   private readonly renderer: LessonRenderer;
   private drawChain: Promise<void> = Promise.resolve();
-  private readonly narration: NarrationQueue;
   private rendered = 0;
+  private readonly renderedIds: string[] = [];
+  private narrating = false;
+  // Audio clips warmed at stream time, keyed by the exact narration string,
+  // so a line's playback can start with no synthesis gap when its turn comes.
+  private readonly warmed = new Map<string, Promise<PreparedSpeech | undefined>>();
 
   constructor(opts: PlayerOptions) {
-    this.opts = {
-      visualGapMs: 20,
-      speakHeadStartMs: 0,
-      ttsEnabled: opts.ttsEnabled,
-      voiceName: opts.voiceName,
-      origin: opts.origin,
-      handle: opts.handle,
-      onProgress: opts.onProgress,
-      signal: opts.signal,
-    };
+    this.origin = opts.origin;
+    this.handle = opts.handle;
+    this.ttsEnabled = opts.ttsEnabled;
+    this.voiceName = opts.voiceName ?? "kokoro_af_heart";
+    this.visualGapMs = opts.visualGapMs ?? 380;
+    this.onProgress = opts.onProgress;
+    this.onNarratingChange = opts.onNarratingChange;
+    this.signal = opts.signal;
     this.renderer = new LessonRenderer(opts.origin);
-    this.narration = new NarrationQueue({
-      enabled: opts.ttsEnabled,
-      voiceName: opts.voiceName,
-      signal: opts.signal,
-      onActivity: opts.onNarratingChange,
-    });
+    opts.signal?.addEventListener("abort", () => this.cancel(), { once: true });
   }
 
   /** Enqueue a primitive. Returns immediately; rendering is sequential. */
   enqueue(tag: PrimitiveTag): void {
+    // Warm this line's narration audio the moment it streams in. Playback is
+    // gated on the previous line finishing, so by the time this line's turn
+    // arrives its clip is already synthesized and speech starts instantly --
+    // this is what keeps the voice and the writing in lockstep.
+    if (this.ttsEnabled) {
+      const narrationText = narrationTextForTag(tag);
+      if (narrationText && !this.warmed.has(narrationText)) {
+        this.warmed.set(
+          narrationText,
+          prepareSpeech(narrationText, {
+            voiceName: this.voiceName,
+            signal: this.signal,
+          }).catch(() => undefined),
+        );
+      }
+    }
     this.drawChain = this.drawChain.then(() => this.playOne(tag));
   }
 
-  /** Resolve once every queued primitive has finished playing. */
+  /** Resolve once every queued primitive has finished playing (and speaking). */
   async finishDrawing(): Promise<void> {
     await this.drawChain;
+    this.handle.fitElements(this.renderedIds);
   }
 
-  /** Compatibility alias: completion now means visual completion only. */
+  /** Compatibility alias: completion now means visual + narration completion. */
   async finish(): Promise<void> {
     await this.finishDrawing();
   }
 
   async finishNarration(): Promise<void> {
-    await this.narration.finish();
+    await this.drawChain;
+    this.setNarrating(false);
   }
 
-  /** Stop any in-flight speech immediately. Future primitives still play. */
+  /** Stop any in-flight speech immediately. */
   cancel(): void {
-    this.narration.cancel();
+    cancelSpeech();
+    this.setNarrating(false);
   }
 
-  /** Update both the active sentence and all queued narration. */
+  /** Switch the voice for the active line and everything queued after it. */
   setVoice(voiceName: string): boolean {
-    this.opts.voiceName = voiceName;
-    return this.narration.setVoice(voiceName);
+    this.voiceName = voiceName;
+    return switchSpeechVoice(voiceName);
+  }
+
+  private setNarrating(active: boolean): void {
+    if (this.narrating === active) return;
+    this.narrating = active;
+    this.onNarratingChange?.(active);
+  }
+
+  /**
+   * Speak `fullText` while (optionally) writing it on the board in lockstep.
+   * Resolves only when the audio clip has finished, so the caller can gate the
+   * next primitive on the current line being fully spoken.
+   */
+  private async narrate(
+    fullText: string,
+    mutate?: (partial: string) => void,
+  ): Promise<void> {
+    if (this.signal?.aborted) return;
+    const clean = fullText.trim();
+    if (!clean) {
+      mutate?.(fullText);
+      return;
+    }
+
+    // TTS disabled: still write progressively so the board doesn't snap in.
+    if (!this.ttsEnabled) {
+      if (mutate) {
+        const step = Math.max(1, Math.ceil(clean.length / 30));
+        const revealer = new TextRevealer(fullText, mutate, 16, this.signal, step);
+        revealer.start();
+        await revealer.revealAll();
+        revealer.finish();
+      }
+      return;
+    }
+
+    this.setNarrating(true);
+    const prepared =
+      this.warmed.get(clean) ??
+      prepareSpeech(clean, { voiceName: this.voiceName, signal: this.signal }).catch(
+        () => undefined,
+      );
+    this.warmed.delete(clean);
+
+    try {
+      await speak(clean, {
+        voiceName: this.voiceName,
+        prepared,
+        onProgress: mutate
+          ? (chars) => {
+              const n = Math.max(0, Math.min(fullText.length, chars));
+              mutate(fullText.slice(0, n) || " ");
+            }
+          : undefined,
+      });
+    } catch {
+      // A synthesis / playback failure must not strand the line half-written.
+    }
+    // Guarantee the final text is fully painted regardless of how speech ended.
+    mutate?.(fullText);
   }
 
   private async playOne(tag: PrimitiveTag): Promise<void> {
-    if (this.opts.signal?.aborted) return;
+    if (this.signal?.aborted) return;
     try {
       const cleanTag = sanitizeTag(tag);
 
@@ -178,7 +269,7 @@ export class LessonPlayer {
 
       const { convertToExcalidrawElements } = await loadExcalidraw();
       const els = convertToExcalidrawElements(skeletons, { regenerateIds: false });
-      if (files) this.opts.handle.addFiles(files);
+      if (files) this.handle.addFiles(files);
 
       // For draw / draw_part: hide the image element initially so the
       // overlay animation can paint the strokes from scratch. The image
@@ -191,31 +282,26 @@ export class LessonPlayer {
         }
       }
 
-      this.opts.handle.appendElements(els as unknown as Parameters<
+      this.handle.appendElements(els as unknown as Parameters<
         WhiteboardHandle["appendElements"]
       >[0]);
+      const latestIds = els.map((element) => element.id).filter(Boolean);
+      this.renderedIds.push(...latestIds);
+      const latestId = latestIds.at(-1);
+      if (latestId) this.handle.ensureElementVisible(latestId);
       this.rendered += 1;
       this.report(`Drew ${this.rendered} element(s). Last: ${cleanTag.tag}`);
 
-      // If this primitive had an animatable diagram, run the stroke-by-
-      // stroke reveal BEFORE we move on (or in parallel with the caption TTS
-      // when the part has a name).
-      if (drawAnimation) {
-        if (drawAnimation.caption) this.narration.enqueue(drawAnimation.caption);
-        await this.playStrokeAnimation(result);
-      }
-
-      const hasReveal = !!revealText && !!revealId;
-
       // Build a mutation helper that always pins width/height so Excalidraw
       // never auto-resizes the element as partial text is shorter than final.
+      const hasReveal = !!revealText && !!revealId;
       const dimPatch: Record<string, unknown> = {};
       if (revealWidth != null) dimPatch.width = revealWidth;
       if (revealHeight != null) dimPatch.height = revealHeight;
 
       const mutate = hasReveal
         ? (partial: string) =>
-            this.opts.handle.mutateElement(revealId!, {
+            this.handle.mutateElement(revealId!, {
               text: partial,
               originalText: partial,
               ...dimPatch,
@@ -223,21 +309,31 @@ export class LessonPlayer {
         : undefined;
 
       // Blank the element immediately so the user never sees the full text
-      // flash before the tutor starts "writing".
+      // flash before the tutor starts "writing" it in time with the voice.
       if (hasReveal) mutate!(" ");
 
+      // If this primitive had an animatable diagram, run the stroke-by-stroke
+      // reveal while its caption is spoken in parallel.
+      if (drawAnimation) {
+        const captionSpeech = drawAnimation.caption
+          ? this.narrate(drawAnimation.caption)
+          : Promise.resolve();
+        await this.playStrokeAnimation(result);
+        await captionSpeech;
+      }
+
       if (hasReveal) {
-        const fullText = revealText!;
-        // Finish within 250-400 ms even for long equations or paragraphs.
-        const ticks = Math.max(1, Math.ceil(fullText.length / 30));
-        const revealer = new TextRevealer(fullText, mutate!, 12, this.opts.signal, ticks);
-        revealer.start();
-        await revealer.revealAll();
-        revealer.finish();
-        this.narration.enqueue(fullText);
-      } else {
-        // Diagram primitive (equation / box / node / arrow / line).
-        await sleep(this.opts.visualGapMs);
+        // Write the line on the board word-by-word, paced by the narration.
+        await this.narrate(revealText!, mutate!);
+      } else if (!drawAnimation) {
+        // Silent visual primitive (equation / box / node / arrow / line). Hold
+        // a beat so it doesn't flash past; equations get a touch longer since
+        // they're the substance of a math step and carry no narration.
+        const hold =
+          cleanTag.tag === "equation"
+            ? Math.max(this.visualGapMs, 700)
+            : this.visualGapMs;
+        await sleep(hold);
       }
     } catch (exc) {
       console.warn("[player] failed primitive", tag, exc);
@@ -257,14 +353,14 @@ export class LessonPlayer {
    * will drift -- acceptable for a 2-3s reveal.
    */
   private async playStrokeAnimation(result: RenderResult): Promise<void> {
-    if (this.opts.signal?.aborted) return;
+    if (this.signal?.aborted) return;
     if (!result.drawAnimation) return;
     const { parsedSvg, imageId } = result.drawAnimation;
     const paths = parsedSvg.paths;
     if (!paths.length) {
       // Nothing to animate (e.g. draw_part with only <text> elements).
       // Just fade the image in and bail.
-      this.opts.handle.mutateElement(imageId, { opacity: 100 });
+      this.handle.mutateElement(imageId, { opacity: 100 });
       return;
     }
 
@@ -272,10 +368,10 @@ export class LessonPlayer {
     // can read its screen-space rect.
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-    const rect = this.opts.handle.getElementScreenRect(imageId);
+    const rect = this.handle.getElementScreenRect(imageId);
     if (!rect) {
       // Whiteboard not ready / element missing. Fade-in fallback.
-      this.opts.handle.mutateElement(imageId, { opacity: 100 });
+      this.handle.mutateElement(imageId, { opacity: 100 });
       return;
     }
 
@@ -324,7 +420,7 @@ export class LessonPlayer {
 
       // Animate each path sequentially: kick off transition, wait for it.
       for (let i = 0; i < pathEls.length; i++) {
-        if (this.opts.signal?.aborted) break;
+        if (this.signal?.aborted) break;
         const p = pathEls[i];
         p.style.transition = `stroke-dashoffset ${perPathMs}ms ease-out`;
         // Reading offsetWidth flushes the transition setter so the next
@@ -337,7 +433,7 @@ export class LessonPlayer {
     } finally {
       // Fade in the underlying rasterised image and fade out the overlay
       // simultaneously to mask the swap.
-      this.opts.handle.mutateElement(imageId, { opacity: 100 });
+      this.handle.mutateElement(imageId, { opacity: 100 });
       overlay.style.opacity = "0";
       await sleep(120);
       overlay.remove();
@@ -345,8 +441,24 @@ export class LessonPlayer {
   }
 
   private report(s: string): void {
-    this.opts.onProgress?.(s);
+    this.onProgress?.(s);
   }
+}
+
+/**
+ * The exact string that will be both written and spoken for a primitive, or
+ * "" if the primitive is not narrated. MUST match the `revealText` the
+ * renderer produces so the warmed audio clip is reused (same cache key).
+ */
+function narrationTextForTag(tag: PrimitiveTag): string {
+  const a = tag.args ?? {};
+  if (tag.tag === "text") {
+    return wrapText(stripMarkdown(String(a.content ?? "")), 50);
+  }
+  if (tag.tag === "title") {
+    return stripMarkdown(String(a.text ?? ""));
+  }
+  return "";
 }
 
 function sanitizeTag(tag: PrimitiveTag): PrimitiveTag {

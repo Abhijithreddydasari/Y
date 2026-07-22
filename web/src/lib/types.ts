@@ -40,6 +40,38 @@ export interface EvidenceConcept {
   name: string;
   description: string;
   confidence: number;
+  hierarchy?: string[];
+  facets?: Partial<Record<AssessedDimensionName, {
+    score: number;
+    confidence: number;
+  }>>;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  source?: "lesson" | "assessment" | "chat";
+  pending?: boolean;
+  error?: boolean;
+}
+
+export type LearningDimensionName =
+  | "knowledge"
+  | "understanding"
+  | "retention"
+  | "reasoning"
+  | "application";
+
+export type AssessedDimensionName = Exclude<LearningDimensionName, "retention">;
+
+export interface DimensionBelief {
+  mean: number;
+  std: number;
+  credible_low: number;
+  credible_high: number;
+  evidence_count: number;
+  status: "insufficient-evidence" | "needs-support" | "developing" | "well-supported" | string;
 }
 
 export interface LearningEvidence {
@@ -75,6 +107,9 @@ export interface AdaptationOutcome {
 
 export interface ConceptBelief {
   name: string;
+  display_name?: string;
+  hierarchy?: string[];
+  dimensions?: Record<LearningDimensionName, DimensionBelief>;
   mastery_mean: number;
   mastery_std: number;
   credible_low: number;
@@ -87,6 +122,18 @@ export interface ConceptBelief {
   uncertainty_delta: number;
   trend: number;
   misconception?: string;
+}
+
+export interface KnowledgeNode {
+  id: string;
+  name: string;
+  level: "subject" | "field" | "subfield" | "topic" | "subtopic" | "concept" | string;
+  path: string[];
+  children: KnowledgeNode[];
+  concept_names: string[];
+  concept_count: number;
+  evidence_count: number;
+  dimensions: Record<LearningDimensionName, DimensionBelief>;
 }
 
 export interface ConceptRelation {
@@ -122,6 +169,7 @@ export interface LearnerState {
   latent_point: LatentPoint;
   latent_trajectory: LatentPoint[];
   concept_relations: ConceptRelation[];
+  knowledge_hierarchy?: KnowledgeNode[];
   last_activity: LearnerActivity;
   profile_text: string;
   adapter: {
@@ -178,6 +226,7 @@ export interface LearnerUpdateEvent {
 export type LessonEvent =
   | { event: "token"; data: { text: string } }
   | { event: "primitive"; data: PrimitiveTag }
+  | { event: "generation_complete"; data: Record<string, never> }
   | { event: "educator_notes"; data: EducatorNotes }
   | { event: "learner_update"; data: LearnerUpdateEvent }
   | { event: "learner_state"; data: LearnerState }

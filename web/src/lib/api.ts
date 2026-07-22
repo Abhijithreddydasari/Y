@@ -3,6 +3,7 @@
 // send a POST body; instead we use fetch with a ReadableStream reader.
 
 import type {
+  ChatMessage,
   Checkpoint,
   EducatorNotes,
   LearnerState,
@@ -19,6 +20,7 @@ export const API_BASE =
 export interface LessonStreamCallbacks {
   onToken?: (text: string) => void;
   onPrimitive?: (tag: PrimitiveTag) => void;
+  onGenerationComplete?: () => void;
   onEducatorNotes?: (notes: EducatorNotes) => void;
   onLearnerUpdate?: (update: LearnerUpdateEvent) => void;
   onLearnerState?: (state: LearnerState) => void;
@@ -106,6 +108,9 @@ function handleFrame(frame: string, cb: LessonStreamCallbacks) {
     case "primitive":
       cb.onPrimitive?.(evt.data);
       break;
+    case "generation_complete":
+      cb.onGenerationComplete?.();
+      break;
     case "educator_notes":
       cb.onEducatorNotes?.(evt.data);
       break;
@@ -140,6 +145,100 @@ export interface HealthInfo {
   preferred_model: string;
   learner_adapter: Record<string, unknown>;
   speech: { available: boolean; model_version: string; error?: string };
+  transcription?: {
+    available: boolean;
+    model: string;
+    loaded: boolean;
+    device: string;
+    compute_type: string;
+    install_hint?: string;
+  };
+}
+
+export interface ChatStreamOptions {
+  messages: ChatMessage[];
+  userId: string;
+  conversationId: string;
+  modelChoice: string;
+  lessonContext?: string;
+}
+
+export interface ChatStreamCallbacks {
+  onDelta?: (text: string) => void;
+  onDone?: () => void;
+  onError?: (message: string) => void;
+}
+
+export async function streamChat(
+  options: ChatStreamOptions,
+  cb: ChatStreamCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const messages = options.messages
+    .filter((message) => message.content.trim() && !message.pending && !message.error)
+    .slice(-24)
+    .map(({ role, content }) => ({ role, content: content.slice(0, 8000) }));
+  const response = await fetch(`${API_BASE}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages,
+      user_id: options.userId,
+      conversation_id: options.conversationId,
+      model_choice: options.modelChoice,
+      lesson_context: options.lessonContext ?? "",
+    }),
+    signal,
+  });
+  if (!response.ok || !response.body) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail ?? detail; } catch { /* non-JSON */ }
+    cb.onError?.(`HTTP ${response.status}: ${detail}`);
+    return;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const consume = (frame: string) => {
+    let event = "message";
+    const lines: string[] = [];
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) lines.push(line.slice(5).trim());
+    }
+    if (!lines.length) return;
+    try {
+      const data = JSON.parse(lines.join("\n")) as { text?: string; message?: string };
+      if (event === "delta" && data.text) cb.onDelta?.(data.text);
+      else if (event === "done") cb.onDone?.();
+      else if (event === "error") cb.onError?.(data.message ?? "Chat failed");
+    } catch { /* ignore malformed partial frames */ }
+  };
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+    let index: number;
+    while ((index = buffer.indexOf("\n\n")) !== -1) {
+      consume(buffer.slice(0, index));
+      buffer = buffer.slice(index + 2);
+    }
+  }
+  if (buffer.trim()) consume(buffer);
+}
+
+export async function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<string> {
+  const form = new FormData();
+  form.append("audio", audio, "recording.wav");
+  const response = await fetch(`${API_BASE}/transcribe`, { method: "POST", body: form, signal });
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail ?? detail; } catch { /* non-JSON */ }
+    throw new Error(detail);
+  }
+  const result = await response.json() as { text?: string };
+  return result.text?.trim() ?? "";
 }
 
 export interface AssessStreamOptions {

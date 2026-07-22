@@ -24,6 +24,12 @@ mastery.
 - The draggable learner orb opens a live SVG concept constellation. Node size
   represents evidence, halos uncertainty, color a qualitative learning state,
   and semantic/co-occurrence edges come from the backend learner state.
+- A second bottom-right orb opens a Markdown lesson transcript. Every streamed
+  board title, explanation, equation, and diagram caption is mirrored there;
+  typed or spoken follow-ups continue through the currently selected teacher.
+- Spoken chat input uses the bundled MIT-licensed Moonshine Tiny English model
+  locally. Browser audio is encoded directly as PCM WAV, so no FFmpeg, cloud
+  transcription, or new native runtime is required.
 - Whiteboard primitives render as soon as they stream. Kokoro narration has its
   own ordered queue, prefetches the next two segments, and never blocks drawing.
 - Local Gemma 4 through Ollama remains the private/offline teacher fallback.
@@ -41,6 +47,9 @@ flowchart LR
     C --> D["Primitive parser + repair"]
     D --> E["Immediate Excalidraw + KaTeX drawing queue"]
     D --> F["Independent local Kokoro narration queue"]
+    D --> N["Live Markdown chat transcript"]
+    N --> O["Typed or local Moonshine STT follow-up"]
+    O --> C
     C --> G["Personalized checkpoint"]
     A -->|"Check my work"| H["GPT-5.6-terra evidence extraction"]
     G --> H
@@ -121,6 +130,25 @@ Kokoro weights are Apache-2.0. See [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICE
 and [sbom.spdx.json](./sbom.spdx.json). No Piper, voice-cloning, eSpeak, or GPL
 phonemizer asset is shipped.
 
+## Markdown chat and local speech input
+
+The blue orb at the bottom-right opens the conversational transcript. Install
+the local speech-input extra if you did not install the speech bundle:
+
+```bat
+cd api
+uv sync --extra stt
+```
+
+The microphone records a maximum of 60 seconds, encodes mono 16 kHz PCM in the
+browser, and sends it only to the local `/transcribe` endpoint. Moonshine Tiny
+English is bundled with `moonshine-voice==0.0.69`, so there is no first-use
+model download. It runs quantized on CPU to leave GPU memory available for
+Gemma and the learner adapter. Typed and transcribed chat replies use the model
+currently selected in the toolbar and receive the learner profile plus the
+latest whiteboard transcript as context. Chat itself does not create mastery
+evidence.
+
 ## Demo flow
 
 1. Insert a math sample and press **Solve**. This is a help request: it updates
@@ -139,9 +167,11 @@ phonemizer asset is shipped.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /health` | provider, adapter checkpoint/device, and speech readiness |
+| `GET /health` | provider, adapter checkpoint/device, narration, and STT readiness |
 | `POST /lesson` | PNG + user/conversation/model; streams primitives, learner state, checkpoint |
 | `POST /assess` | PNG + checkpoint; streams evidence, feedback, updated state, next checkpoint |
+| `POST /chat` | conversation + transcript context; streams Markdown deltas |
+| `POST /transcribe` | local mono WAV to Moonshine Tiny English text |
 | `GET /learner/{user_id}` | schema v2 profile, beliefs, trajectory, steps, rollbacks, legacy sessions |
 | `DELETE /learner/{user_id}` | reset v2 profile and per-user fast weights |
 | `GET /speech/voices` | two allowlisted Kokoro voices |
@@ -238,7 +268,8 @@ npm run build
 npm audit --omit=dev
 ```
 
-The tests cover revision ordering, direct SSE application, concept relations,
+The tests cover chat streaming, Markdown mirroring, local audio validation,
+revision ordering, direct SSE application, concept relations,
 representation/mastery isolation, independent rollback, the untrained gate,
 persistence/migration, constellation layout, orb drag/persistence, narration
 ordering and voice invalidation, speech caching, and malformed teacher JSON.
@@ -250,8 +281,9 @@ api/learner_adapter.py        9.43M global model + functional rank-4 LoRA
 api/learner.py                evidence validation, state, adaptation, persistence
 api/teacher.py                GPT-5.6 Responses API + Gemma providers
 api/speech.py                 Moonshine/Kokoro service, cache, asset audit
-api/main.py                   lesson, assess, learner, speech, health contracts
-web/src/app/app/page.tsx      whiteboard lesson/assessment orchestration
+api/transcription.py          local Moonshine Tiny English STT service
+api/main.py                   lesson, chat, assess, learner, speech, health contracts
+web/src/app/app/page.tsx      whiteboard, transcript, and assessment orchestration
 training/                     corpus, global training, prequential evaluation
 deploy/modal_train_learner.py Modal A10G training job
 docs/architecture.md          detailed data and event flow

@@ -62,6 +62,7 @@ api/scripts/smoke_out/
 
 # Local learner store (per-user state)
 data/learners/
+data/logs/
 data/speech-cache/
 data/tts-assets/
 api/data/

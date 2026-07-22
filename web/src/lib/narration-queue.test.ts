@@ -4,10 +4,14 @@ const { playback, speakMock, warmMock, switchMock, cancelMock } = vi.hoisted(() 
   const ordered: string[] = [];
   return {
     playback: ordered,
-    speakMock: vi.fn(async (text: string) => { ordered.push(text); }),
-    warmMock: vi.fn(async (text: string, options?: { signal?: AbortSignal }): Promise<void> => {
+    speakMock: vi.fn(async (text: string, options?: { prepared?: Promise<unknown> }) => {
+      await options?.prepared;
+      ordered.push(text);
+    }),
+    warmMock: vi.fn(async (text: string, options?: { signal?: AbortSignal }) => {
       void text;
       void options;
+      return undefined;
     }),
     switchMock: vi.fn(() => true),
     cancelMock: vi.fn(),
@@ -16,7 +20,7 @@ const { playback, speakMock, warmMock, switchMock, cancelMock } = vi.hoisted(() 
 
 vi.mock("./tts", () => ({
   speak: speakMock,
-  warmSpeech: warmMock,
+  prepareSpeech: warmMock,
   switchSpeechVoice: switchMock,
   cancelSpeech: cancelMock,
 }));
@@ -41,10 +45,10 @@ describe("NarrationQueue", () => {
   it("invalidates old-voice prefetch and switches active transport", async () => {
     const aborted: string[] = [];
     warmMock.mockImplementation((text: string, options?: { signal?: AbortSignal }) =>
-      new Promise<void>((resolve) => {
+      new Promise<undefined>((resolve) => {
         options?.signal?.addEventListener("abort", () => {
           aborted.push(text);
-          resolve();
+          resolve(undefined);
         }, { once: true });
       }),
     );

@@ -356,6 +356,10 @@ class IncrementalTagParser:
             tag_text = "".join(self._tag_buf)
             self._in_tag = False
             self._tag_buf = []
+            # Non-rendering protocol marker used by the teacher transport to
+            # prove that a streamed solution reached its intended end.
+            if tag_text.strip().lower().replace("-", "_") == "lesson_complete":
+                return
             parsed = self._parse_tag_body(tag_text)
             if parsed is None:
                 # No `name:` match. Try the bare-header salvage (e.g. `[Title]`,

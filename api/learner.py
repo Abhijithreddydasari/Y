@@ -61,11 +61,33 @@ Extract the concepts covered by the whiteboard lesson. Reply with one JSON
 object and no markdown:
 {
   "topic": "short topic",
-  "concepts_seen": ["open-vocabulary-concept"],
+  "concepts": [{
+    "name": "open-vocabulary-concept",
+    "description": "short description",
+    "confidence": 0.0,
+    "hierarchy": ["Subject", "Field", "Subfield", "Topic", "Subtopic"]
+  }],
   "summary": "one sentence"
 }
 Use concrete 1-3 word concept names rather than broad school subjects.
+Use only as many hierarchy levels as are meaningful and end the path at the
+concept. Do not score the learner from a help request.
 """
+
+REFLECTION_SYSTEM_PROMPT = """You are a teaching coach improving a whiteboard tutor.
+
+A student just answered a checkpoint. From the question, rubric, the student's
+outcome, and any misconception, write ONE concrete instruction the tutor should
+follow NEXT TIME it teaches this concept so the student does not repeat the
+mistake.
+
+Rules: imperative voice, at most 20 words, one line, no preamble, no markdown.
+Be specific to the concept and the mistake (name the step that was missed). If
+there is nothing useful to add, reply with a single hyphen: -
+"""
+
+FACET_NAMES = ("knowledge", "understanding", "retention", "reasoning", "application")
+ASSESSED_FACETS = tuple(name for name in FACET_NAMES if name != "retention")
 
 
 def _now() -> str:
@@ -93,6 +115,92 @@ def _clean_concept_name(value: object) -> str:
     return re.sub(r"\s+", "-", text).strip("-_")[:64]
 
 
+def _display_concept(name: str) -> str:
+    return re.sub(r"[-_/]+", " ", name).strip().title() or "Unclassified concept"
+
+
+def _clean_heuristic(raw: str) -> str:
+    """Reduce a reflection response to one clean imperative line, or "".
+
+    Keeps only the first non-empty line, strips list markers / surrounding
+    quotes / markdown emphasis, and rejects the model's "nothing to add"
+    sentinel (a lone hyphen) and anything too short to be useful.
+    """
+    line = next((ln.strip() for ln in str(raw or "").splitlines() if ln.strip()), "")
+    line = re.sub(r"^\s*(?:[-*\u2022]|\d+[.)])\s*", "", line)
+    line = line.replace("**", "").replace("__", "").replace("`", "").strip()
+    if len(line) >= 2 and line[0] in "\"'" and line[-1] in "\"'":
+        line = line[1:-1].strip()
+    line = re.sub(r"\s+", " ", line)
+    if len(line) < 8 or line == "-":
+        return ""
+    return line[:160]
+
+
+def _fallback_taxonomy(name: str) -> list[str]:
+    """Conservative migration path for evidence created before taxonomy v1."""
+    label = _display_concept(name)
+    low = name.lower()
+    groups = (
+        (("integr", "derivative", "calculus", "limit", "antiderivative"), ["Mathematics", "Calculus"]),
+        (("fraction", "algebra", "quadratic", "equation", "polynomial"), ["Mathematics", "Algebra"]),
+        ((
+            "geometry", "triangle", "circle", "pythag", "hypotenuse",
+            "legs", "squaring-sides", "square-root",
+        ), ["Mathematics", "Geometry"]),
+        (("force", "momentum", "velocity", "acceleration", "mechanic"), ["Physics", "Mechanics"]),
+        ((
+            "atom", "bond", "molecule", "benzene", "reaction", "aromatic",
+            "resonance", "delocalized", "c6h6",
+        ), ["Chemistry", "Organic Chemistry"]),
+        (("cell", "gene", "dna", "genetic", "protein"), ["Biology", "Life sciences"]),
+        (("algorithm", "dfs", "tree", "complexity", "program"), ["Computer Science", "Algorithms"]),
+    )
+    prefix = next((path for tokens, path in groups if any(token in low for token in tokens)), ["Interdisciplinary"])
+    return [*prefix, label]
+
+
+def _clean_taxonomy(value: object, concept_name: str) -> list[str]:
+    if isinstance(value, dict):
+        raw = [value.get(key) for key in ("subject", "field", "subfield", "topic", "subtopic")]
+    elif isinstance(value, list):
+        raw = value
+    elif isinstance(value, str):
+        raw = re.split(r"\s*(?:>|/|→)\s*", value)
+    else:
+        raw = []
+    path: list[str] = []
+    for item in raw:
+        label = _clean_text(item, 80).strip(" -/>")
+        if label and (not path or label.casefold() != path[-1].casefold()):
+            path.append(label)
+    leaf = _display_concept(concept_name)
+    if not path:
+        return _fallback_taxonomy(concept_name)
+    if path[-1].casefold().replace("-", " ") != leaf.casefold().replace("-", " "):
+        path.append(leaf)
+    return path[:5]
+
+
+def _clean_facets(value: object, *, allowed: bool) -> dict[str, dict[str, float]]:
+    if not allowed or not isinstance(value, dict):
+        return {}
+    result: dict[str, dict[str, float]] = {}
+    for name in ASSESSED_FACETS:
+        raw = value.get(name)
+        if isinstance(raw, dict):
+            score = _clamp01(raw.get("score", raw.get("mean")), 0.5)
+            confidence = _clamp01(raw.get("confidence"), 0.0)
+        elif raw is not None:
+            score = _clamp01(raw, 0.5)
+            confidence = 0.5
+        else:
+            continue
+        if confidence > 0:
+            result[name] = {"score": score, "confidence": confidence}
+    return result
+
+
 def _hash_embedding(text: str, width: int = 768) -> list[float]:
     """Stable, dependency-free fallback when the embedding daemon is absent.
 
@@ -118,6 +226,8 @@ class EvidenceConcept:
     description: str = ""
     confidence: float = 1.0
     embedding: list[float] = field(default_factory=list)
+    hierarchy: list[str] = field(default_factory=list)
+    facets: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 @dataclass
@@ -208,6 +318,8 @@ class LearningEvidence:
                     description=str(c.get("description", "")),
                     confidence=_clamp01(c.get("confidence"), 1.0),
                     embedding=list(c.get("embedding") or []),
+                    hierarchy=_clean_taxonomy(c.get("hierarchy"), str(c.get("name", ""))),
+                    facets=_clean_facets(c.get("facets"), allowed=str(value.get("source", "")) == "checkpoint_answer"),
                 )
                 for c in value.get("concepts", [])
                 if isinstance(c, dict) and c.get("name")
@@ -245,6 +357,7 @@ class LearnerProfile:
     evidence: list[dict] = field(default_factory=list)
     latent_trajectory: list[dict] = field(default_factory=list)
     checkpoints: list[dict] = field(default_factory=list)
+    teaching_heuristics: list[dict] = field(default_factory=list)
     last_state: dict = field(default_factory=dict)
     last_activity: dict = field(default_factory=dict)
     adapter: dict = field(default_factory=lambda: {
@@ -291,6 +404,7 @@ def normalise_evidence(
     source: str,
 ) -> LearningEvidence:
     value = raw if isinstance(raw, dict) else {}
+    safe_source = source if source in {"help_request", "checkpoint_answer", "legacy"} else "help_request"
     raw_concepts = value.get("concepts") or value.get("concepts_seen") or []
     if isinstance(raw_concepts, str):
         raw_concepts = [raw_concepts]
@@ -301,19 +415,35 @@ def normalise_evidence(
             name = _clean_concept_name(raw_concept.get("name"))
             description = _clean_text(raw_concept.get("description"), 160)
             confidence = _clamp01(raw_concept.get("confidence"), 1.0)
+            hierarchy = _clean_taxonomy(raw_concept.get("hierarchy"), name)
+            facets = _clean_facets(
+                raw_concept.get("facets"),
+                allowed=safe_source == "checkpoint_answer",
+            )
         else:
             name = _clean_concept_name(raw_concept)
             description = ""
             confidence = 1.0
+            hierarchy = _fallback_taxonomy(name)
+            facets = {}
         if name and name not in seen:
-            concepts.append(EvidenceConcept(name, description, confidence))
+            concepts.append(EvidenceConcept(
+                name=name,
+                description=description,
+                confidence=confidence,
+                hierarchy=hierarchy,
+                facets=facets,
+            ))
             seen.add(name)
     if not concepts:
         topic = _clean_concept_name(value.get("topic"))
         if topic:
-            concepts.append(EvidenceConcept(topic, "", 0.5))
+            concepts.append(EvidenceConcept(
+                name=topic,
+                confidence=0.5,
+                hierarchy=_fallback_taxonomy(topic),
+            ))
 
-    safe_source = source if source in {"help_request", "checkpoint_answer", "legacy"} else "help_request"
     evidence_id = "ev_" + hashlib.sha256(
         f"{user_id}|{conversation_id}|{_now()}|{random.random()}".encode("utf-8")
     ).hexdigest()[:16]
@@ -418,6 +548,7 @@ class LearnerStore:
                     evidence=list(raw.get("evidence") or []),
                     latent_trajectory=list(raw.get("latent_trajectory") or []),
                     checkpoints=list(raw.get("checkpoints") or []),
+                    teaching_heuristics=list(raw.get("teaching_heuristics") or []),
                     last_state=dict(raw.get("last_state") or {}),
                     last_activity=dict(raw.get("last_activity") or {}),
                     adapter=dict(raw.get("adapter") or {}),
@@ -440,6 +571,7 @@ class LearnerStore:
         if profile.last_state and (
             "revision" not in profile.last_state
             or "concept_relations" not in profile.last_state
+            or "knowledge_hierarchy" not in profile.last_state
             or "last_activity" not in profile.last_state
             or any(
                 "help_evidence_count" not in belief
@@ -572,16 +704,27 @@ class LearnerStore:
         return _hash_embedding(payload, self._model.cfg.embedding_dim), "hash-fallback"
 
     async def prepare_evidence(self, evidence: LearningEvidence) -> LearningEvidence:
+        # Event and concept embeddings are independent. Issuing them together
+        # lets Ollama batch/schedule the small Nomic requests instead of adding
+        # one round-trip per concept to the end of every lesson.
+        pending: list[tuple[str, EvidenceConcept | None, object]] = []
         if len(evidence.event_embedding) != self._model.cfg.embedding_dim:
-            evidence.event_embedding, evidence.embedding_source = await self.embed(
-                evidence.event_text()
-            )
+            pending.append(("event", None, self.embed(evidence.event_text())))
         for concept in evidence.concepts:
             if len(concept.embedding) != self._model.cfg.embedding_dim:
-                concept.embedding, _ = await self.embed(
-                    concept.description or concept.name,
-                    query=True,
-                )
+                pending.append((
+                    "concept",
+                    concept,
+                    self.embed(concept.description or concept.name, query=True),
+                ))
+        if pending:
+            results = await asyncio.gather(*(item[2] for item in pending))
+            for (kind, concept, _), (vector, source) in zip(pending, results):
+                if kind == "event":
+                    evidence.event_embedding = vector
+                    evidence.embedding_source = source
+                elif concept is not None:
+                    concept.embedding = vector
         return evidence
 
     def _events(self, profile: LearnerProfile) -> list[LearningEvidence]:
@@ -999,6 +1142,181 @@ class LearnerStore:
             return [0.0, 0.0, 0.0]
         return [round(math.tanh(value / total_weight), 5) for value in totals]
 
+    @staticmethod
+    def _dimension_beliefs(
+        relevant: list[LearningEvidence],
+        concept_name: str,
+    ) -> dict[str, dict]:
+        """Build separate, uncertainty-aware signals without inventing data.
+
+        Four facets are graded only when an assessed response exposes them.
+        Retention is derived longitudinally from repeated strong assessments;
+        a single correct turn therefore remains explicitly unresolved.
+        """
+        observations: dict[str, list[tuple[float, float]]] = {
+            name: [] for name in FACET_NAMES
+        }
+        assessed = [event for event in relevant if event.source == "checkpoint_answer"]
+        for event in assessed:
+            concept = next((item for item in event.concepts if item.name == concept_name), None)
+            if concept is None:
+                continue
+            for facet_name in ASSESSED_FACETS:
+                facet = concept.facets.get(facet_name)
+                if facet:
+                    weight = (
+                        event.evidence_strength
+                        * concept.confidence
+                        * _clamp01(facet.get("confidence"), 0.0)
+                    )
+                    if weight > 0:
+                        observations[facet_name].append((
+                            _clamp01(facet.get("score"), 0.5),
+                            weight,
+                        ))
+            # Backward-compatible but deliberately lower-confidence signals
+            # for profiles created before per-facet grading was introduced.
+            if "understanding" not in concept.facets:
+                observations["understanding"].append((
+                    event.outcome.soft_score,
+                    event.evidence_strength * concept.confidence * 0.55,
+                ))
+            if "reasoning" not in concept.facets:
+                observations["reasoning"].append((
+                    0.65 * event.outcome.soft_score + 0.35 * event.independence,
+                    event.evidence_strength * concept.confidence * 0.35,
+                ))
+
+        strong = [
+            event for event in assessed
+            if event.evidence_strength >= EVIDENCE_THRESHOLD
+        ]
+        for previous, current in zip(strong, strong[1:]):
+            try:
+                previous_at = datetime.fromisoformat(previous.timestamp.replace("Z", "+00:00"))
+                current_at = datetime.fromisoformat(current.timestamp.replace("Z", "+00:00"))
+                gap_hours = max(0.0, (current_at - previous_at).total_seconds() / 3600.0)
+            except (TypeError, ValueError):
+                gap_hours = 0.0
+            if gap_hours < 1.0 and previous.conversation_id == current.conversation_id:
+                continue
+            concept = next((item for item in current.concepts if item.name == concept_name), None)
+            if concept is None:
+                continue
+            time_confidence = min(1.0, max(0.2, gap_hours / (24.0 * 7.0)))
+            observations["retention"].append((
+                current.outcome.soft_score,
+                current.evidence_strength * concept.confidence * time_confidence,
+            ))
+
+        result: dict[str, dict] = {}
+        for facet_name in FACET_NAMES:
+            values = observations[facet_name]
+            if not values:
+                result[facet_name] = {
+                    "mean": 0.5,
+                    "std": 0.5,
+                    "credible_low": 0.0,
+                    "credible_high": 1.0,
+                    "evidence_count": 0,
+                    "status": "insufficient-evidence",
+                }
+                continue
+            alpha = 1.0
+            beta = 1.0
+            for score, weight in values:
+                alpha += weight * score
+                beta += weight * (1.0 - score)
+            mean = alpha / (alpha + beta)
+            std = math.sqrt(alpha * beta / (((alpha + beta) ** 2) * (alpha + beta + 1.0)))
+            status = "needs-support" if mean <= 0.42 else (
+                "well-supported" if mean >= 0.72 and std < 0.25 else "developing"
+            )
+            result[facet_name] = {
+                "mean": round(mean, 4),
+                "std": round(std, 4),
+                "credible_low": round(max(0.0, mean - 1.96 * std), 4),
+                "credible_high": round(min(1.0, mean + 1.96 * std), 4),
+                "evidence_count": len(values),
+                "status": status,
+            }
+        return result
+
+    @staticmethod
+    def _knowledge_hierarchy(beliefs: list[dict]) -> list[dict]:
+        roots: dict[str, dict] = {}
+        for belief in beliefs:
+            path = list(belief.get("hierarchy") or _fallback_taxonomy(belief["name"]))
+            branch = roots
+            walked: list[str] = []
+            for index, label in enumerate(path):
+                walked.append(label)
+                key = label.casefold()
+                node = branch.setdefault(key, {
+                    "name": label,
+                    "path": list(walked),
+                    "children_map": {},
+                    "beliefs": [],
+                    "is_leaf": index == len(path) - 1,
+                })
+                node["beliefs"].append(belief)
+                node["is_leaf"] = node["is_leaf"] or index == len(path) - 1
+                branch = node["children_map"]
+
+        level_names = ("subject", "field", "subfield", "topic", "subtopic")
+
+        def serialize(node: dict, depth: int) -> dict:
+            children = [serialize(child, depth + 1) for child in node["children_map"].values()]
+            dimensions: dict[str, dict] = {}
+            for facet_name in FACET_NAMES:
+                candidates = [
+                    belief["dimensions"][facet_name]
+                    for belief in node["beliefs"]
+                    if belief.get("dimensions", {}).get(facet_name, {}).get("evidence_count", 0) > 0
+                ]
+                if not candidates:
+                    dimensions[facet_name] = {
+                        "mean": 0.5, "std": 0.5,
+                        "credible_low": 0.0, "credible_high": 1.0,
+                        "evidence_count": 0, "status": "insufficient-evidence",
+                    }
+                    continue
+                weights = [max(1, int(item["evidence_count"])) for item in candidates]
+                total = sum(weights)
+                mean = sum(item["mean"] * weight for item, weight in zip(candidates, weights)) / total
+                variance = sum(
+                    weight * (item["std"] ** 2 + (item["mean"] - mean) ** 2)
+                    for item, weight in zip(candidates, weights)
+                ) / total
+                std = min(0.5, math.sqrt(max(0.0, variance)))
+                dimensions[facet_name] = {
+                    "mean": round(mean, 4),
+                    "std": round(std, 4),
+                    "credible_low": round(max(0.0, mean - 1.96 * std), 4),
+                    "credible_high": round(min(1.0, mean + 1.96 * std), 4),
+                    "evidence_count": sum(int(item["evidence_count"]) for item in candidates),
+                    "status": "needs-support" if mean <= 0.42 else (
+                        "well-supported" if mean >= 0.72 and std < 0.25 else "developing"
+                    ),
+                }
+            path_text = "|".join(node["path"])
+            return {
+                "id": "kn_" + hashlib.sha256(path_text.encode("utf-8")).hexdigest()[:12],
+                "name": node["name"],
+                "level": "concept" if not children else level_names[min(depth, len(level_names) - 1)],
+                "path": node["path"],
+                "children": sorted(children, key=lambda item: (-item["evidence_count"], item["name"])),
+                "concept_names": sorted({belief["name"] for belief in node["beliefs"]}),
+                "concept_count": len({belief["name"] for belief in node["beliefs"]}),
+                "evidence_count": sum(int(belief.get("evidence_count", 0)) for belief in node["beliefs"]),
+                "dimensions": dimensions,
+            }
+
+        return sorted(
+            (serialize(node, 0) for node in roots.values()),
+            key=lambda item: (-item["evidence_count"], item["name"]),
+        )
+
     def state_snapshot(self, profile: LearnerProfile) -> dict:
         events = self._events(profile)
         concept_names = self._concept_names(events)
@@ -1120,8 +1438,20 @@ class LearnerStore:
                     and previous
                 ):
                     mastery = float(previous.get("mastery_mean", mastery))
+                concept_path = next(
+                    (
+                        concept.hierarchy
+                        for event in reversed(relevant)
+                        for concept in event.concepts
+                        if concept.name == name and concept.hierarchy
+                    ),
+                    _fallback_taxonomy(name),
+                )
                 beliefs.append({
                     "name": name,
+                    "display_name": _display_concept(name),
+                    "hierarchy": concept_path,
+                    "dimensions": self._dimension_beliefs(relevant, name),
                     "mastery_mean": round(mastery, 4),
                     "mastery_std": round(uncertainty, 4),
                     "credible_low": round(max(0.0, mastery - 1.96 * uncertainty), 4),
@@ -1170,6 +1500,7 @@ class LearnerStore:
             "concept_relations": self._concept_relations(
                 events, concept_names, concept_vector_map
             ),
+            "knowledge_hierarchy": self._knowledge_hierarchy(beliefs),
             "last_activity": profile.last_activity,
             "profile_text": self._profile_text(beliefs),
             "adapter": {
@@ -1210,15 +1541,68 @@ class LearnerStore:
 
     def system_prompt_prefix(self, user_id: str) -> str:
         profile = self.get(user_id)
-        if not profile.evidence:
+        if not profile.evidence and not profile.teaching_heuristics:
             return ""
         state = profile.last_state or self.state_snapshot(profile)
-        return (
-            "# Probabilistic learner state\n\n"
-            + state.get("profile_text", "")
-            + "\nTreat low-confidence beliefs as hypotheses, not facts. "
-            "Do not reveal numeric mastery scores to the learner.\n\n---\n\n"
-        )
+        sections: list[str] = []
+        if profile.evidence:
+            sections.append(
+                "# Probabilistic learner state\n\n"
+                + state.get("profile_text", "")
+                + "\nTreat low-confidence beliefs as hypotheses, not facts. "
+                "Do not reveal numeric mastery scores to the learner."
+            )
+        notes = self._relevant_heuristics(profile, state)
+        if notes:
+            sections.append(
+                "# Teaching notes from past sessions\n\n"
+                "Apply these when they fit the current problem so earlier "
+                "mistakes are not repeated:\n"
+                + "\n".join(f"- {note}" for note in notes)
+            )
+        if not sections:
+            return ""
+        return "\n\n".join(sections) + "\n\n---\n\n"
+
+    def _relevant_heuristics(
+        self, profile: LearnerProfile, state: dict, limit: int = 4
+    ) -> list[str]:
+        """Pick teaching heuristics to inject: ones touching the learner's
+        weak/uncertain or recently-seen concepts first (newest first), then any
+        recent ones to fill the budget."""
+        heuristics = profile.teaching_heuristics
+        if not heuristics:
+            return []
+        focus: set[str] = {
+            belief["name"]
+            for belief in state.get("concept_beliefs", [])
+            if isinstance(belief, dict)
+            and belief.get("name")
+            and (
+                belief.get("mastery_mean", 0.5) <= 0.55
+                or belief.get("mastery_std", 0.0) >= 0.25
+            )
+        }
+        focus.update(profile.last_activity.get("concepts", []) or [])
+        selected: list[str] = []
+        seen: set[str] = set()
+
+        def consider(only_focus: bool) -> None:
+            for item in reversed(heuristics):
+                if len(selected) >= limit:
+                    return
+                text = str(item.get("text", "")).strip()
+                if not text or text.casefold() in seen:
+                    continue
+                if only_focus and not (focus & set(item.get("concepts", []))):
+                    continue
+                selected.append(text)
+                seen.add(text.casefold())
+
+        if focus:
+            consider(only_focus=True)
+        consider(only_focus=False)
+        return selected
 
     async def record_evidence(
         self,
@@ -1286,6 +1670,83 @@ class LearnerStore:
             None,
         )
 
+    def save_heuristic(
+        self,
+        user_id: str,
+        concepts: list[str],
+        text: str,
+        source_evidence_id: str = "",
+    ) -> dict | None:
+        """Persist a durable, concept-keyed teaching heuristic distilled from a
+        graded answer. Deduplicates identical text and caps the store size."""
+        text = _clean_text(text, 160)
+        if not text:
+            return None
+        profile = self.get(user_id)
+        lowered = text.casefold()
+        for existing in profile.teaching_heuristics:
+            if str(existing.get("text", "")).casefold() == lowered:
+                return None
+        concept_names = [
+            name for name in (_clean_concept_name(c) for c in concepts) if name
+        ][:6]
+        item = {
+            "heuristic_id": "th_" + hashlib.sha256(
+                f"{user_id}|{_now()}|{random.random()}".encode("utf-8")
+            ).hexdigest()[:14],
+            "concepts": concept_names,
+            "text": text,
+            "source_evidence_id": source_evidence_id,
+            "created_at": _now(),
+        }
+        profile.teaching_heuristics.append(item)
+        profile.teaching_heuristics = profile.teaching_heuristics[-50:]
+        self._save_profile(profile)
+        return item
+
+    async def reflect(
+        self,
+        evidence: LearningEvidence,
+        checkpoint: dict,
+        teacher_model: str,
+    ) -> str:
+        """Distil one concrete teaching heuristic from a graded answer.
+
+        Runs on the local edge model (like concept extraction) so it stays
+        cheap; returns "" on any failure or when there is nothing to add.
+        """
+        loop = asyncio.get_running_loop()
+        client = self._ollama()
+        concept = evidence.concepts[0].name if evidence.concepts else ""
+        prompt = (
+            f"Concept: {concept}\n"
+            f"Question: {checkpoint.get('question', '')}\n"
+            f"Rubric: {checkpoint.get('rubric', '')}\n"
+            "Outcome correct/partial/incorrect: "
+            f"{evidence.outcome.correct:.2f}/{evidence.outcome.partial:.2f}/"
+            f"{evidence.outcome.incorrect:.2f}\n"
+            f"Misconception: {evidence.misconception or 'none'}\n"
+            "Student answer: "
+            f"{evidence.response_text or evidence.response_summary or 'unknown'}\n"
+            "Write the one-line teaching instruction."
+        )
+
+        def producer() -> str:
+            try:
+                response = client.generate(
+                    model=teacher_model,
+                    prompt=prompt,
+                    system=REFLECTION_SYSTEM_PROMPT,
+                    stream=False,
+                    options={"temperature": 0.2, "num_predict": 80},
+                )
+                return str(response.get("response", ""))
+            except Exception:
+                return ""
+
+        raw = await loop.run_in_executor(None, producer)
+        return _clean_heuristic(raw)
+
     async def extract_concepts(self, lesson_text: str, teacher_model: str) -> dict:
         loop = asyncio.get_running_loop()
         client = self._ollama()
@@ -1297,7 +1758,7 @@ class LearnerStore:
                     prompt=f"Lesson:\n{lesson_text}\n\nReturn JSON.",
                     system=EXTRACT_SYSTEM_PROMPT,
                     stream=False,
-                    options={"temperature": 0.1, "num_predict": 256},
+                    options={"temperature": 0.1, "num_predict": 600},
                 )
                 return str(response.get("response", ""))
             except Exception:
@@ -1318,7 +1779,7 @@ class LearnerStore:
         extract = await self.extract_concepts(lesson_text, teacher_model)
         evidence = normalise_evidence(
             {
-                "concepts": extract.get("concepts_seen", []),
+                "concepts": extract.get("concepts", extract.get("concepts_seen", [])),
                 "summary": extract.get("summary", ""),
                 "outcome": {"correct": 0.2, "partial": 0.5, "incorrect": 0.3},
                 "evidence_strength": 0.15,
@@ -1330,7 +1791,10 @@ class LearnerStore:
             source="help_request",
         )
         state, _ = await self.record_evidence(evidence, allow_adaptation=False)
-        vector, _ = await self.embed(lesson_text)
+        # The evidence embedding already represents this lesson and was
+        # computed while record_evidence prepared the interaction. Reusing it
+        # avoids another synchronous embedding request before the SSE closes.
+        vector = list(evidence.event_embedding)
         beliefs = {b["name"]: b for b in state.get("concept_beliefs", [])}
         concepts = [c.name for c in evidence.concepts]
         record = SessionRecord(
@@ -1350,7 +1814,7 @@ class LearnerStore:
 
 
 def _parse_extract_json(raw: str) -> dict:
-    fallback = {"topic": "", "concepts_seen": [], "summary": ""}
+    fallback = {"topic": "", "concepts": [], "concepts_seen": [], "summary": ""}
     if not raw:
         return fallback
     cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
@@ -1366,11 +1830,31 @@ def _parse_extract_json(raw: str) -> dict:
             concepts = value.get("concepts_seen") or value.get("concepts") or []
             if isinstance(concepts, str):
                 concepts = [concepts]
+            normalized: list[dict] = []
+            for concept in concepts[:8]:
+                if isinstance(concept, dict):
+                    name = _clean_concept_name(concept.get("name"))
+                    if not name:
+                        continue
+                    normalized.append({
+                        "name": name,
+                        "description": _clean_text(concept.get("description"), 160),
+                        "confidence": _clamp01(concept.get("confidence"), 0.7),
+                        "hierarchy": _clean_taxonomy(concept.get("hierarchy"), name),
+                    })
+                else:
+                    name = _clean_concept_name(concept)
+                    if name:
+                        normalized.append({
+                            "name": name,
+                            "description": "",
+                            "confidence": 0.6,
+                            "hierarchy": _fallback_taxonomy(name),
+                        })
             return {
                 "topic": _clean_text(value.get("topic"), 80),
-                "concepts_seen": [
-                    name for name in (_clean_concept_name(c) for c in concepts) if name
-                ][:8],
+                "concepts": normalized,
+                "concepts_seen": [item["name"] for item in normalized],
                 "summary": _clean_text(value.get("summary"), 500),
             }
         except (TypeError, ValueError, json.JSONDecodeError):

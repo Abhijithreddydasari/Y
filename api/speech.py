@@ -79,7 +79,11 @@ class MoonshineSpeechEngine:
                 Path(__file__).resolve().parent / "speech_assets.lock.json",
             )
         )
-        self._lock = threading.RLock()
+        self._engine_lock = threading.RLock()
+        # A stale request for Heart must not block Michael after a mid-line
+        # voice switch. Engines are independent, so serialize per voice rather
+        # than putting every synthesis behind one global lock.
+        self._voice_locks = {voice: threading.RLock() for voice in VOICE_IDS}
         try:
             import moonshine_voice  # noqa: F401
 
@@ -116,26 +120,29 @@ class MoonshineSpeechEngine:
                 + self._import_error
             )
         if voice not in self._engines:
-            _configure_moonshine_windows_crt()
-            from moonshine_voice import TextToSpeech
+            with self._engine_lock:
+                if voice in self._engines:
+                    return self._engines[voice]
+                _configure_moonshine_windows_crt()
+                from moonshine_voice import TextToSpeech
 
-            self.asset_root.mkdir(parents=True, exist_ok=True)
-            try:
-                engine = TextToSpeech(
-                    "en-us",
-                    voice=voice,
-                    asset_root=self.asset_root,
-                    download=True,
-                )
-            except Exception as exc:
-                # Some Moonshine Windows wheels currently fail inside their
-                # native voice-discovery call. Surface that as an optional
-                # service outage so the web client can use Web Speech instead
-                # of receiving an opaque 500 response.
-                self._runtime_error = f"Moonshine initialization failed: {exc}"
-                raise SpeechError(self._runtime_error) from exc
-            self._engines[voice] = engine
-            self.audit_assets(require_lock=os.environ.get("SPEECH_REQUIRE_LOCK") == "1")
+                self.asset_root.mkdir(parents=True, exist_ok=True)
+                try:
+                    engine = TextToSpeech(
+                        "en-us",
+                        voice=voice,
+                        asset_root=self.asset_root,
+                        download=True,
+                    )
+                except Exception as exc:
+                    # Some Moonshine Windows wheels currently fail inside their
+                    # native voice-discovery call. Surface that as an optional
+                    # service outage so the web client can use Web Speech instead
+                    # of receiving an opaque 500 response.
+                    self._runtime_error = f"Moonshine initialization failed: {exc}"
+                    raise SpeechError(self._runtime_error) from exc
+                self._engines[voice] = engine
+                self.audit_assets(require_lock=os.environ.get("SPEECH_REQUIRE_LOCK") == "1")
         return self._engines[voice]
 
     def asset_hashes(self) -> dict[str, str]:
@@ -258,7 +265,7 @@ class MoonshineSpeechEngine:
                 "model_version": MODEL_VERSION,
                 "cached": True,
             }
-        with self._lock:
+        with self._voice_locks[voice]:
             if cache_path.exists():
                 return cache_path.read_bytes(), {
                     "voice": voice,

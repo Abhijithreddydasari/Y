@@ -8,8 +8,9 @@ upstream project. The machine-readable dependency inventory is
 
 ## Speech
 
-- **Moonshine Voice 0.0.69** — MIT-licensed runtime and native English G2P.
-  Source: <https://github.com/moonshine-ai/moonshine>. Y does not call or ship
+- **Moonshine Voice 0.0.69** — MIT-licensed runtime, bundled Tiny English
+  transcription model, and native English G2P. Source:
+  <https://github.com/moonshine-ai/moonshine>. Y does not call or ship
   eSpeak. Only the English G2P dependencies requested by Moonshine are cached.
 - **Kokoro-82M v1.0** — Apache-2.0 model weights. Source:
   <https://huggingface.co/hexgrad/Kokoro-82M>. Upstream model SHA-256:

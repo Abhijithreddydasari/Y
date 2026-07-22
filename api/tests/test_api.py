@@ -47,6 +47,9 @@ class FakeTeacher:
     async def stream_assessment_feedback(self, png_bytes: bytes, checkpoint: dict, evidence: dict, system_prefix: str = "", safety_identifier: str = ""):
         yield '[text: "Correct. Both fractions were converted to sixths."]'
 
+    async def stream_chat(self, messages: list[dict[str, str]], learner_context: str = "", lesson_context: str = "", safety_identifier: str = ""):
+        yield "Use **equivalent fractions** and keep the denominator common."
+
 
 def event_names(body: str) -> list[str]:
     return [line.split(":", 1)[1].strip() for line in body.splitlines() if line.startswith("event:")]
@@ -81,6 +84,7 @@ def test_lesson_and_assessment_sse_contract(tmp_path, monkeypatch) -> None:
         assert health.status_code == 200
         assert health.json()["learner_adapter"]["parameter_count"] > 0
         assert "speech" in health.json()
+        assert "transcription" in health.json()
         lesson = client.post(
             "/lesson",
             files={"image": ("board.png", b"png", "image/png")},
@@ -88,6 +92,7 @@ def test_lesson_and_assessment_sse_contract(tmp_path, monkeypatch) -> None:
         )
         assert lesson.status_code == 200
         lesson_events = event_names(lesson.text)
+        assert lesson_events.index("generation_complete") < lesson_events.index("learner_update")
         assert lesson_events[-4:] == ["learner_update", "learner_state", "checkpoint", "done"]
         checkpoint = store.get("test-user").checkpoints[-1]
 

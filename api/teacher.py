@@ -65,9 +65,21 @@ class Teacher(Protocol):
         system_prefix: str = "",
         safety_identifier: str = "",
     ) -> AsyncIterator[str]: ...
+    def stream_chat(
+        self,
+        messages: list[dict[str, str]],
+        learner_context: str = "",
+        lesson_context: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]: ...
 
 
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+LESSON_COMPLETE_MARKER = "[lesson_complete]"
+
+
+def _lesson_is_complete(text: str) -> bool:
+    return LESSON_COMPLETE_MARKER in text.lower()
 
 EDUCATOR_SYSTEM_PROMPT = """You are an instructional coach reviewing a whiteboard lesson.
 
@@ -89,7 +101,18 @@ EVIDENCE_SYSTEM_PROMPT = """You are grading one learner's whiteboard answer to a
 
 Return one JSON object and nothing else:
 {
-  "concepts": [{"name": "specific-concept", "description": "short description", "confidence": 0.0}],
+  "concepts": [{
+    "name": "specific-concept",
+    "description": "short description",
+    "confidence": 0.0,
+    "hierarchy": ["Subject", "Field", "Subfield", "Topic", "Subtopic"],
+    "facets": {
+      "knowledge": {"score": 0.0, "confidence": 0.0},
+      "understanding": {"score": 0.0, "confidence": 0.0},
+      "reasoning": {"score": 0.0, "confidence": 0.0},
+      "application": {"score": 0.0, "confidence": 0.0}
+    }
+  }],
   "outcome": {"correct": 0.0, "partial": 0.0, "incorrect": 0.0},
   "independence": 0.0,
   "evidence_strength": 0.0,
@@ -99,7 +122,10 @@ Return one JSON object and nothing else:
 }
 The outcome probabilities must sum to 1. Use evidence_strength below 0.65
 when handwriting, the rubric, or correctness is ambiguous. Never infer broad
-personality traits or ability axes from one answer.
+personality traits from one answer. Score a facet only when this answer
+actually exposes it; otherwise give that facet confidence 0. Retention is
+longitudinal and must not be emitted from one answer. Use the narrowest useful
+hierarchy and end it at the assessed concept; omit redundant levels.
 """
 
 CHECKPOINT_SYSTEM_PROMPT = """You write one short check-for-understanding question.
@@ -123,31 +149,48 @@ that says what to try or remember next. Treat low-confidence evidence as
 uncertain and never reveal numeric mastery scores.
 """
 
+CHAT_SYSTEM_PROMPT = """You are Y, the same patient tutor currently teaching on the whiteboard.
+Continue the educational conversation in clear Markdown. Use short paragraphs,
+bullets when useful, and LaTeX ($inline$ or $$display$$) for mathematics. Refer
+to the lesson transcript when it is relevant, but never claim to see anything
+that is not present in the transcript or conversation. Adapt to the supplied
+learner context without exposing scores or hidden profiling. Be concise by
+default, show complete working for calculations, and ask a clarifying question
+only when the learner's request is genuinely ambiguous. Do not emit whiteboard
+primitive tags.
+"""
+
+
+def _chat_instructions(learner_context: str, lesson_context: str) -> str:
+    context: list[str] = [CHAT_SYSTEM_PROMPT]
+    if learner_context.strip():
+        context.append("\nLearner context (private; use only to adjust teaching depth):\n" + learner_context[-4000:])
+    if lesson_context.strip():
+        context.append("\nCurrent whiteboard lesson transcript:\n" + lesson_context[-12000:])
+    return "".join(context)
+
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
 
 def _load_system_prompt() -> str:
-    """Concatenate system.md + primitives.md + every prompts/examples/*.md as few-shots.
+    """Concatenate the instruction prompt (system.md) with the tag vocabulary
+    (primitives.md).
+
+    No few-shot example lessons are included: the tutor reasons from the rules
+    and the vocabulary rather than imitating canned demonstrations.
 
     Layout:
         [system.md]
         ---
         [primitives.md]   (already has its own header)
-        ---
-        # Few-shot examples
-        [examples/*.md]   (joined; each file already has its own header)
     """
-    parts: list[str] = [_read(PROMPTS_DIR / "system.md"), "\n\n---\n\n", _read(PROMPTS_DIR / "primitives.md")]
-    examples_dir = PROMPTS_DIR / "examples"
-    if examples_dir.is_dir():
-        examples = sorted(examples_dir.glob("*.md"))
-        if examples:
-            parts.append("\n\n---\n\n# Few-shot examples\n\nThese show the exact output format expected. Always follow this style.\n")
-            for ex in examples:
-                parts.append("\n\n")
-                parts.append(_read(ex))
+    parts: list[str] = [
+        _read(PROMPTS_DIR / "system.md"),
+        "\n\n---\n\n",
+        _read(PROMPTS_DIR / "primitives.md"),
+    ]
     return "".join(parts).strip()
 
 
@@ -233,40 +276,64 @@ class OllamaTeacher:
 
         def producer() -> None:
             try:
-                stream = self._client.chat(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system},
+                messages = [
+                    {"role": "system", "content": system},
+                    {
+                        "role": "user",
+                        "content": self._user_prompt(),
+                        "images": [b64_image],
+                    },
+                ]
+                # One guarded continuation prevents a response that hit a
+                # provider stop/length boundary from silently losing the last
+                # algebraic term. The control marker is consumed by the parser
+                # and is never rendered on the board.
+                for attempt in range(2):
+                    raw_chunks: list[str] = []
+                    stream = self._client.chat(
+                        model=self.model,
+                        messages=messages,
+                        stream=True,
+                        options={
+                            "temperature": 0.2,
+                            "num_predict": 4096 if attempt == 0 else 1536,
+                        },
+                    )
+                    for chunk in stream:
+                        msg = chunk.get("message", {})
+                        text = msg.get("content", "")
+                        if text:
+                            raw_chunks.append(text)
+                            loop.call_soon_threadsafe(queue.put_nowait, text)
+                        if chunk.get("done"):
+                            break
+                    raw = "".join(raw_chunks)
+                    if _lesson_is_complete(raw):
+                        break
+                    messages.extend([
+                        {"role": "assistant", "content": raw},
                         {
                             "role": "user",
-                            "content": self._user_prompt(),
-                            "images": [b64_image],
+                            "content": (
+                                "The lesson ended before its completion marker. Continue from the "
+                                "exact mathematical point reached. Finish every remaining term, "
+                                "show the combined final result, then emit [lesson_complete]. "
+                                "Do not repeat tags that are already complete."
+                            ),
                         },
-                    ],
-                    stream=True,
-                    options={
-                        "temperature": 0.2,
-                        "num_predict": 2048,
-                    },
-                )
-                for chunk in stream:
-                    msg = chunk.get("message", {})
-                    text = msg.get("content", "")
-                    if text:
-                        loop.call_soon_threadsafe(queue.put_nowait, text)
-                    if chunk.get("done"):
-                        break
+                    ])
             except Exception as exc:
                 loop.call_soon_threadsafe(queue.put_nowait, f"\n[error: {exc}]")
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        await loop.run_in_executor(None, producer)
+        producer_future = loop.run_in_executor(None, producer)
         while True:
             item = await queue.get()
             if item is None:
-                return
+                break
             yield item
+        await producer_future
 
     def _user_prompt(self) -> str:
         return (
@@ -274,6 +341,9 @@ class OllamaTeacher:
             "Locate the question mark '?' on the canvas: that is what the student wants you to explain. "
             "Read everything they have written, then teach the answer like a teacher at the board.\n\n"
             "Reminders (the system prompt is the full source of truth):\n"
+            "- Read the problem exactly: keep integral/sum limits, exponents, subscripts, signs, units.\n"
+            "- Limits present => DEFINITE (substitute both limits and subtract); none => INDEFINITE (add + C).\n"
+            "- Restate the exact problem in your first tag, then solve fully to a final value; never stop at the antiderivative.\n"
             "- Whiteboard captions, not paragraphs. Aim for 6-12 words per [text: \"...\"].\n"
             "- Math ONLY inside [equation: \"...\"]. NEVER inline $math$ or \\(math\\) in [text:] or [title:].\n"
             "- No markdown (**bold**, _italic_, backticks, headers, bullets) anywhere.\n"
@@ -433,12 +503,55 @@ class OllamaTeacher:
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        await loop.run_in_executor(None, producer)
+        producer_future = loop.run_in_executor(None, producer)
         while True:
             item = await queue.get()
             if item is None:
-                return
+                break
             yield item
+        await producer_future
+
+    async def stream_chat(
+        self,
+        messages: list[dict[str, str]],
+        learner_context: str = "",
+        lesson_context: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        """Stream a text-only tutoring turn through the selected local model."""
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        chat_messages = [
+            {"role": "system", "content": _chat_instructions(learner_context, lesson_context)},
+            *messages,
+        ]
+
+        def producer() -> None:
+            try:
+                stream = self._client.chat(
+                    model=self.model,
+                    messages=chat_messages,
+                    stream=True,
+                    options={"temperature": 0.3, "num_predict": 1600},
+                )
+                for chunk in stream:
+                    text = chunk.get("message", {}).get("content", "")
+                    if text:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+                    if chunk.get("done"):
+                        break
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, f"\n\nChat failed: {exc}")
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        producer_future = loop.run_in_executor(None, producer)
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+        await producer_future
 
 
 def _parse_json_object(raw: str) -> dict:
@@ -680,7 +793,7 @@ class CloudTeacher:
                     config=types.GenerateContentConfig(
                         system_instruction=system,
                         temperature=0.4,
-                        max_output_tokens=2048,
+                        max_output_tokens=4096,
                     ),
                 )
             except Exception as exc:
@@ -721,12 +834,13 @@ class CloudTeacher:
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        await loop.run_in_executor(None, producer)
+        producer_future = loop.run_in_executor(None, producer)
         while True:
             item = await queue.get()
             if item is None:
-                return
+                break
             yield item
+        await producer_future
 
     def _user_prompt(self) -> str:
         return (
@@ -734,6 +848,9 @@ class CloudTeacher:
             "Locate the question mark '?' on the canvas: that is what the student wants you to explain. "
             "Read everything they have written, then teach the answer like a teacher at the board.\n\n"
             "Reminders (the system prompt is the full source of truth):\n"
+            "- Read the problem exactly: keep integral/sum limits, exponents, subscripts, signs, units.\n"
+            "- Limits present => DEFINITE (substitute both limits and subtract); none => INDEFINITE (add + C).\n"
+            "- Restate the exact problem in your first tag, then solve fully to a final value; never stop at the antiderivative.\n"
             "- Whiteboard captions, not paragraphs. Aim for 6-12 words per [text: \"...\"].\n"
             "- Math ONLY inside [equation: \"...\"]. NEVER inline $math$ or \\(math\\) in [text:] or [title:].\n"
             "- No markdown anywhere.\n"
@@ -938,12 +1055,78 @@ class CloudTeacher:
             finally:
                 loop.call_soon_threadsafe(queue.put_nowait, None)
 
-        await loop.run_in_executor(None, producer)
+        producer_future = loop.run_in_executor(None, producer)
         while True:
             item = await queue.get()
             if item is None:
-                return
+                break
             yield item
+        await producer_future
+
+    async def stream_chat(
+        self,
+        messages: list[dict[str, str]],
+        learner_context: str = "",
+        lesson_context: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        self._ensure_client()
+        instructions = _chat_instructions(learner_context, lesson_context)
+
+        # Flattening the short role-labelled exchange keeps this path
+        # compatible with both the modern and legacy Google SDKs.
+        transcript = "\n\n".join(
+            f"{'Learner' if item['role'] == 'user' else 'Tutor'}: {item['content']}"
+            for item in messages
+        )
+        prompt = transcript + "\n\nTutor:"
+        if self._client_kind == "genai":
+            from google.genai import types  # type: ignore
+
+            try:
+                stream = await self._client.aio.models.generate_content_stream(  # type: ignore[union-attr]
+                    model=self.model,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=instructions,
+                        temperature=0.3,
+                        max_output_tokens=1600,
+                    ),
+                )
+                async for chunk in stream:
+                    text = getattr(chunk, "text", "") or ""
+                    if text:
+                        yield text
+            except Exception as exc:
+                raise TeacherError(self._classify_error(exc)) from exc
+            return
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        legacy_client = self._client
+
+        def producer() -> None:
+            try:
+                model = legacy_client.GenerativeModel(  # type: ignore[union-attr]
+                    self.model, system_instruction=instructions,
+                )
+                response = model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    text = getattr(chunk, "text", "") or ""
+                    if text:
+                        loop.call_soon_threadsafe(queue.put_nowait, text)
+            except Exception as exc:
+                loop.call_soon_threadsafe(queue.put_nowait, f"\n\nChat failed: {exc}")
+            finally:
+                loop.call_soon_threadsafe(queue.put_nowait, None)
+
+        producer_future = loop.run_in_executor(None, producer)
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+        await producer_future
 
 
 # ---------------------------------------------------------------------------
@@ -1074,8 +1257,11 @@ class OpenAITeacher:
         system = (system_prefix + self._system_prompt) if system_prefix else self._system_prompt
         prompt = (
             "Read the attached Excalidraw whiteboard and locate the learner's question mark. "
-            "Teach the missing idea on the same board. Emit only the primitive protocol: "
-            "short captions, math only in equation tags, 8-15 tags, and no markdown."
+            "Read the problem exactly -- keep integral/sum limits, exponents, subscripts, signs, and units; "
+            "an integral with limits is definite (substitute both limits and subtract), without limits it is "
+            "indefinite (add + C). Restate the exact problem in your first tag, then solve it fully to a final "
+            "value; never stop at the antiderivative. Teach the missing idea on the same board. Emit only the "
+            "primitive protocol: short captions, math only in equation tags, 8-15 tags, and no markdown."
         )
         async for delta in self._stream_response(
             png_bytes=png_bytes,
@@ -1154,6 +1340,32 @@ class OpenAITeacher:
             reasoning_effort="low",
         ):
             yield delta
+
+    async def stream_chat(
+        self,
+        messages: list[dict[str, str]],
+        learner_context: str = "",
+        lesson_context: str = "",
+        safety_identifier: str = "",
+    ) -> AsyncIterator[str]:
+        client = self._ensure_client()
+        try:
+            stream = await client.responses.create(
+                model=self.model,
+                instructions=_chat_instructions(learner_context, lesson_context),
+                input=messages,
+                reasoning={"effort": "low"},
+                store=False,
+                stream=True,
+                **self._safety_kwargs(safety_identifier),
+            )
+            async for event in stream:
+                if getattr(event, "type", "") == "response.output_text.delta":
+                    delta = getattr(event, "delta", "") or ""
+                    if delta:
+                        yield delta
+        except Exception as exc:
+            raise TeacherError(f"OpenAI chat failed: {exc}") from exc
 
 
 # ---------------------------------------------------------------------------

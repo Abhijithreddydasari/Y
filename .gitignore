@@ -64,6 +64,7 @@ api/scripts/smoke_out/
 data/learners/
 data/logs/
 data/speech-cache/
+data/speech-cache/Ju
 data/tts-assets/
 api/data/
 
@@ -71,3 +72,5 @@ api/data/
 Cursor1.md
 Cursor2.md
 Cursor3.md
+chatgpt_convo.txt
+

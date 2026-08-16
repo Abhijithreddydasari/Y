@@ -10,6 +10,11 @@ learner. Per-user rank-4 LoRA fast weights update at test time: interactions
 adapt representation, while only strong independent checkpoint evidence adapts
 mastery.
 
+<p align="center">
+  <img src="./assets/Demo1.gif" alt="Y teaching a dynamics problem on the learner's whiteboard" width="820" />
+</p>
+<p align="center"><em>A hand-drawn incline becomes a derivation on the same canvas, written as it is narrated.</em></p>
+
 ## What is working
 
 - GPT-5.6 vision through the OpenAI Responses API (`gpt-5.6-sol`) streams the
@@ -67,6 +72,13 @@ The adapter is not attached to the drawing LLM. It supplies a short,
 deterministic profile such as likely-understood concepts, uncertain concepts,
 supported misconceptions, and recommended depth. Numeric mastery values are
 not revealed to the learner or teacher model.
+
+The teacher sees the board as a PNG, so a sketch is enough. Here the learner
+draws a tree, marks `LCA = ?`, and the tutor writes the walk on the same page:
+
+<p align="center">
+  <img src="./assets/Demo2.gif" alt="Y finding the lowest common ancestor on a hand-drawn binary tree" width="820" />
+</p>
 
 ## Quick start
 
@@ -150,6 +162,16 @@ latest whiteboard transcript as context. Chat itself does not create mastery
 evidence.
 
 ## Demo flow
+
+A typical math pass looks like this: the learner writes a definite integral,
+marks the unknown, and the tutor carries the limits through to a single value.
+
+<p align="center">
+  <img src="./assets/Demo3.gif" alt="Y evaluating a handwritten definite integral on the whiteboard" width="820" />
+</p>
+
+A narrated walkthrough of the same loop is in
+[Full_Demo.mp4](./assets/Full_Demo.mp4).
 
 1. Insert a math sample and press **Solve**. This is a help request: it updates
    representation/activity but never fabricates mastery evidence.

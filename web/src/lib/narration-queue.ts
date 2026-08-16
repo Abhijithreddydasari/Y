@@ -1,9 +1,15 @@
-import { cancelSpeech, speak, switchSpeechVoice, warmSpeech } from "./tts";
+import {
+  cancelSpeech,
+  prepareSpeech,
+  speak,
+  switchSpeechVoice,
+  type PreparedSpeech,
+} from "./tts";
 
 interface NarrationItem {
   text: string;
   warmController?: AbortController;
-  warmPromise?: Promise<void>;
+  warmPromise?: Promise<PreparedSpeech | undefined>;
   warmedVoice?: string;
 }
 
@@ -79,7 +85,7 @@ export class NarrationQueue {
       const controller = new AbortController();
       item.warmController = controller;
       item.warmedVoice = this.voiceName;
-      item.warmPromise = warmSpeech(item.text, {
+      item.warmPromise = prepareSpeech(item.text, {
         voiceName: this.voiceName,
         signal: controller.signal,
       }).catch(() => undefined);
@@ -92,9 +98,10 @@ export class NarrationQueue {
       while (this.cursor < this.items.length && !this.cancelled) {
         const item = this.items[this.cursor];
         this.prefetchAhead();
-        await item.warmPromise;
-        if (this.cancelled) break;
-        await speak(item.text, { voiceName: this.voiceName });
+        await speak(item.text, {
+          voiceName: this.voiceName,
+          prepared: item.warmPromise,
+        });
         this.cursor += 1;
         this.prefetchAhead();
       }

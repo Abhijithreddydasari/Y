@@ -44,7 +44,9 @@ export interface RenderResult {
   };
 }
 
-const COL_WIDTH = 740;
+const COL_WIDTH = 620;
+const COLUMN_GAP = 70;
+const MAX_COLUMN_HEIGHT = 760;
 const NARRATION_FONT = 18;
 const TITLE_FONT = 30;
 const NARRATION_LINE_H = 1.25;
@@ -99,7 +101,8 @@ export class LessonRenderer {
   private readonly origin: Origin;
   // Vertical cursor for the narration column (title / text / equation).
   private narrationY: number;
-  private readonly narrationX: number;
+  private narrationX: number;
+  private narrationColumn = 0;
   // Top-left of the diagram zone (boxes / nodes / lines / arrows).
   private readonly diagramOriginY: number;
   // Next slot in the 3-column diagram grid.
@@ -154,6 +157,11 @@ export class LessonRenderer {
 
   private advanceNarration(height: number): void {
     this.narrationY += height + 14;
+    if (this.narrationY - this.origin.y > MAX_COLUMN_HEIGHT) {
+      this.narrationColumn += 1;
+      this.narrationX = this.origin.x + this.narrationColumn * (COL_WIDTH + COLUMN_GAP);
+      this.narrationY = this.origin.y;
+    }
   }
 
   private renderTitle(text: string): RenderResult {
@@ -182,7 +190,7 @@ export class LessonRenderer {
 
   private renderText(text: string): RenderResult {
     if (!text) return { skeletons: [] };
-    const wrapped = wrapText(text, 60);
+    const wrapped = wrapText(text, 50);
     const lines = wrapped.split("\n").length;
     const id = makeRevealId();
     const height = Math.ceil(NARRATION_FONT * NARRATION_LINE_H * lines) + 4;
@@ -506,7 +514,7 @@ export class LessonRenderer {
   }
 }
 
-function wrapText(text: string, maxChars: number): string {
+export function wrapText(text: string, maxChars: number): string {
   const lines: string[] = [];
   for (const para of text.split(/\n+/)) {
     const words = para.split(/\s+/).filter(Boolean);

@@ -6,12 +6,14 @@ import Toolbar, { type ModelChoice, type SampleSubject } from "@/components/Tool
 import EducatorPanel from "@/components/EducatorPanel";
 import LearnerPanel from "@/components/LearnerPanel";
 import CheckpointCard from "@/components/CheckpointCard";
-import { fetchHealth, fetchLearner, resetLearner, streamAssessment, streamLesson } from "@/lib/api";
+import ChatPanel from "@/components/ChatPanel";
+import { fetchHealth, fetchLearner, resetLearner, streamAssessment, streamChat, streamLesson } from "@/lib/api";
+import { lessonContext, primitiveToMarkdown } from "@/lib/chat";
 import { getAnswerRegion, getStudentBbox } from "@/lib/layout";
 import { LessonPlayer } from "@/lib/lesson-player";
 import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
-import type { Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
+import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 
 interface CachedLesson {
   primitives: PrimitiveTag[];
@@ -105,8 +107,13 @@ export default function AppPage() {
   const [learnerSnapshot, setLearnerSnapshot] = useState<LearnerSnapshot | null>(null);
   const [checkpoint, setCheckpoint] = useState<Checkpoint | null>(null);
   const [lastEvidence, setLastEvidence] = useState<LearningEvidence | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatBusy, setChatBusy] = useState(false);
+  const [sttAvailable, setSttAvailable] = useState(false);
+  const [sttModel, setSttModel] = useState("moonshine-tiny-en");
   const cachedRef = useRef<CachedLesson | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const chatAbortRef = useRef<AbortController | null>(null);
   const playerRef = useRef<LessonPlayer | null>(null);
   const userIdRef = useRef<string>("anon");
   const conversationIdRef = useRef<string>("default");
@@ -139,6 +146,8 @@ export default function AppPage() {
         ready[k as ModelChoice] = !!v.ready;
       }
       setModelReady(ready);
+      setSttAvailable(!!h.transcription?.available);
+      setSttModel(h.transcription?.model ?? "moonshine-tiny-en");
       if (h.preferred_model === "openai" && ready.openai) {
         setModelChoice("openai");
         setStatus("Ready in GPT-5.6 cloud mode. The canvas will be sent to OpenAI.");
@@ -155,6 +164,33 @@ export default function AppPage() {
 
   const onReady = useCallback((handle: WhiteboardHandle) => {
     handleRef.current = handle;
+  }, []);
+
+  const beginTranscript = useCallback((source: "lesson" | "assessment") => {
+    const id = `${source}_${crypto.randomUUID()}`;
+    const message: ChatMessage = {
+      id,
+      role: "assistant",
+      content: "",
+      source,
+      pending: true,
+    };
+    setChatMessages((current) => [...current, message].slice(-40));
+    return id;
+  }, []);
+
+  const appendTranscriptPrimitive = useCallback((id: string, tag: PrimitiveTag) => {
+    const markdown = primitiveToMarkdown(tag);
+    if (!markdown) return;
+    setChatMessages((current) => current.map((message) => message.id === id
+      ? { ...message, content: message.content ? `${message.content}\n\n${markdown}` : markdown }
+      : message));
+  }, []);
+
+  const finishTranscript = useCallback((id: string) => {
+    setChatMessages((current) => current
+      .map((message) => message.id === id ? { ...message, pending: false } : message)
+      .filter((message) => message.id !== id || !!message.content));
   }, []);
 
   const clearAll = useCallback(() => {
@@ -247,7 +283,9 @@ export default function AppPage() {
       playerRef.current = player;
 
       const collect: PrimitiveTag[] = [];
+      const transcriptId = mode === "live" ? beginTranscript("lesson") : "";
       let streamError = "";
+      let generationFinish: Promise<void> | null = null;
 
       try {
         if (mode === "live" && liveBlob) {
@@ -258,6 +296,15 @@ export default function AppPage() {
               onPrimitive: (tag) => {
                 collect.push(tag);
                 player.enqueue(tag);
+                appendTranscriptPrimitive(transcriptId, tag);
+              },
+              onGenerationComplete: () => {
+                // Learner extraction and checkpoint planning may continue for
+                // several seconds after the teacher has finished. Fit the
+                // complete answer now so its final line cannot look truncated.
+                generationFinish ??= player.finishDrawing().then(() => {
+                  setStatus("Answer drawn. Updating the learner profile...");
+                });
               },
               onEducatorNotes: (notes) => {
                 setEducatorNotes(notes);
@@ -274,6 +321,7 @@ export default function AppPage() {
                 };
                 collect.push(checkpointTag);
                 player.enqueue(checkpointTag);
+                appendTranscriptPrimitive(transcriptId, checkpointTag);
               },
               onDone: () => setStatus("Lesson received. Finishing playback..."),
               onError: (msg) => {
@@ -289,6 +337,7 @@ export default function AppPage() {
               conversationId: conversationIdRef.current,
             },
           );
+        if (generationFinish) await generationFinish;
         } else {
           for (const tag of cachedPrims) player.enqueue(tag);
         }
@@ -316,12 +365,13 @@ export default function AppPage() {
       } catch (exc) {
         setStatus(`Stream failed: ${(exc as Error).message}`);
       } finally {
+        if (transcriptId) finishTranscript(transcriptId);
         setBusy(false);
         setEducatorBusy(false);
         abortRef.current = null;
       }
     },
-    [busy, ttsEnabled, teacherMode, modelChoice],
+    [appendTranscriptPrimitive, beginTranscript, busy, finishTranscript, ttsEnabled, teacherMode, modelChoice],
   );
 
   const assessWork = useCallback(async () => {
@@ -351,11 +401,15 @@ export default function AppPage() {
     });
     playerRef.current = player;
     let assessmentError = "";
+    const transcriptId = beginTranscript("assessment");
     try {
       await streamAssessment(
         image,
         {
-          onPrimitive: (tag) => player.enqueue(tag),
+          onPrimitive: (tag) => {
+            player.enqueue(tag);
+            appendTranscriptPrimitive(transcriptId, tag);
+          },
           onEvidence: (evidence) => {
             setLastEvidence(evidence);
             setStatus(evidence.adaptation?.adapted ? "Strong evidence accepted; learner fast weights updated." : "Assessment recorded; adaptation guard kept fast weights unchanged.");
@@ -366,6 +420,10 @@ export default function AppPage() {
           onCheckpoint: (next) => {
             setCheckpoint(next);
             player.enqueue({
+              tag: "text",
+              args: { content: `Next checkpoint: ${next.question}` },
+            });
+            appendTranscriptPrimitive(transcriptId, {
               tag: "text",
               args: { content: `Next checkpoint: ${next.question}` },
             });
@@ -396,10 +454,82 @@ export default function AppPage() {
     } catch (error) {
       if (!controller.signal.aborted) setStatus(`Assessment failed: ${(error as Error).message}`);
     } finally {
+      finishTranscript(transcriptId);
       abortRef.current = null;
       setBusy(false);
     }
-  }, [busy, checkpoint, modelChoice, ttsEnabled]);
+  }, [appendTranscriptPrimitive, beginTranscript, busy, checkpoint, finishTranscript, modelChoice, ttsEnabled]);
+
+  const sendChatMessage = useCallback(async (text: string) => {
+    const clean = text.trim();
+    if (!clean || chatBusy || busy) return;
+    const userMessage: ChatMessage = {
+      id: `user_${crypto.randomUUID()}`,
+      role: "user",
+      content: clean,
+      source: "chat",
+    };
+    const replyId = `chat_${crypto.randomUUID()}`;
+    const reply: ChatMessage = {
+      id: replyId,
+      role: "assistant",
+      content: "",
+      source: "chat",
+      pending: true,
+    };
+    const history = [...chatMessages.filter((message) => !message.pending), userMessage].slice(-40);
+    setChatMessages([...history, reply]);
+    setChatBusy(true);
+    const controller = new AbortController();
+    chatAbortRef.current = controller;
+    let streamError = "";
+    try {
+      await streamChat({
+        messages: history,
+        userId: userIdRef.current,
+        conversationId: conversationIdRef.current,
+        modelChoice,
+        lessonContext: lessonContext(history),
+      }, {
+        onDelta: (delta) => setChatMessages((current) => current.map((message) =>
+          message.id === replyId ? { ...message, content: message.content + delta } : message,
+        )),
+        onError: (message) => {
+          streamError = message;
+          setChatMessages((current) => current.map((item) => item.id === replyId
+            ? { ...item, content: item.content || message, error: true, pending: false }
+            : item));
+        },
+      }, controller.signal);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        streamError = (error as Error).message;
+        setChatMessages((current) => current.map((item) => item.id === replyId
+          ? { ...item, content: streamError, error: true, pending: false }
+          : item));
+      }
+    } finally {
+      setChatMessages((current) => current
+        .map((message) => message.id === replyId ? { ...message, pending: false } : message)
+        .filter((message) => message.id !== replyId || !!message.content || !!streamError));
+      if (chatAbortRef.current === controller) chatAbortRef.current = null;
+      setChatBusy(false);
+    }
+  }, [busy, chatBusy, chatMessages, modelChoice]);
+
+  const cancelChat = useCallback(() => {
+    chatAbortRef.current?.abort();
+    chatAbortRef.current = null;
+    setChatMessages((current) => current.map((message) => message.pending
+      ? { ...message, pending: false, content: message.content || "Response stopped." }
+      : message));
+    setChatBusy(false);
+  }, []);
+
+  const clearChat = useCallback(() => {
+    cancelChat();
+    setChatMessages([]);
+  }, [cancelChat]);
 
   const onResetLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -467,6 +597,16 @@ export default function AppPage() {
         onVoiceChange={changeVoice}
       />
       <LearnerPanel snapshot={learnerSnapshot} onReset={onResetLearner} />
+      <ChatPanel
+        messages={chatMessages}
+        busy={chatBusy}
+        disabled={busy}
+        sttAvailable={sttAvailable}
+        sttModel={sttModel}
+        onSend={(text) => void sendChatMessage(text)}
+        onClear={clearChat}
+        onCancel={cancelChat}
+      />
       <CheckpointCard checkpoint={checkpoint} evidence={lastEvidence} />
       {teacherMode && <EducatorPanel notes={educatorNotes} busy={educatorBusy} />}
       <Whiteboard onReady={onReady} />

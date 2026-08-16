@@ -9,6 +9,8 @@ export interface SpeakOptions {
   pitch?: number;
   voiceName?: string;
   onProgress?: (charsSpoken: number) => void;
+  /** Already-synthesized clip from the narration look-ahead queue. */
+  prepared?: Promise<PreparedSpeech | undefined>;
 }
 
 export interface WarmSpeechOptions {
@@ -29,6 +31,12 @@ interface SpeechSession {
 interface SegmentResult {
   ended: boolean;
   charsSpoken: number;
+}
+
+export interface PreparedSpeech {
+  text: string;
+  voiceName: string;
+  blob: Blob;
 }
 
 let activeSession: SpeechSession | null = null;
@@ -70,26 +78,34 @@ export function cancelSpeech(): void {
   }
 }
 
-/** Prime the backend's deterministic WAV cache without touching playback. */
-export async function warmSpeech(
+/** Synthesize once and retain the WAV so playback does not fetch it again. */
+export async function prepareSpeech(
   text: string,
   opts: WarmSpeechOptions = {},
-): Promise<void> {
+): Promise<PreparedSpeech | undefined> {
   const clean = text.trim().slice(0, 500);
-  if (!clean || opts.signal?.aborted) return;
+  if (!clean || opts.signal?.aborted) return undefined;
+  const voiceName = opts.voiceName ?? preferredVoiceName;
   const response = await fetch(`${API_BASE}/speech`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       text: clean,
-      voice: opts.voiceName ?? preferredVoiceName,
+      voice: voiceName,
       speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
     }),
     signal: opts.signal,
   });
   if (!response.ok) throw new Error(`speech warmup returned ${response.status}`);
-  // Reading the body completes synthesis and stores the result server-side.
-  await response.arrayBuffer();
+  return { text: clean, voiceName, blob: await response.blob() };
+}
+
+/** Compatibility helper used by callers that only need to warm the cache. */
+export async function warmSpeech(
+  text: string,
+  opts: WarmSpeechOptions = {},
+): Promise<void> {
+  await prepareSpeech(text, opts);
 }
 
 function resumeBoundaryAt(text: string, estimate: number): number {
@@ -115,18 +131,36 @@ async function playKokoroSegment(
   session.controller = controller;
   session.interrupt = abortFetch;
 
-  let response: Response;
+  let blob: Blob;
   try {
-    response = await fetch(`${API_BASE}/speech`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text,
-        voice: requestedVoice,
-        speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
-      }),
-      signal: controller.signal,
-    });
+    const prepared = baseOffset === 0 ? await opts.prepared : undefined;
+    if (session.cancelled || revision !== session.revision) {
+      return { ended: false, charsSpoken: 0 };
+    }
+    if (
+      prepared
+      && prepared.text === text
+      && prepared.voiceName === requestedVoice
+    ) {
+      blob = prepared.blob;
+    } else {
+      const response = await fetch(`${API_BASE}/speech`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          voice: requestedVoice,
+          speed: Math.max(0.8, Math.min(1.2, opts.rate ?? 1.0)),
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) throw new Error(`speech backend returned ${response.status}`);
+      const servedVoice = response.headers.get("X-Speech-Voice");
+      if (servedVoice && servedVoice !== requestedVoice) {
+        throw new Error(`speech backend returned ${servedVoice} instead of ${requestedVoice}`);
+      }
+      blob = await response.blob();
+    }
   } catch (error) {
     if (session.controller === controller) session.controller = null;
     if (session.interrupt === abortFetch) session.interrupt = null;
@@ -135,18 +169,6 @@ async function playKokoroSegment(
     }
     throw error;
   }
-
-  if (!response.ok) {
-    if (session.controller === controller) session.controller = null;
-    if (session.interrupt === abortFetch) session.interrupt = null;
-    throw new Error(`speech backend returned ${response.status}`);
-  }
-  const servedVoice = response.headers.get("X-Speech-Voice");
-  if (servedVoice && servedVoice !== requestedVoice) {
-    throw new Error(`speech backend returned ${servedVoice} instead of ${requestedVoice}`);
-  }
-
-  const blob = await response.blob();
   if (session.controller === controller) session.controller = null;
   if (session.interrupt === abortFetch) session.interrupt = null;
   if (session.cancelled || revision !== session.revision) {

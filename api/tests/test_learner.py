@@ -334,3 +334,108 @@ def test_cached_pre_stabilization_state_is_rebuilt_from_evidence(tmp_path: Path)
     assert rebuilt["revision"] == 4
     assert rebuilt["concept_beliefs"][0]["help_evidence_count"] == 0
     assert "concept_relations" in rebuilt
+
+
+def test_taxonomy_facets_and_longitudinal_retention_are_evidence_backed(tmp_path: Path) -> None:
+    cfg = tiny_config()
+    store = LearnerStore(
+        root=tmp_path,
+        adapter_checkpoint=tmp_path / "missing.safetensors",
+        adapter_config=cfg,
+    )
+
+    def assessed(conversation: str, timestamp: str, score: float):
+        evidence = normalise_evidence(
+            {
+                "concepts": [{
+                    "name": "polynomial integration",
+                    "description": "Integrating a polynomial term by term",
+                    "confidence": 0.95,
+                    "hierarchy": ["Mathematics", "Calculus", "Integral calculus", "Polynomial integration"],
+                    "facets": {
+                        "knowledge": {"score": score, "confidence": 0.9},
+                        "understanding": {"score": score, "confidence": 0.9},
+                        "reasoning": {"score": score, "confidence": 0.8},
+                        "application": {"score": score, "confidence": 0.8},
+                    },
+                }],
+                "outcome": {"correct": score, "partial": 1 - score, "incorrect": 0},
+                "independence": 0.9,
+                "evidence_strength": 0.9,
+            },
+            user_id="atlas-user",
+            conversation_id=conversation,
+            source="checkpoint_answer",
+        )
+        evidence.timestamp = timestamp
+        evidence.event_embedding = [0.05] * cfg.embedding_dim
+        evidence.embedding_source = "test"
+        for concept in evidence.concepts:
+            concept.embedding = [0.1] * cfg.embedding_dim
+        return evidence
+
+    first, _ = asyncio.run(store.record_evidence(
+        assessed("week-one", "2026-07-01T10:00:00+00:00", 0.8),
+        allow_adaptation=False,
+    ))
+    assert first["concept_beliefs"][0]["dimensions"]["retention"]["evidence_count"] == 0
+
+    second, _ = asyncio.run(store.record_evidence(
+        assessed("week-two", "2026-07-08T10:00:00+00:00", 0.9),
+        allow_adaptation=False,
+    ))
+    belief = second["concept_beliefs"][0]
+    assert belief["hierarchy"] == [
+        "Mathematics", "Calculus", "Integral calculus", "Polynomial integration",
+    ]
+    assert belief["dimensions"]["knowledge"]["evidence_count"] == 2
+    assert belief["dimensions"]["retention"]["evidence_count"] == 1
+    assert second["knowledge_hierarchy"][0]["name"] == "Mathematics"
+    assert second["knowledge_hierarchy"][0]["children"][0]["name"] == "Calculus"
+
+
+def test_help_request_cannot_fabricate_assessed_facets() -> None:
+    evidence = normalise_evidence(
+        {
+            "concepts": [{
+                "name": "chain rule",
+                "hierarchy": ["Mathematics", "Calculus", "Differentiation", "Chain rule"],
+                "facets": {"understanding": {"score": 1, "confidence": 1}},
+            }],
+            "evidence_strength": 0.9,
+        },
+        user_id="u",
+        conversation_id="c",
+        source="help_request",
+    )
+    assert evidence.concepts[0].facets == {}
+    assert evidence.concepts[0].hierarchy[-1] == "Chain rule"
+
+
+def test_legacy_taxonomy_keeps_related_concepts_in_the_same_field() -> None:
+    geometry = normalise_evidence(
+        {"concepts": ["right-triangle", "hypotenuse", "legs", "square-root"]},
+        user_id="legacy-geometry",
+        conversation_id="legacy",
+        source="legacy",
+    )
+    chemistry = normalise_evidence(
+        {
+            "concepts": [
+                "benzene-structure",
+                "aromaticity",
+                "resonance-stabilization",
+                "c6h6-formula",
+            ]
+        },
+        user_id="legacy-chemistry",
+        conversation_id="legacy",
+        source="legacy",
+    )
+
+    assert {tuple(concept.hierarchy[:2]) for concept in geometry.concepts} == {
+        ("Mathematics", "Geometry")
+    }
+    assert {tuple(concept.hierarchy[:2]) for concept in chemistry.concepts} == {
+        ("Chemistry", "Organic Chemistry")
+    }

@@ -16,6 +16,51 @@ const Excalidraw = dynamic(
   { ssr: false },
 );
 
+// Dynamic export scale. The model's vision encoder downsamples to a fixed
+// resolution, so what matters is pixels-per-content, not a fixed multiplier.
+// We size the export so the content's bounding box lands near a target
+// resolution: a tiny handwritten problem gets scaled up (its integral limits,
+// exponents and subscripts stay legible), while a large sprawling canvas is
+// scaled less so the payload stays sane. Both edges are pushed to a minimum
+// so thin, wide content (e.g. a single-line integral) still renders tall
+// enough to read.
+const EXPORT_TARGET_LONG_EDGE = 1600;
+const EXPORT_TARGET_SHORT_EDGE = 1000;
+const EXPORT_MIN_SCALE = 1;
+const EXPORT_MAX_SCALE = 4;
+const EXPORT_MAX_PIXELS = 6_000_000;
+
+function computeExportScale(elements: readonly ExcalidrawElement[]): number {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const el of elements) {
+    if (el.isDeleted) continue;
+    const w = (el as { width?: number }).width ?? 0;
+    const h = (el as { height?: number }).height ?? 0;
+    minX = Math.min(minX, el.x);
+    minY = Math.min(minY, el.y);
+    maxX = Math.max(maxX, el.x + w);
+    maxY = Math.max(maxY, el.y + h);
+  }
+  if (!Number.isFinite(minX)) return 2; // empty canvas: any scale is fine
+  const width = Math.max(1, maxX - minX);
+  const height = Math.max(1, maxY - minY);
+  const longEdge = Math.max(width, height);
+  const shortEdge = Math.min(width, height);
+  // Whichever axis needs more magnification to clear its minimum wins.
+  let scale = Math.max(
+    EXPORT_TARGET_LONG_EDGE / longEdge,
+    EXPORT_TARGET_SHORT_EDGE / shortEdge,
+  );
+  scale = Math.min(scale, EXPORT_MAX_SCALE);
+  // Never blow past the pixel budget when scaling small content way up.
+  const pixelCapScale = Math.sqrt(EXPORT_MAX_PIXELS / (width * height));
+  scale = Math.min(scale, pixelCapScale);
+  return Math.max(EXPORT_MIN_SCALE, Math.min(EXPORT_MAX_SCALE, scale));
+}
+
 export interface WhiteboardHandle {
   exportPng: () => Promise<Blob | null>;
   appendElements: (els: readonly ExcalidrawElement[]) => void;
@@ -28,6 +73,10 @@ export interface WhiteboardHandle {
   addFiles: (files: BinaryFiles) => void;
   clearAll: () => void;
   getElements: () => readonly ExcalidrawElement[];
+  /** Pan only when the newest tutor element would otherwise be off-screen. */
+  ensureElementVisible: (id: string) => void;
+  /** Fit the completed tutor answer, rather than leaving later steps off-canvas. */
+  fitElements: (ids: readonly string[]) => void;
   /**
    * Compute the on-screen (viewport) rect for a scene element. Used by the
    * stroke-by-stroke draw animation to position an overlay SVG exactly on
@@ -54,9 +103,17 @@ export default function Whiteboard({ onReady }: Props) {
       const elements = api.getSceneElements();
       const appState = api.getAppState();
       const files = api.getFiles();
+      // The exported canvas is `content-bbox * exportScale`. Pick the scale
+      // dynamically from how much the student actually drew so the model always
+      // receives a consistently-detailed image (small marks like a definite
+      // integral's limits survive) without an oversized payload.
       const blob = await exportToBlob({
         elements,
-        appState: { ...appState, exportBackground: true },
+        appState: {
+          ...appState,
+          exportBackground: true,
+          exportScale: computeExportScale(elements),
+        },
         files,
         mimeType: "image/png",
       });
@@ -100,6 +157,49 @@ export default function Whiteboard({ onReady }: Props) {
     getElements() {
       const api = apiRef.current;
       return api ? api.getSceneElements() : [];
+    },
+    ensureElementVisible(id) {
+      const api = apiRef.current;
+      const container = containerRef.current;
+      if (!api || !container) return;
+      const el = api.getSceneElements().find((candidate) => candidate.id === id);
+      if (!el) return;
+      const appState = api.getAppState();
+      const bounds = container.getBoundingClientRect();
+      const zoom = appState.zoom?.value ?? 1;
+      const left = (el.x + (appState.scrollX ?? 0)) * zoom + bounds.left;
+      const top = (el.y + (appState.scrollY ?? 0)) * zoom + bounds.top;
+      const right = left + el.width * zoom;
+      const bottom = top + el.height * zoom;
+      const safe = {
+        left: bounds.left + 28,
+        top: bounds.top + 92,
+        right: bounds.right - 28,
+        bottom: bounds.bottom - 52,
+      };
+      if (left < safe.left || right > safe.right || top < safe.top || bottom > safe.bottom) {
+        api.scrollToContent(el, {
+          animate: true,
+          duration: 180,
+          minZoom: 0.45,
+          maxZoom: 1,
+        });
+      }
+    },
+    fitElements(ids) {
+      const api = apiRef.current;
+      if (!api || ids.length === 0) return;
+      const wanted = new Set(ids);
+      const elements = api.getSceneElements().filter((el) => wanted.has(el.id));
+      if (!elements.length) return;
+      api.scrollToContent(elements, {
+        fitToViewport: true,
+        viewportZoomFactor: 0.78,
+        animate: true,
+        duration: 320,
+        minZoom: 0.32,
+        maxZoom: 1,
+      });
     },
     getElementScreenRect(id) {
       const api = apiRef.current;

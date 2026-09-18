@@ -23,7 +23,7 @@ import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Awaitable, Iterable
 
 import ollama
 import torch
@@ -96,7 +96,7 @@ def _now() -> str:
 
 def _clamp01(value: object, default: float = 0.0) -> float:
     try:
-        number = float(value)
+        number = float(value) if isinstance(value, (int, float, str)) else float(str(value))
     except (TypeError, ValueError):
         number = default
     if not math.isfinite(number):
@@ -487,6 +487,9 @@ class LearnerStore:
         selected_device = device or os.environ.get("ADAPTER_DEVICE") or (
             "cuda" if torch.cuda.is_available() else "cpu"
         )
+        # .env may pin cuda even when this venv's torch is CPU-only.
+        if str(selected_device).startswith("cuda") and not torch.cuda.is_available():
+            selected_device = "cpu"
         self._device = torch.device(selected_device)
         selected_checkpoint = adapter_checkpoint or Path(
             os.environ.get("LEARNER_ADAPTER_CHECKPOINT", ADAPTER_CHECKPOINT_DEFAULT)
@@ -707,7 +710,7 @@ class LearnerStore:
         # Event and concept embeddings are independent. Issuing them together
         # lets Ollama batch/schedule the small Nomic requests instead of adding
         # one round-trip per concept to the end of every lesson.
-        pending: list[tuple[str, EvidenceConcept | None, object]] = []
+        pending: list[tuple[str, EvidenceConcept | None, Awaitable[tuple[list[float], str]]]] = []
         if len(evidence.event_embedding) != self._model.cfg.embedding_dim:
             pending.append(("event", None, self.embed(evidence.event_text())))
         for concept in evidence.concepts:
@@ -1090,7 +1093,8 @@ class LearnerStore:
                         0.0,
                         sum(a * b for a, b in zip(left_vector, right_vector)),
                     )
-                pair = tuple(sorted((left, right)))
+                first, second = sorted((left, right))
+                pair = (first, second)
                 together = cooccurrence.get(pair, 0)
                 co_strength = min(1.0, together / 3.0)
                 strength = min(1.0, max(semantic, co_strength))

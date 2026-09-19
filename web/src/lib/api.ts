@@ -17,6 +17,17 @@ import type {
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
 
+async function responseError(response: Response): Promise<string> {
+  let detail = response.statusText || "Request failed";
+  try {
+    const body = await response.json() as { detail?: string };
+    if (body.detail) detail = body.detail;
+  } catch { /* response was not JSON */ }
+  const retryAfter = response.headers.get("Retry-After");
+  if (response.status === 429 && retryAfter) return `${detail} Retry in ${retryAfter} seconds.`;
+  return `HTTP ${response.status}: ${detail}`;
+}
+
 export interface LessonStreamCallbacks {
   onToken?: (text: string) => void;
   onPrimitive?: (tag: PrimitiveTag) => void;
@@ -59,7 +70,7 @@ export async function streamLesson(
   });
 
   if (!res.ok || !res.body) {
-    cb.onError?.(`HTTP ${res.status}: ${res.statusText}`);
+    cb.onError?.(await responseError(res));
     return;
   }
 
@@ -137,6 +148,10 @@ function handleFrame(frame: string, cb: LessonStreamCallbacks) {
 
 export interface HealthInfo {
   status: string;
+  build_revision?: string;
+  model_loaded?: boolean;
+  learner_mode?: "bayesian" | "neural-and-bayesian" | string;
+  queue?: { enabled: boolean; active: number; waiting: number; max_active: number; max_queue: number };
   ollama_host: string;
   model: string;
   ollama_reachable: boolean;
@@ -191,9 +206,7 @@ export async function streamChat(
     signal,
   });
   if (!response.ok || !response.body) {
-    let detail = response.statusText;
-    try { detail = (await response.json()).detail ?? detail; } catch { /* non-JSON */ }
-    cb.onError?.(`HTTP ${response.status}: ${detail}`);
+    cb.onError?.(await responseError(response));
     return;
   }
 
@@ -233,9 +246,7 @@ export async function transcribeAudio(audio: Blob, signal?: AbortSignal): Promis
   form.append("audio", audio, "recording.wav");
   const response = await fetch(`${API_BASE}/transcribe`, { method: "POST", body: form, signal });
   if (!response.ok) {
-    let detail = response.statusText;
-    try { detail = (await response.json()).detail ?? detail; } catch { /* non-JSON */ }
-    throw new Error(detail);
+    throw new Error(await responseError(response));
   }
   const result = await response.json() as { text?: string };
   return result.text?.trim() ?? "";
@@ -262,9 +273,7 @@ export async function streamAssessment(
   form.append("model_choice", options.modelChoice);
   const res = await fetch(`${API_BASE}/assess`, { method: "POST", body: form, signal });
   if (!res.ok || !res.body) {
-    let detail = res.statusText;
-    try { detail = (await res.json()).detail ?? detail; } catch { /* non-JSON */ }
-    cb.onError?.(`HTTP ${res.status}: ${detail}`);
+    cb.onError?.(await responseError(res));
     return;
   }
   const reader = res.body.getReader();
@@ -285,7 +294,7 @@ export async function streamAssessment(
 
 export async function fetchHealth(): Promise<HealthInfo | null> {
   try {
-    const r = await fetch(`${API_BASE}/health`, { cache: "no-store" });
+    const r = await fetch(`${API_BASE}/health`, { cache: "no-store", signal: AbortSignal.timeout(8_000) });
     if (!r.ok) return null;
     return (await r.json()) as HealthInfo;
   } catch {

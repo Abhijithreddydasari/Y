@@ -9,6 +9,7 @@ import type {
 import type {
   ExcalidrawElement,
 } from "@excalidraw/excalidraw/element/types";
+import type { InterfaceMode } from "@/lib/interface-mode";
 import "@excalidraw/excalidraw/index.css";
 
 const Excalidraw = dynamic(
@@ -88,9 +89,10 @@ export interface WhiteboardHandle {
 
 interface Props {
   onReady?: (handle: WhiteboardHandle) => void;
+  mode?: InterfaceMode;
 }
 
-export default function Whiteboard({ onReady }: Props) {
+export default function Whiteboard({ onReady, mode = "studio" }: Props) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
@@ -228,7 +230,12 @@ export default function Whiteboard({ onReady }: Props) {
   }, [ready, onReady, buildHandle]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div
+      ref={containerRef}
+      className={mode === "mobile"
+        ? "absolute inset-x-0 bottom-[calc(5.6rem+env(safe-area-inset-bottom))] top-[calc(6.65rem+env(safe-area-inset-top))]"
+        : "absolute inset-0"}
+    >
       <Excalidraw
         excalidrawAPI={(api) => {
           apiRef.current = api;

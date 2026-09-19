@@ -5,16 +5,21 @@ import type { Checkpoint, LearningEvidence } from "@/lib/types";
 export default function CheckpointCard({
   checkpoint,
   evidence,
+  variant = "studio",
 }: {
   checkpoint: Checkpoint | null;
   evidence: LearningEvidence | null;
+  variant?: "studio" | "mobile";
 }) {
   if (!checkpoint && !evidence) return null;
   const score = evidence
     ? Math.round((evidence.outcome.correct + 0.5 * evidence.outcome.partial) * 100)
     : null;
   return (
-    <div className="pointer-events-auto absolute bottom-12 left-1/2 z-30 w-[min(540px,70vw)] -translate-x-1/2 rounded-xl bg-white/95 px-4 py-3 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/95 dark:ring-white/10">
+    <div className={variant === "mobile"
+      ? "pointer-events-auto fixed bottom-[calc(6.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-40 max-h-[28dvh] overflow-y-auto rounded-2xl border border-violet-100 bg-white/96 px-4 py-3 shadow-[0_16px_50px_rgba(76,29,149,.16)] backdrop-blur-xl"
+      : "pointer-events-auto absolute bottom-12 left-1/2 z-30 w-[min(540px,70vw)] -translate-x-1/2 rounded-xl bg-white/95 px-4 py-3 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/95 dark:ring-white/10"}
+    >
       {evidence && (
         <div className="mb-2 flex items-center justify-between border-b border-zinc-100 pb-2 text-xs dark:border-zinc-800">
           <span className="font-medium text-zinc-800 dark:text-zinc-100">Last assessment: {score}% evidence-weighted</span>

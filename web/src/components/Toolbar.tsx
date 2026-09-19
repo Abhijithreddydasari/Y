@@ -1,6 +1,6 @@
 "use client";
 
-import { type ChangeEvent } from "react";
+import { type ChangeEvent, useState } from "react";
 
 export type ModelChoice = "openai" | "edge" | "edge-ft" | "cloud";
 
@@ -42,11 +42,11 @@ interface Props {
   onToggleTeacherMode: () => void;
   onModelChange: (model: ModelChoice) => void;
   onVoiceChange: (voice: string) => void;
+  onSwitchInterface?: () => void;
 }
 
 export default function Toolbar({
   busy,
-  narrating,
   status,
   ttsEnabled,
   teacherMode,
@@ -65,154 +65,60 @@ export default function Toolbar({
   onToggleTeacherMode,
   onModelChange,
   onVoiceChange,
+  onSwitchInterface,
 }: Props) {
-  // Excalidraw owns the top-center (tool strip) and top-left (menu/library)
-  // areas. Place the Y controls in the top-right corner so the native UI is
-  // fully usable, and put the status text along the bottom edge.
+  const [moreOpen, setMoreOpen] = useState(false);
   const handleModelSelect = (e: ChangeEvent<HTMLSelectElement>) => {
     onModelChange(e.target.value as ModelChoice);
   };
+  const primaryAction = busy ? onStop : canAssess ? onAssess : onSolve;
+  const primaryLabel = busy ? "Stop" : canAssess ? "Check answer" : "Teach me";
 
   return (
-    <>
-      <div className="pointer-events-none absolute right-4 top-4 z-30 flex flex-col items-end gap-2">
-        <div className="pointer-events-auto flex flex-col items-stretch gap-2 rounded-2xl bg-white/95 px-3 py-3 shadow-lg ring-1 ring-black/5 backdrop-blur dark:bg-zinc-900/95 dark:ring-white/10 min-w-[220px]">
-          <div className="flex items-center justify-between gap-2 px-1">
-            <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-100">
-              Y - Tutor
-            </span>
-            <label className="flex select-none items-center gap-1.5 text-[11px] text-zinc-700 dark:text-zinc-300">
-              <input
-                type="checkbox"
-                checked={ttsEnabled}
-                onChange={onToggleTts}
-                className="h-3.5 w-3.5 accent-emerald-600"
-              />
-              narrate
-            </label>
+    <div className="pointer-events-none absolute right-3 top-20 z-30 min-[1100px]:right-4 min-[1100px]:top-4">
+      <div className="pointer-events-auto w-[260px] rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-[0_14px_45px_rgba(15,23,42,.14)] backdrop-blur-xl">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 font-black text-slate-950">Y</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-slate-950">Studio</p>
+            <p className="truncate text-[11px] text-slate-500" aria-live="polite">{status}</p>
           </div>
-          <label className="-mt-0.5 flex select-none items-center gap-1.5 px-1 text-[11px] text-zinc-700 dark:text-zinc-300">
-            <input
-              type="checkbox"
-              checked={teacherMode}
-              onChange={onToggleTeacherMode}
-              className="h-3.5 w-3.5 accent-indigo-600"
-            />
-            Teacher Mode
-            <span className="text-zinc-400">(adds educator panel)</span>
-          </label>
-          <label className="flex flex-col gap-0.5 px-1 text-[11px] text-zinc-700 dark:text-zinc-300">
-            <span className="text-zinc-500">Model</span>
-            <select
-              value={modelChoice}
-              onChange={handleModelSelect}
-              className="rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-            >
-              {MODEL_CHOICES.map((m) => {
-                const ready = modelReady?.[m.id];
-                const labelSuffix =
-                  ready === false ? " · not configured" : "";
-                return (
-                  <option
-                    key={m.id}
-                    value={m.id}
-                    title={m.subtitle + (ready === false ? " (set GOOGLE_API_KEY or pull the GGUF)" : "")}
-                  >
-                    {m.label}
-                    {labelSuffix}
-                  </option>
-                );
-              })}
-            </select>
-            {(modelChoice === "openai" || modelChoice === "cloud") && (
-              <span className="text-[10px] text-amber-700 dark:text-amber-300">
-                Cloud mode: your whiteboard image is sent to {modelChoice === "openai" ? "OpenAI" : "Google AI Studio"}.
-              </span>
-            )}
-          </label>
-          {ttsEnabled && (
-            <label className="flex items-center justify-between gap-2 px-1 text-[11px] text-zinc-600 dark:text-zinc-300">
-              Kokoro voice
-              <select
-                value={voice}
-                onChange={(e) => onVoiceChange(e.target.value)}
-                className="rounded-md border border-zinc-200 bg-white px-1.5 py-1 text-[11px] dark:border-zinc-700 dark:bg-zinc-800"
-              >
-                <option value="kokoro_af_heart">Heart</option>
-                <option value="kokoro_am_michael">Michael</option>
-              </select>
-            </label>
-          )}
-          <button
-            type="button"
-            onClick={onSolve}
-            disabled={busy}
-            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-          >
-            {busy ? "Thinking..." : "Solve  (mark ? on canvas)"}
-          </button>
-          <button
-            type="button"
-            onClick={onAssess}
-            disabled={busy || !canAssess}
-            title={canAssess ? "Submit the answer currently drawn on the canvas" : "Complete a lesson to receive a checkpoint"}
-            className="rounded-lg bg-violet-600 px-3 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-          >
-            Check my work
-          </button>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onReplay}
-              disabled={busy || !canReplay}
-              title="Replay last lesson without re-asking"
-              className="rounded-lg bg-indigo-600 px-2 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-            >
-              Replay
-            </button>
-            <button
-              type="button"
-              onClick={onStop}
-              disabled={!busy && !narrating}
-              className="rounded-lg bg-rose-600 px-2 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:bg-zinc-400"
-            >
-              Stop
-            </button>
-            <button
-              type="button"
-              onClick={onClear}
-              disabled={busy}
-              className="col-span-2 rounded-lg bg-zinc-100 px-2 py-1.5 text-xs font-medium text-zinc-800 transition hover:bg-zinc-200 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-            >
-              Clear board
-            </button>
-          </div>
-          <div className="flex flex-col gap-1 pt-1">
-            <span className="px-1 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-              Sample question
-            </span>
-            <div className="grid grid-cols-5 gap-1">
-              {SAMPLE_SUBJECTS.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => onInsertSample(s.id)}
-                  disabled={busy}
-                  className="rounded-md bg-zinc-100 px-1 py-1 text-[11px] font-medium text-zinc-700 transition hover:bg-zinc-200 disabled:opacity-50 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
-                >
-                  {s.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <button type="button" onClick={() => setMoreOpen((open) => !open)} className="min-h-11 rounded-xl px-2 text-xs font-semibold text-slate-600 hover:bg-slate-100">More</button>
         </div>
-      </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 z-30 flex justify-center">
-        <div className="pointer-events-auto max-w-[80vw] truncate rounded-md bg-black/75 px-3 py-1 text-xs text-white shadow">
-          {status}
+        <button type="button" onClick={primaryAction} className={`mt-3 min-h-12 w-full rounded-xl text-sm font-bold text-white shadow-sm ${busy ? "bg-rose-500" : canAssess ? "bg-violet-600" : "bg-emerald-600"}`}>
+          {primaryLabel}
+        </button>
+
+        <div className="mt-2 flex gap-1 overflow-x-auto pb-1">
+          {SAMPLE_SUBJECTS.map((sample) => (
+            <button key={sample.id} type="button" onClick={() => onInsertSample(sample.id)} disabled={busy} className="min-h-9 shrink-0 rounded-full bg-slate-100 px-2.5 text-[11px] font-medium text-slate-700 disabled:opacity-40">
+              {sample.label}
+            </button>
+          ))}
         </div>
+
+        {moreOpen && (
+          <div className="mt-2 space-y-2 border-t border-slate-100 pt-3">
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={onClear} disabled={busy} className="min-h-11 rounded-xl bg-slate-100 text-xs font-semibold text-slate-700 disabled:opacity-40">Clear</button>
+              <button type="button" onClick={onReplay} disabled={busy || !canReplay} className="min-h-11 rounded-xl bg-slate-100 text-xs font-semibold text-slate-700 disabled:opacity-40">Replay</button>
+              <button type="button" onClick={onToggleTts} className="min-h-11 rounded-xl bg-slate-100 text-xs font-semibold text-slate-700">Narration {ttsEnabled ? "on" : "off"}</button>
+              <button type="button" onClick={onToggleTeacherMode} className="min-h-11 rounded-xl bg-slate-100 text-xs font-semibold text-slate-700">Teacher {teacherMode ? "on" : "off"}</button>
+            </div>
+            <select value={modelChoice} onChange={handleModelSelect} aria-label="Tutor model" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700">
+              {MODEL_CHOICES.map((model) => <option key={model.id} value={model.id} disabled={modelReady?.[model.id] === false}>{model.label}</option>)}
+            </select>
+            {ttsEnabled && (
+              <select value={voice} onChange={(event) => onVoiceChange(event.target.value)} aria-label="Narration voice" className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700">
+                <option value="kokoro_af_heart">Voice: Heart</option>
+                <option value="kokoro_am_michael">Voice: Michael</option>
+              </select>
+            )}
+            {onSwitchInterface && <button type="button" onClick={onSwitchInterface} className="min-h-11 w-full rounded-xl border border-indigo-200 text-xs font-semibold text-indigo-700">Mobile view</button>}
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }

@@ -348,7 +348,7 @@ class OllamaTeacher:
             "- Math ONLY inside [equation: \"...\"]. NEVER inline $math$ or \\(math\\) in [text:] or [title:].\n"
             "- No markdown (**bold**, _italic_, backticks, headers, bullets) anywhere.\n"
             "- Substitute numbers step by step, one [equation: \"...\"] per step.\n"
-            "- 8-15 tags is the target. Hard cap at 30. End with one [text: \"...\"] stating the answer.\n"
+            "- Aim for 5-9 tags. Short captions; use explanation for fuller chat reasoning. End with the answer, no checkpoint.\n"
             "\nBegin the lesson now."
         )
 
@@ -854,7 +854,7 @@ class CloudTeacher:
             "- Whiteboard captions, not paragraphs. Aim for 6-12 words per [text: \"...\"].\n"
             "- Math ONLY inside [equation: \"...\"]. NEVER inline $math$ or \\(math\\) in [text:] or [title:].\n"
             "- No markdown anywhere.\n"
-            "- 8-15 tags. Hard cap at 30. End with one [text: \"...\"] stating the answer.\n"
+            "- Aim for 5-9 tags. Short captions; use explanation for fuller chat reasoning. End with the answer, no checkpoint.\n"
             "\nBegin the lesson now."
         )
 
@@ -1261,7 +1261,7 @@ class OpenAITeacher:
             "an integral with limits is definite (substitute both limits and subtract), without limits it is "
             "indefinite (add + C). Restate the exact problem in your first tag, then solve it fully to a final "
             "value; never stop at the antiderivative. Teach the missing idea on the same board. Emit only the "
-            "primitive protocol: short captions, math only in equation tags, 8-15 tags, and no markdown."
+            "primitive protocol: short captions, fuller reasoning in explanation args, math only in equation tags, 5-9 tags, no checkpoints or markdown."
         )
         async for delta in self._stream_response(
             png_bytes=png_bytes,

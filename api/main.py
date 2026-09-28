@@ -286,6 +286,7 @@ async def lesson(
     user_id: str = Form("anon"),
     conversation_id: str = Form("default"),
     model_choice: str = Form(DEFAULT_MODEL_CHOICE),
+    include_checkpoints: bool = Form(True),
 ):
     """Accept a canvas PNG and stream lesson events.
 
@@ -420,6 +421,11 @@ async def lesson(
                 yield {"event": "learner_update", "data": json.dumps(payload)}
                 profile = learner.get(user_id)
                 state = profile.last_state or learner.state_snapshot(profile)
+
+                if not include_checkpoints:
+                    yield {"event": "learner_state", "data": json.dumps(state)}
+                    yield {"event": "done", "data": json.dumps({"reason": "completed"})}
+                    return
 
                 if model_choice in {"edge", "edge-ft"}:
                     checkpoint_raw = _deterministic_checkpoint(

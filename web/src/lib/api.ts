@@ -58,6 +58,7 @@ export async function streamLesson(
 ): Promise<void> {
   const form = new FormData();
   form.append("image", imageBlob, "canvas.png");
+  form.append("include_checkpoints", "false");
   if (options.teacherMode) form.append("teacher_mode", "true");
   if (options.userId) form.append("user_id", options.userId);
   if (options.modelChoice) form.append("model_choice", options.modelChoice);

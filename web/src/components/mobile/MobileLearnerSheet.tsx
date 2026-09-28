@@ -1,6 +1,8 @@
 "use client";
 
 import type { LearnerSnapshot } from "@/lib/types";
+import { useState } from "react";
+import { DEMO_LEARNER } from "@/lib/demo-learner";
 
 interface Props {
   open: boolean;
@@ -13,7 +15,9 @@ function percent(value: number) {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
-export default function MobileLearnerSheet({ open, snapshot, onClose, onReset }: Props) {
+export default function MobileLearnerSheet({ open, snapshot: liveSnapshot, onClose, onReset }: Props) {
+  const [sample, setSample] = useState(false);
+  const snapshot = sample ? DEMO_LEARNER : liveSnapshot;
   if (!open) return null;
   const state = snapshot?.learner_state;
   const beliefs = [...(state?.concept_beliefs ?? [])]
@@ -39,6 +43,8 @@ export default function MobileLearnerSheet({ open, snapshot, onClose, onReset }:
           <button type="button" onClick={onClose} aria-label="Close learning profile" className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-slate-100 text-xl text-slate-600">×</button>
         </div>
 
+        <button type="button" onClick={() => setSample((value) => !value)} className="mt-4 min-h-11 w-full rounded-xl border border-amber-300 bg-amber-50 text-sm text-amber-900">{sample ? "Sample data · Switch to my profile" : "Explore sample atlas"}</button>
+        {sample && <p className="mt-2 text-xs text-amber-800">Fictional example for demonstration. Your profile is unchanged.</p>}
         {beliefs.length ? (
           <div className="mt-5 space-y-3">
             {beliefs.map((belief) => (
@@ -65,7 +71,7 @@ export default function MobileLearnerSheet({ open, snapshot, onClose, onReset }:
         ) : (
           <div className="mt-5 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/60 px-4 py-8 text-center">
             <p className="font-semibold text-indigo-950">No evidence yet</p>
-            <p className="mt-1 text-sm leading-5 text-indigo-700">Complete a lesson and answer its checkpoint to build this profile.</p>
+            <p className="mt-1 text-sm leading-5 text-indigo-700">Explore a sample profile or start a lesson to see the concepts you encounter.</p>
           </div>
         )}
 
@@ -74,7 +80,7 @@ export default function MobileLearnerSheet({ open, snapshot, onClose, onReset }:
           <span>{state?.observations ?? 0} observations</span>
           <span>Bayesian evidence model</span>
         </div>
-        <button type="button" onClick={onReset} className="mt-4 min-h-11 w-full rounded-xl border border-rose-200 text-sm font-medium text-rose-700">Reset learning profile</button>
+        {!sample && <button type="button" onClick={onReset} className="mt-4 min-h-11 w-full rounded-xl border border-rose-200 text-sm font-medium text-rose-700">Reset learning profile</button>}
       </section>
     </div>
   );

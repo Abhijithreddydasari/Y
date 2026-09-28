@@ -30,7 +30,8 @@
     "text": {
       "summary": "Narrated paragraph. Spoken via TTS AND placed on board as a small text element near its corresponding primitive.",
       "args": {
-        "content": { "type": "string", "required": true, "description": "Narrative sentence(s)." }
+        "content": { "type": "string", "required": true, "description": "Short board caption, also narrated." },
+        "explanation": { "type": "string", "required": false, "description": "Optional fuller reasoning shown only in the chat transcript." }
       },
       "example": "[text: \"Let's start by recalling Newton's second law.\"]"
     },

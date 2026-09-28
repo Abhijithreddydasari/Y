@@ -39,7 +39,7 @@ export default function LandingPage() {
               Features
             </a>
             <a
-              href="https://github.com/"
+              href="https://github.com/Abhijithreddydasari/Y"
               target="_blank"
               rel="noopener noreferrer"
               className="nav-link transition-colors hover:text-[#f5b041]"
@@ -86,22 +86,22 @@ export default function LandingPage() {
 
           <div className="mb-6 inline-block">
             <span className="bg-[#f3f3f4] text-[#1a1c1c] font-mono text-[12px] px-4 py-1.5 rounded-full border border-[#1a1c1c]/10">
-              Now exploring the universe of knowledge
+              Visual tutoring that adapts with evidence
             </span>
           </div>
 
           <h1 className="text-[28px] md:text-[48px] leading-tight font-extrabold tracking-tight text-[#141414] mb-6 max-w-3xl">
-            The AI Moment for{" "}
+            Draw the question. See{" "}
             <span className="relative whitespace-nowrap">
-              <span className="relative z-10">Education</span>
+              <span className="relative z-10">understanding take shape.</span>
               <span className="absolute bottom-1 left-0 w-full h-3 bg-[#f5b041]/40 -z-10 skew-x-12" />
             </span>
           </h1>
 
           <p className="text-[18px] leading-7 text-[#5e5e5e] max-w-2xl mx-auto mb-10">
-            A learning companion that understands your confusion and draws
-            your understanding. From quantum physics to genetics, master
-            complex topics through fluid, visual conversations.
+            Y turns a handwritten question into a visual lesson, checks the
+            learner&apos;s work, and updates an evidence-aware learning profile.
+            Studio is designed for tablets; Mobile Demo brings the same loop to phones.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
@@ -109,7 +109,7 @@ export default function LandingPage() {
               href="/app"
               className="primary-btn px-8 py-3 rounded-full font-mono text-[12px] uppercase tracking-wider flex items-center gap-2"
             >
-              Begin Your Journey
+              Open Y
               <span className="material-symbols-outlined text-[18px] leading-none">
                 arrow_forward
               </span>
@@ -158,8 +158,8 @@ export default function LandingPage() {
         <section id="how" className="w-full relative py-16 rounded-3xl overflow-hidden border border-[#1a1c1c]/5 bg-[#f9f9f9]">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-8 md:px-16">
             <Step n={1} title="Sketch your question" body="Open the whiteboard, write equations or doodle a diagram, and place a ? where you need help." />
-            <Step n={2} title="Tap Solve" body="A local Gemma 4 vision model reads your canvas and streams a tag-by-tag lesson back." />
-            <Step n={3} title="Watch and listen" body="The renderer draws each step on the same canvas while a built-in voice narrates. Replay any time." />
+            <Step n={2} title="Tap Teach me" body="Gemma 4 reads the canvas and streams a structured visual lesson from either the local or hosted model runtime." />
+            <Step n={3} title="Answer the checkpoint" body="Draw your response, check it, and see the Bayesian learner profile update from the new evidence." />
           </div>
         </section>
 
@@ -224,11 +224,9 @@ export default function LandingPage() {
             </span>
           </div>
           <div className="flex flex-wrap justify-center gap-6 font-mono text-[12px] text-[#514535]">
-            <a className="hover:text-[#f5b041] transition-colors" href="#">Twitter</a>
-            <a className="hover:text-[#f5b041] transition-colors" href="#">GitHub</a>
-            <a className="hover:text-[#f5b041] transition-colors" href="#">LinkedIn</a>
-            <a className="hover:text-[#f5b041] transition-colors" href="#">Privacy</a>
-            <a className="hover:text-[#f5b041] transition-colors" href="#">Terms</a>
+            <Link className="hover:text-[#f5b041] transition-colors" href="/app">Automatic UI</Link>
+            <Link className="hover:text-[#f5b041] transition-colors" href="/app?ui=mobile">Mobile Demo</Link>
+            <a className="hover:text-[#f5b041] transition-colors" href="https://github.com/Abhijithreddydasari/Y" target="_blank" rel="noopener noreferrer">GitHub</a>
           </div>
         </div>
       </footer>

@@ -1,0 +1,482 @@
+[
+  {
+    "page": 1,
+    "top": 32,
+    "bottom": 43,
+    "text": "Y  /  PRODUCT THESIS"
+  },
+  {
+    "page": 1,
+    "top": 32,
+    "bottom": 43,
+    "text": "PRE-READ FOR ACTIVATE"
+  },
+  {
+    "page": 1,
+    "top": 811,
+    "bottom": 822,
+    "text": "Y  /  A whiteboard-led approach to adaptive AI tutoring"
+  },
+  {
+    "page": 1,
+    "top": 811,
+    "bottom": 822,
+    "text": "1 / 2"
+  },
+  {
+    "page": 1,
+    "top": 76,
+    "bottom": 108,
+    "text": "Why a whiteboard-led AI tutor?"
+  },
+  {
+    "page": 1,
+    "top": 119,
+    "bottom": 135,
+    "text": "The case for a shared learning surface that adapts to how students think."
+  },
+  {
+    "page": 1,
+    "top": 164,
+    "bottom": 175,
+    "text": "01"
+  },
+  {
+    "page": 1,
+    "top": 161,
+    "bottom": 180.5,
+    "text": "The thesis"
+  },
+  {
+    "page": 1,
+    "top": 189.5,
+    "bottom": 246.7,
+    "text": "From classrooms to research labs, some of the best learning happens on a shared surface. Y aims to bring that experience to AI tutoring: a place where students and AI can work through problems together, rather than exchanging answers in isolated chat turns. The longer-term vision combines multimodal tutoring with a self-improving representation of each learner's knowledge and understanding."
+  },
+  {
+    "page": 1,
+    "top": 267.7,
+    "bottom": 278.7,
+    "text": "THE PROPOSED LEARNING LOOP"
+  },
+  {
+    "page": 1,
+    "top": 301.7,
+    "bottom": 316.0,
+    "text": "Student input"
+  },
+  {
+    "page": 1,
+    "top": 317.7,
+    "bottom": 332.0,
+    "text": "Write, draw, ask"
+  },
+  {
+    "page": 1,
+    "top": 301.7,
+    "bottom": 316.0,
+    "text": "Shared surface"
+  },
+  {
+    "page": 1,
+    "top": 317.7,
+    "bottom": 332.0,
+    "text": "Think together"
+  },
+  {
+    "page": 1,
+    "top": 301.7,
+    "bottom": 316.0,
+    "text": "Learner model"
+  },
+  {
+    "page": 1,
+    "top": 317.7,
+    "bottom": 332.0,
+    "text": "Track understanding"
+  },
+  {
+    "page": 1,
+    "top": 301.7,
+    "bottom": 316.0,
+    "text": "Adaptive tutor"
+  },
+  {
+    "page": 1,
+    "top": 317.7,
+    "bottom": 332.0,
+    "text": "Tailor next step"
+  },
+  {
+    "page": 1,
+    "top": 344.7,
+    "bottom": 359.0,
+    "text": "Each interaction can refine what the tutor understands and does next."
+  },
+  {
+    "page": 1,
+    "top": 390.0,
+    "bottom": 401.0,
+    "text": "02"
+  },
+  {
+    "page": 1,
+    "top": 387.0,
+    "bottom": 406.5,
+    "text": "Why a whiteboard?"
+  },
+  {
+    "page": 1,
+    "top": 415.5,
+    "bottom": 429.8,
+    "text": "Active participation"
+  },
+  {
+    "page": 1,
+    "top": 437.5,
+    "bottom": 494.7,
+    "text": "Students can attempt, revise and explain their thinking while the tutor responds to their intermediate steps."
+  },
+  {
+    "page": 1,
+    "top": 415.5,
+    "bottom": 429.8,
+    "text": "Visual freedom"
+  },
+  {
+    "page": 1,
+    "top": 437.5,
+    "bottom": 480.4,
+    "text": "A shared space supports equations, annotations and diagrams that develop alongside the explanation."
+  },
+  {
+    "page": 1,
+    "top": 415.5,
+    "bottom": 429.8,
+    "text": "Across disciplines"
+  },
+  {
+    "page": 1,
+    "top": 437.5,
+    "bottom": 480.4,
+    "text": "The same surface can support math, physics, chemistry, biology, economics and more."
+  },
+  {
+    "page": 1,
+    "top": 512.7,
+    "bottom": 541.3,
+    "text": "The interface is a hypothesis: shared visual context may make multistep, visual problem-solving more effective than chat alone."
+  },
+  {
+    "page": 1,
+    "top": 574.3,
+    "bottom": 585.3,
+    "text": "WHAT SHARED VISUAL CONTEXT COULD CHANGE"
+  },
+  {
+    "page": 1,
+    "top": 574.3,
+    "bottom": 585.3,
+    "text": "Illustration, not a live feature"
+  },
+  {
+    "page": 1,
+    "top": 597.3,
+    "bottom": 611.6,
+    "text": "Text exchange"
+  },
+  {
+    "page": 1,
+    "top": 597.3,
+    "bottom": 611.6,
+    "text": "Shared working surface"
+  },
+  {
+    "page": 1,
+    "top": 625.3,
+    "bottom": 639.6,
+    "text": "Student  Why does friction point up the slope?"
+  },
+  {
+    "page": 1,
+    "top": 661.3,
+    "bottom": 675.6,
+    "text": "Tutor  It opposes the block's tendency to slide."
+  },
+  {
+    "page": 1,
+    "top": 615.0,
+    "bottom": 629.3,
+    "text": "N"
+  },
+  {
+    "page": 1,
+    "top": 637.8,
+    "bottom": 652.1,
+    "text": "f"
+  },
+  {
+    "page": 1,
+    "top": 695.6,
+    "bottom": 709.9,
+    "text": "mg"
+  },
+  {
+    "page": 1,
+    "top": 741.3,
+    "bottom": 755.6,
+    "text": "Explanation lives in the message thread."
+  },
+  {
+    "page": 1,
+    "top": 741.3,
+    "bottom": 755.6,
+    "text": "The student and tutor can mark the same diagram."
+  },
+  {
+    "page": 2,
+    "top": 32,
+    "bottom": 43,
+    "text": "Y  /  PRODUCT THESIS"
+  },
+  {
+    "page": 2,
+    "top": 32,
+    "bottom": 43,
+    "text": "PRE-READ FOR ACTIVATE"
+  },
+  {
+    "page": 2,
+    "top": 811,
+    "bottom": 822,
+    "text": "Y  /  A whiteboard-led approach to adaptive AI tutoring"
+  },
+  {
+    "page": 2,
+    "top": 811,
+    "bottom": 822,
+    "text": "2 / 2"
+  },
+  {
+    "page": 2,
+    "top": 79,
+    "bottom": 90,
+    "text": "03"
+  },
+  {
+    "page": 2,
+    "top": 76,
+    "bottom": 95.5,
+    "text": "How it compares with other interfaces"
+  },
+  {
+    "page": 2,
+    "top": 104.5,
+    "bottom": 133.1,
+    "text": "The goal is not to replace chat or voice. It is to make the right medium available for each task, with a shared visual workspace when the learner needs it."
+  },
+  {
+    "page": 2,
+    "top": 152.1,
+    "bottom": 166.4,
+    "text": "Chat"
+  },
+  {
+    "page": 2,
+    "top": 152.1,
+    "bottom": 166.4,
+    "text": "Fast, familiar; less natural for spatial reasoning and joint working."
+  },
+  {
+    "page": 2,
+    "top": 180.4,
+    "bottom": 194.7,
+    "text": "Voice"
+  },
+  {
+    "page": 2,
+    "top": 180.4,
+    "bottom": 194.7,
+    "text": "Conversational and hands-free; harder to convey complex visual relationships."
+  },
+  {
+    "page": 2,
+    "top": 208.7,
+    "bottom": 223.0,
+    "text": "Video / diagrams"
+  },
+  {
+    "page": 2,
+    "top": 208.7,
+    "bottom": 223.0,
+    "text": "Clear illustrations; typically less interactive than developing them together."
+  },
+  {
+    "page": 2,
+    "top": 237.0,
+    "bottom": 251.3,
+    "text": "Document-grounded AI"
+  },
+  {
+    "page": 2,
+    "top": 237.0,
+    "bottom": 265.6,
+    "text": "Keeps teaching within course materials; retrieval alone does not reveal misconceptions."
+  },
+  {
+    "page": 2,
+    "top": 279.6,
+    "bottom": 293.9,
+    "text": "Shared whiteboard"
+  },
+  {
+    "page": 2,
+    "top": 279.6,
+    "bottom": 293.9,
+    "text": "Supports joint working, annotations, explanations and student participation."
+  },
+  {
+    "page": 2,
+    "top": 325.9,
+    "bottom": 336.9,
+    "text": "04"
+  },
+  {
+    "page": 2,
+    "top": 322.9,
+    "bottom": 342.4,
+    "text": "India: tablets today, mobile tomorrow"
+  },
+  {
+    "page": 2,
+    "top": 351.4,
+    "bottom": 394.3,
+    "text": "Many schools already use tablets for learning and assignments, while others are introducing them. This gives a whiteboard-led tutor a natural entry point for students tackling equations and diagrams, especially in JEE/NEET and undergraduate courses. For broader reach, the same tutor should also work on phones without a stylus."
+  },
+  {
+    "page": 2,
+    "top": 406.3,
+    "bottom": 420.6,
+    "text": "Tablet"
+  },
+  {
+    "page": 2,
+    "top": 422.3,
+    "bottom": 436.6,
+    "text": "Write and draw directly"
+  },
+  {
+    "page": 2,
+    "top": 406.3,
+    "bottom": 420.6,
+    "text": "Desktop"
+  },
+  {
+    "page": 2,
+    "top": 422.3,
+    "bottom": 436.6,
+    "text": "Use a shared workspace"
+  },
+  {
+    "page": 2,
+    "top": 406.3,
+    "bottom": 420.6,
+    "text": "Phone"
+  },
+  {
+    "page": 2,
+    "top": 422.3,
+    "bottom": 436.6,
+    "text": "Chat, voice, photos of work"
+  },
+  {
+    "page": 2,
+    "top": 460.6,
+    "bottom": 471.6,
+    "text": "05"
+  },
+  {
+    "page": 2,
+    "top": 457.6,
+    "bottom": 477.1,
+    "text": "Early exploration and current stage"
+  },
+  {
+    "page": 2,
+    "top": 486.1,
+    "bottom": 543.3,
+    "text": "I briefly explored a retrieval-augmented approach to grounding explanations in external learning material. Uploading notes, slides, textbooks or video references could support syllabus-aware teaching and quizzes. But having the right content is different from understanding the student. The core product question is whether interaction evidence can improve future tutoring."
+  },
+  {
+    "page": 2,
+    "top": 563.3,
+    "bottom": 574.3,
+    "text": "EXPLORED"
+  },
+  {
+    "page": 2,
+    "top": 561.3,
+    "bottom": 575.6,
+    "text": "Lightweight RAG for external course context"
+  },
+  {
+    "page": 2,
+    "top": 576.6,
+    "bottom": 590.9,
+    "text": "An initial technical exploration, not a formal form-factor experiment."
+  },
+  {
+    "page": 2,
+    "top": 605.9,
+    "bottom": 616.9,
+    "text": "AVAILABLE NOW"
+  },
+  {
+    "page": 2,
+    "top": 603.9,
+    "bottom": 618.2,
+    "text": "Early core tutoring experience"
+  },
+  {
+    "page": 2,
+    "top": 619.2,
+    "bottom": 633.5,
+    "text": "The demo supports the initial teaching experience, not the full long-term vision."
+  },
+  {
+    "page": 2,
+    "top": 648.5,
+    "bottom": 659.5,
+    "text": "IN DEVELOPMENT"
+  },
+  {
+    "page": 2,
+    "top": 646.5,
+    "bottom": 660.8,
+    "text": "Joint drawing and evolving learner representation"
+  },
+  {
+    "page": 2,
+    "top": 661.8,
+    "bottom": 676.1,
+    "text": "The proposed whiteboard interaction and self-improving learning loop are being integrated."
+  },
+  {
+    "page": 2,
+    "top": 690.1,
+    "bottom": 718.7,
+    "text": "What remains to be proven: whether a whiteboard-led experience improves understanding, participation and continuity over chat or voice alternatives. I have not yet run controlled comparisons."
+  },
+  {
+    "page": 2,
+    "top": 732.7,
+    "bottom": 743.7,
+    "text": "EARLY DEMO"
+  },
+  {
+    "page": 2,
+    "top": 731.7,
+    "bottom": 746.0,
+    "text": "ask-y-event.vercel.app"
+  }
+]

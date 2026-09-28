@@ -19,6 +19,7 @@ interface Props {
   onSend: (text: string) => void;
   onClear: () => void;
   onCancel: () => void;
+  variant?: "studio" | "mobile";
 }
 
 const MAX_RECORDING_MS = 60_000;
@@ -45,6 +46,7 @@ export default function ChatPanel({
   onSend,
   onClear,
   onCancel,
+  variant = "studio",
 }: Props) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -133,12 +135,17 @@ export default function ChatPanel({
   };
 
   return (
-    <div className="pointer-events-none fixed bottom-20 right-5 z-50 flex flex-col items-end gap-3 sm:bottom-20 sm:right-6">
+    <div className={variant === "mobile"
+      ? "pointer-events-none fixed bottom-[calc(6.9rem+env(safe-area-inset-bottom))] right-3 z-[60] flex flex-col items-end gap-3"
+      : "pointer-events-none fixed bottom-20 right-5 z-50 flex flex-col items-end gap-3 sm:bottom-20 sm:right-6"}
+    >
       {open && (
         <section
           id="lesson-chat-panel"
           aria-label="Lesson chat"
-          className="chat-panel-enter pointer-events-auto flex h-[min(680px,calc(100dvh-132px))] w-[min(430px,calc(100vw-24px))] flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/95 shadow-[0_24px_80px_rgba(15,23,42,.24)] backdrop-blur-2xl dark:border-white/10 dark:bg-zinc-950/94"
+          className={variant === "mobile"
+            ? "chat-panel-enter pointer-events-auto flex h-[calc(100dvh-10rem)] w-[calc(100vw-24px)] flex-col overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/98 shadow-[0_24px_80px_rgba(15,23,42,.24)] backdrop-blur-2xl"
+            : "chat-panel-enter pointer-events-auto flex h-[min(680px,calc(100dvh-132px))] w-[min(430px,calc(100vw-24px))] flex-col overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/95 shadow-[0_24px_80px_rgba(15,23,42,.24)] backdrop-blur-2xl dark:border-white/10 dark:bg-zinc-950/94"}
         >
           <header className="flex items-center justify-between border-b border-slate-200/70 px-4 py-3 dark:border-white/10">
             <div className="flex min-w-0 items-center gap-3">
@@ -245,7 +252,7 @@ export default function ChatPanel({
         aria-expanded={open}
         aria-controls="lesson-chat-panel"
         aria-label={open ? "Close lesson chat" : "Open lesson chat"}
-        className="chat-orb pointer-events-auto relative grid h-16 w-16 place-items-center rounded-full border border-white/70 bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-700 text-white shadow-[0_14px_36px_rgba(37,99,235,.38)] transition duration-300 hover:-translate-y-1 hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300/60 active:scale-95"
+        className={`chat-orb pointer-events-auto relative grid place-items-center rounded-full border border-white/70 bg-gradient-to-br from-cyan-400 via-blue-500 to-indigo-700 text-white shadow-[0_14px_36px_rgba(37,99,235,.38)] transition duration-300 hover:-translate-y-1 hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300/60 active:scale-95 ${variant === "mobile" ? "h-12 w-12" : "h-16 w-16"}`}
       >
         <span className="absolute inset-[5px] rounded-full border border-white/30" />
         <ChatIcon open={open} />

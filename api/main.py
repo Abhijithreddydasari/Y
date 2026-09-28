@@ -17,10 +17,13 @@ import hashlib
 import os
 import asyncio
 import tempfile
+from io import BytesIO
 from contextlib import asynccontextmanager
 from contextlib import suppress
 from pathlib import Path
 from typing import Literal
+
+from PIL import Image, UnidentifiedImageError
 
 API_ROOT = Path(__file__).resolve().parent
 SCHEMA_PATH = API_ROOT.parent / "schema" / "primitives.json"
@@ -60,6 +63,7 @@ from pydantic import BaseModel, Field  # noqa: E402
 from sse_starlette.sse import EventSourceResponse  # noqa: E402
 
 from learner import LearnerStore, normalise_evidence  # noqa: E402
+from demo_limits import demo_limiter  # noqa: E402
 from speech import DEFAULT_VOICE, SpeechError, get_speech_engine  # noqa: E402
 from transcription import TranscriptionError, get_transcriber  # noqa: E402
 from teacher import (  # noqa: E402
@@ -118,13 +122,53 @@ if _extra_cors:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origin_regex=(
+        r"https://.*\.vercel\.app"
+        if os.environ.get("ALLOW_VERCEL_PREVIEWS", "1").lower() in {"1", "true", "yes"}
+        else None
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 _learner_store: LearnerStore | None = None
+
+_MAX_CANVAS_BYTES = int(os.environ.get("MAX_CANVAS_BYTES", str(8 * 1024 * 1024)))
+_MAX_CANVAS_EDGE = int(os.environ.get("MAX_CANVAS_EDGE", "4096"))
+_MODEL_TIMEOUT_SECONDS = float(os.environ.get("MODEL_TIMEOUT_SECONDS", "180"))
+
+
+async def _read_canvas_image(image: UploadFile) -> bytes:
+    """Read and validate an untrusted public-demo canvas upload."""
+    content_type = (image.content_type or "").split(";", 1)[0].lower()
+    if content_type != "image/png":
+        raise HTTPException(status_code=415, detail="canvas must be a PNG image")
+    payload = await image.read(_MAX_CANVAS_BYTES + 1)
+    if not payload:
+        raise HTTPException(status_code=400, detail="canvas image is empty")
+    if len(payload) > _MAX_CANVAS_BYTES:
+        raise HTTPException(status_code=413, detail="canvas image exceeds 8 MiB")
+    try:
+        with Image.open(BytesIO(payload)) as decoded:
+            width, height = decoded.size
+            if decoded.format != "PNG":
+                raise HTTPException(status_code=415, detail="canvas content is not PNG")
+            if width < 1 or height < 1 or width > _MAX_CANVAS_EDGE or height > _MAX_CANVAS_EDGE:
+                raise HTTPException(status_code=422, detail="canvas dimensions are unsupported")
+            decoded.verify()
+    except HTTPException:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="canvas PNG is invalid") from exc
+    return payload
+
+
+async def _timed_stream(stream):
+    """Apply one deadline to a provider stream without changing its protocol."""
+    async with asyncio.timeout(_MODEL_TIMEOUT_SECONDS):
+        async for item in stream:
+            yield item
 
 
 def _safety_identifier(user_id: str) -> str:
@@ -203,8 +247,13 @@ async def health() -> dict:
     ready_by_choice = dict(zip(choices, flags))
     edge_ready = ready_by_choice.get("edge", False) if is_ollama else False
 
+    adapter_info = get_learner_store().adapter_info
     return {
         "status": "ok",
+        "build_revision": os.environ.get("BUILD_REVISION", "development"),
+        "model_loaded": edge_ready,
+        "learner_mode": "neural-and-bayesian" if adapter_info.get("trained_checkpoint") else "bayesian",
+        "queue": demo_limiter.snapshot(),
         "ollama_host": edge.host if is_ollama else "",
         "model": edge.model,
         "ollama_reachable": edge_ready,
@@ -218,7 +267,7 @@ async def health() -> dict:
             }
             for choice, cfg in MODEL_REGISTRY.items()
         },
-        "learner_adapter": get_learner_store().adapter_info,
+        "learner_adapter": adapter_info,
         "speech": get_speech_engine().health(),
         "transcription": get_transcriber().health(),
     }
@@ -266,7 +315,7 @@ async def lesson(
       - "done":            {"reason": "..."}              terminal event
       - "error":           {"message": "..."}             terminal error
     """
-    png_bytes = await image.read()
+    png_bytes = await _read_canvas_image(image)
     teacher = get_teacher(model_choice)
     learner = get_learner_store()
     parser = IncrementalTagParser()
@@ -276,6 +325,7 @@ async def lesson(
     # system prompt for THIS lesson only. The teacher object's base prompt
     # is left untouched so concurrent calls don't bleed into each other.
     mastery_prefix = learner.system_prompt_prefix(user_id)
+    permit = await demo_limiter.acquire(user_id, "lesson")
 
     async def event_stream():
         # Accumulate the parsed lesson text so the educator-notes + learner
@@ -283,11 +333,11 @@ async def lesson(
         nonlocal primitives_count
         lesson_chunks: list[str] = []
         try:
-            async for token in teacher.stream_lesson(
+            async for token in _timed_stream(teacher.stream_lesson(
                 png_bytes,
                 system_prefix=mastery_prefix,
                 safety_identifier=safety_identifier,
-            ):
+            )):
                 lesson_chunks.append(token)
                 for evt in parser.feed(token):
                     if evt["event"] == "token":
@@ -419,10 +469,14 @@ async def lesson(
                 }
 
             yield {"event": "done", "data": json.dumps({"reason": "completed"})}
+        except TimeoutError:
+            yield {"event": "error", "data": json.dumps({"message": "The tutor timed out. Please retry."})}
         except TeacherError as exc:
             yield {"event": "error", "data": json.dumps({"message": str(exc)})}
         except Exception as exc:
             yield {"event": "error", "data": json.dumps({"message": f"internal: {exc}"})}
+        finally:
+            await permit.release()
 
     return EventSourceResponse(event_stream())
 
@@ -436,25 +490,29 @@ async def assess(
     model_choice: str = Form(DEFAULT_MODEL_CHOICE),
 ):
     """Grade a checkpoint answer, run a guarded Level-2 update, and reteach."""
-    png_bytes = await image.read()
     learner = get_learner_store()
     checkpoint = learner.get_checkpoint(user_id, checkpoint_id)
     if checkpoint is None:
         raise HTTPException(status_code=404, detail="checkpoint not found for this learner")
     if checkpoint.get("conversation_id") != conversation_id:
         raise HTTPException(status_code=409, detail="checkpoint belongs to another conversation")
+    png_bytes = await _read_canvas_image(image)
     teacher = get_teacher(model_choice)
     safety_identifier = _safety_identifier(user_id)
+    permit = await demo_limiter.acquire(user_id, "assess")
 
     async def event_stream():
         parser = IncrementalTagParser()
         lesson_chunks: list[str] = []
         primitives_count = 0
         try:
-            raw = await teacher.extract_evidence(
-                png_bytes,
-                checkpoint,
-                safety_identifier=safety_identifier,
+            raw = await asyncio.wait_for(
+                teacher.extract_evidence(
+                    png_bytes,
+                    checkpoint,
+                    safety_identifier=safety_identifier,
+                ),
+                timeout=_MODEL_TIMEOUT_SECONDS,
             )
             if isinstance(raw, dict):
                 raw.setdefault("task_text", checkpoint.get("question", ""))
@@ -473,13 +531,13 @@ async def assess(
             yield {"event": "evidence", "data": json.dumps(evidence_payload)}
 
             prefix = learner.system_prompt_prefix(user_id)
-            async for token in teacher.stream_assessment_feedback(
+            async for token in _timed_stream(teacher.stream_assessment_feedback(
                 png_bytes,
                 checkpoint,
                 evidence_payload,
                 system_prefix=prefix,
                 safety_identifier=safety_identifier,
-            ):
+            )):
                 lesson_chunks.append(token)
                 for evt in parser.feed(token):
                     if evt["event"] == "token":
@@ -546,10 +604,14 @@ async def assess(
                 pass
 
             yield {"event": "done", "data": json.dumps({"reason": "assessed"})}
+        except TimeoutError:
+            yield {"event": "error", "data": json.dumps({"message": "The tutor timed out. Please retry."})}
         except TeacherError as exc:
             yield {"event": "error", "data": json.dumps({"message": str(exc)})}
         except Exception as exc:
             yield {"event": "error", "data": json.dumps({"message": f"internal: {exc}"})}
+        finally:
+            await permit.release()
 
     return EventSourceResponse(event_stream())
 
@@ -614,21 +676,26 @@ async def chat(request: ChatRequest):
     state = profile.last_state or learner.state_snapshot(profile)
     learner_context = str(state.get("profile_text", ""))
     messages = [message.model_dump() for message in request.messages]
+    permit = await demo_limiter.acquire(request.user_id, "chat")
 
     async def event_stream():
         try:
-            async for delta in teacher.stream_chat(
+            async for delta in _timed_stream(teacher.stream_chat(
                 messages,
                 learner_context=learner_context,
                 lesson_context=request.lesson_context,
                 safety_identifier=_safety_identifier(request.user_id),
-            ):
+            )):
                 yield {"event": "delta", "data": json.dumps({"text": delta})}
             yield {"event": "done", "data": json.dumps({"reason": "completed"})}
+        except TimeoutError:
+            yield {"event": "error", "data": json.dumps({"message": "The tutor timed out. Please retry."})}
         except TeacherError as exc:
             yield {"event": "error", "data": json.dumps({"message": str(exc)})}
         except Exception as exc:
             yield {"event": "error", "data": json.dumps({"message": f"internal: {exc}"})}
+        finally:
+            await permit.release()
 
     return EventSourceResponse(event_stream())
 

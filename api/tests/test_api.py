@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 import json
+import base64
 
 from fastapi.testclient import TestClient
 
 import main
 from learner import LearnerStore
 from learner_adapter import AdapterConfig
+
+
+PNG_BYTES = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
 
 
 class FakeTeacher:
@@ -87,7 +93,7 @@ def test_lesson_and_assessment_sse_contract(tmp_path, monkeypatch) -> None:
         assert "transcription" in health.json()
         lesson = client.post(
             "/lesson",
-            files={"image": ("board.png", b"png", "image/png")},
+            files={"image": ("board.png", PNG_BYTES, "image/png")},
             data={"user_id": "test-user", "conversation_id": "conv-1", "model_choice": "openai"},
         )
         assert lesson.status_code == 200
@@ -98,7 +104,7 @@ def test_lesson_and_assessment_sse_contract(tmp_path, monkeypatch) -> None:
 
         assessment = client.post(
             "/assess",
-            files={"image": ("answer.png", b"png", "image/png")},
+            files={"image": ("answer.png", PNG_BYTES, "image/png")},
             data={
                 "user_id": "test-user",
                 "conversation_id": "conv-1",
@@ -175,6 +181,21 @@ def test_safety_identifier_is_stable_salted_and_private(monkeypatch) -> None:
     assert first.startswith("y_") and len(first) == 26
     assert raw_user_id not in first
     assert len({first, other_user, resalted}) == 3
+
+
+def test_lesson_rejects_invalid_canvas_uploads() -> None:
+    with TestClient(main.app) as client:
+        wrong_type = client.post(
+            "/lesson",
+            files={"image": ("board.txt", b"hello", "text/plain")},
+        )
+        broken_png = client.post(
+            "/lesson",
+            files={"image": ("board.png", b"not-a-png", "image/png")},
+        )
+
+    assert wrong_type.status_code == 415
+    assert broken_png.status_code == 422
 
 
 def test_reset_endpoint_removes_profile_checkpoint_and_fast_weights(tmp_path, monkeypatch) -> None:

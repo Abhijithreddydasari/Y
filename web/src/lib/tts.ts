@@ -133,7 +133,20 @@ async function playKokoroSegment(
 
   let blob: Blob;
   try {
-    const prepared = baseOffset === 0 ? await opts.prepared : undefined;
+    // Do not hold the first visible words behind a cold speech synthesis.
+    // A prepared Kokoro clip normally wins this race; otherwise `speak`
+    // immediately continues through the browser voice while later clips warm.
+    const prepared = baseOffset === 0 && opts.prepared
+      ? await Promise.race([
+          opts.prepared,
+          new Promise<"speech-warming">((resolve) =>
+            window.setTimeout(() => resolve("speech-warming"), 450),
+          ),
+        ])
+      : undefined;
+    if (prepared === "speech-warming") {
+      throw new Error("prepared speech is still warming");
+    }
     if (session.cancelled || revision !== session.revision) {
       return { ended: false, charsSpoken: 0 };
     }

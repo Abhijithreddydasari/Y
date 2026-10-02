@@ -35,9 +35,8 @@ function loadExcalidraw() {
 }
 
 /**
- * A timed character reveal. Used only when TTS is disabled, so a line still
- * writes progressively instead of snapping in all at once. When TTS is on,
- * the reveal is driven by audio position (see `LessonPlayer.narrate`).
+ * A timed character reveal. It begins immediately while speech is prepared,
+ * so the board never waits on the audio round trip before starting to write.
  */
 class TextRevealer {
   private current = 0;
@@ -205,9 +204,8 @@ export class LessonPlayer {
   }
 
   /**
-   * Speak `fullText` while (optionally) writing it on the board in lockstep.
-   * Resolves only when the audio clip has finished, so the caller can gate the
-   * next primitive on the current line being fully spoken.
+   * Speak and write `fullText` concurrently. Writing begins immediately while
+   * the prepared audio resolves; both must finish before the next primitive.
    */
   private async narrate(
     fullText: string,
@@ -240,20 +238,27 @@ export class LessonPlayer {
       );
     this.warmed.delete(clean);
 
-    try {
-      await speak(clean, {
-        voiceName: this.voiceName,
-        prepared,
-        onProgress: mutate
-          ? (chars) => {
-              const n = Math.max(0, Math.min(fullText.length, chars));
-              mutate(fullText.slice(0, n) || " ");
-            }
-          : undefined,
-      });
-    } catch {
-      // A synthesis / playback failure must not strand the line half-written.
-    }
+    const wordCount = clean.split(/\s+/).length;
+    const estimatedSpeechMs = Math.min(4_500, Math.max(900, wordCount * 340));
+    const revealStep = Math.max(1, Math.ceil(fullText.length / 40));
+    const revealTicks = Math.max(1, Math.ceil(fullText.length / revealStep));
+    const revealer = mutate
+      ? new TextRevealer(
+          fullText,
+          mutate,
+          Math.max(18, estimatedSpeechMs / revealTicks),
+          this.signal,
+          revealStep,
+        )
+      : null;
+    revealer?.start();
+    const writing = revealer?.revealAll() ?? Promise.resolve();
+    const speaking = speak(clean, {
+      voiceName: this.voiceName,
+      prepared,
+    });
+    await Promise.allSettled([writing, speaking]);
+    revealer?.finish();
     // Guarantee the final text is fully painted regardless of how speech ended.
     mutate?.(fullText);
   }

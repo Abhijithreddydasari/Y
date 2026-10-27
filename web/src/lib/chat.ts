@@ -13,7 +13,7 @@ export function primitiveToMarkdown(tag: PrimitiveTag): string {
       return title ? `## ${title}` : "";
     }
     case "text":
-      return stringArg(tag, "content");
+      return stringArg(tag, "explanation") || stringArg(tag, "content");
     case "equation": {
       const latex = stringArg(tag, "latex") || stringArg(tag, "content");
       return latex ? `$$\n${latex}\n$$` : "";

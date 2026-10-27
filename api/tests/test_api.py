@@ -100,6 +100,15 @@ def test_lesson_and_assessment_sse_contract(tmp_path, monkeypatch) -> None:
         lesson_events = event_names(lesson.text)
         assert lesson_events.index("generation_complete") < lesson_events.index("learner_update")
         assert lesson_events[-4:] == ["learner_update", "learner_state", "checkpoint", "done"]
+        presentation = client.post(
+            "/lesson",
+            files={"image": ("board.png", PNG_BYTES, "image/png")},
+            data={"user_id": "presentation-user", "conversation_id": "demo", "model_choice": "openai", "include_checkpoints": "false"},
+        )
+        assert presentation.status_code == 200
+        assert event_names(presentation.text)[-3:] == ["learner_update", "learner_state", "done"]
+        assert "checkpoint" not in event_names(presentation.text)
+        assert not store.get("presentation-user").checkpoints
         checkpoint = store.get("test-user").checkpoints[-1]
 
         assessment = client.post(

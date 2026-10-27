@@ -295,11 +295,7 @@ export function useTutorSession(): TutorSession {
           },
           onEducatorNotes: (notes) => { setEducatorNotes(notes); setEducatorBusy(false); },
           onLearnerState: (state) => setLearnerSnapshot((current) => applyLearnerState(current, state, userIdRef.current)),
-          onCheckpoint: (next) => {
-            setCheckpoint(next);
-            const tag: PrimitiveTag = { tag: "text", args: { content: `Checkpoint: ${next.question}` } };
-            collected.push(tag); player.enqueue(tag); appendTranscriptPrimitive(transcriptId, tag);
-          },
+          // Ignore checkpoint events from older backends during rollout.
           onDone: () => setStatus("Finishing your lesson…"),
           onError: (message) => { streamError = message; setStatus(`The lesson stopped: ${message}`); },
         }, controller.signal, {
@@ -311,7 +307,7 @@ export function useTutorSession(): TutorSession {
       }
       await player.finishDrawing();
       setStatus(streamError ? `The lesson stopped: ${streamError}` : mode === "live"
-        ? "Lesson ready. Answer the checkpoint on the board." : "Replay complete.");
+        ? "Lesson ready. Ask a follow-up in chat or try another question." : "Replay complete.");
       if (mode === "live" && collected.length) {
         cachedRef.current = { primitives: collected, origin };
         setHasReplay(true);

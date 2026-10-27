@@ -3,7 +3,7 @@
 | Tag | Shape | Args |
 |---|---|---|
 | `title` | `[title: "..."]` | `text` (required, the heading) |
-| `text` | `[text: "..."]` | `content` (required, narration sentence) |
+| `text` | `[text: content="Short board caption." explanation="Fuller reasoning for chat."]` | `content` (required, short board caption and narration); `explanation` (optional, chat-only reasoning) |
 | `equation` | `[equation: "F = ma" align=center]` | `latex` (required), `align` (left/center/right, default center) |
 | `box` | `[box: id=A label="Block" x=100 y=200 w=80 h=80]` | `id` required; `label`, `x`, `y`, `w`, `h` optional |
 | `node` | `[node: id=A label="0.6" x=200 y=300 r=30]` | `id` required; `label`, `x`, `y`, `r` optional |

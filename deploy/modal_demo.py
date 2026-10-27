@@ -124,6 +124,9 @@ def seed_model() -> dict:
     max_containers=1,
     scaledown_window=60 * 20,
 )
+# Keep speech/health requests responsive while a lesson SSE connection is open.
+# The API governor still limits model generation to one active request.
+@modal.concurrent(max_inputs=20)
 @modal.asgi_app()
 def fastapi_app():
     """Start local Ollama, warm Gemma, then expose the existing FastAPI app."""

@@ -16,6 +16,7 @@ import type {
   LearnerSnapshot,
   LearningDimensionName,
 } from "@/lib/types";
+import { DEMO_LEARNER } from "@/lib/demo-learner";
 
 interface Props {
   snapshot: LearnerSnapshot | null;
@@ -288,7 +289,9 @@ function KnowledgeAtlas({
   );
 }
 
-export default function LearnerPanel({ snapshot, onReset }: Props) {
+export default function LearnerPanel({ snapshot: liveSnapshot, onReset }: Props) {
+  const [sample, setSample] = useState(false);
+  const snapshot = sample ? DEMO_LEARNER : liveSnapshot;
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<Point>({ x: 48, y: 520 });
   const [panelPosition, setPanelPosition] = useState<Point>({ x: 132, y: 120 });
@@ -419,6 +422,8 @@ export default function LearnerPanel({ snapshot, onReset }: Props) {
             <button type="button" onClick={() => setOpen(false)} aria-label="Close learning space" className="grid h-7 w-7 place-items-center rounded-full text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800">×</button>
           </div>
           <div className="max-h-[calc(100dvh-110px)] overflow-y-auto px-3 pb-3">
+            <button type="button" onClick={() => setSample((value) => !value)} className="mt-3 min-h-11 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 text-xs font-medium text-amber-900">{sample ? "Sample data · Switch to my profile" : "Explore sample atlas"}</button>
+            {sample && <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">Fictional example for demonstration. Your profile is unchanged.</p>}
             <div className="mb-2 mt-3 flex items-center justify-between text-[9px] text-zinc-400">
               <span>size = evidence · halo = uncertainty</span>
               <span>revision {state?.revision ?? 0}</span>
@@ -431,7 +436,7 @@ export default function LearnerPanel({ snapshot, onReset }: Props) {
             </div>
             {state?.profile_text && <p className="mt-2 rounded-md bg-emerald-50 px-2 py-2 text-[10px] leading-relaxed text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{state.profile_text}</p>}
             <div className="mt-2 text-[9px] text-zinc-400">{observations} events · {hierarchy.length} subject areas</div>
-            {onReset && <button type="button" onClick={onReset} className="mt-2 w-full rounded-md bg-zinc-100 px-2 py-1.5 text-[10px] text-zinc-600 hover:bg-rose-50 hover:text-rose-700 dark:bg-zinc-800">Reset learner data</button>}
+            {onReset && !sample && <button type="button" onClick={onReset} className="mt-2 w-full rounded-md bg-zinc-100 px-2 py-1.5 text-[10px] text-zinc-600 hover:bg-rose-50 hover:text-rose-700 dark:bg-zinc-800">Reset learner data</button>}
           </div>
         </aside>
       )}

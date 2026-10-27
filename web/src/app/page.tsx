@@ -1,263 +1,70 @@
+"use client";
+
+import React, { useState } from "react";
 import Link from "next/link";
 import ScrollLine from "@/components/ScrollLine";
+import s from "./landing.module.css";
 
-// Color palette inlined as arbitrary Tailwind values so we don't have to
-// extend tailwind.config (we're on v4, where arbitrary hex is idiomatic):
-//   ink-black:        #141414
-//   learning-yellow:  #f5b041
-//   paper-white:      #ffffff
-//   surface-bright:   #f9f9f9
-//   surface-low:      #f3f3f4
-//   surface-lowest:   #ffffff
-//   on-surface:       #1a1c1c
-//   tertiary:         #5e5e5e
-//   on-surface-variant:#514535
-
+const topics = ["Pythagorean theorem", "Harmonics", "Normal distribution"];
+const captions = ["The squares of the two shorter sides add up to the square of the hypotenuse.", "Combine a fundamental wave with a third harmonic to explore a different shape.", "For a normal distribution, about 68% of values lie within one standard deviation of the mean."];
+function wave(fn: (x: number) => number) {
+  return Array.from({ length: 66 }, (_, i) => `${i ? "L" : "M"}${20 + i * 4} ${fn(20 + i * 4).toFixed(2)}`).join(" ");
+}
 export default function LandingPage() {
+  const [revealed, setRevealed] = useState(false);
+  const [topic, setTopic] = useState(0);
   return (
-    <div
-      className="font-[var(--font-app-sans)] flex flex-col min-h-screen relative bg-white text-[#1a1c1c] antialiased"
-    >
-      <ScrollLine />
-
-      {/* Top nav */}
-      <nav className="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl border-b border-[#1a1c1c]/10">
-        <div className="flex justify-between items-center w-full px-4 md:px-12 py-4 max-w-[1200px] mx-auto relative z-10">
-          <Link href="/" className="flex items-center gap-2 group">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-[#f5b041] text-[#141414] font-extrabold text-lg shadow-sm">
-              Y
-            </span>
-            <span className="text-[20px] font-extrabold tracking-tight text-[#141414]">
-              Y
-            </span>
-          </Link>
-          <div className="hidden md:flex gap-8 items-center text-[16px] text-[#514535]">
-            <a href="#how" className="nav-link transition-colors hover:text-[#f5b041]">
-              How it Works
-            </a>
-            <a href="#features" className="nav-link transition-colors hover:text-[#f5b041]">
-              Features
-            </a>
-            <a
-              href="https://github.com/Abhijithreddydasari/Y"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="nav-link transition-colors hover:text-[#f5b041]"
-            >
-              GitHub
-            </a>
-          </div>
-          <Link
-            href="/app"
-            className="hidden md:inline-flex primary-btn px-6 py-2 rounded-full font-mono uppercase tracking-wider text-[12px]"
-          >
-            Start Learning
-          </Link>
-          <Link
-            href="/app"
-            className="md:hidden inline-flex primary-btn px-4 py-1.5 rounded-full font-mono uppercase tracking-wider text-[11px]"
-          >
-            Try it
-          </Link>
-        </div>
-      </nav>
-
-      <main className="flex-grow pt-32 pb-24 px-4 md:px-12 w-full max-w-[1200px] mx-auto flex flex-col gap-[120px] relative z-10">
-        {/* Hero */}
-        <section className="relative min-h-[60vh] flex flex-col justify-center items-center text-center w-full max-w-4xl mx-auto z-10 pt-16">
-          <div className="hero-flow-bg hidden md:block">
-            <svg
-              className="w-full h-full"
-              preserveAspectRatio="xMidYMid slice"
-              viewBox="0 0 1200 600"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                className="hero-flow-path"
-                d="M -100,300 C 200,100 300,500 600,300 C 900,100 1000,500 1300,300"
-              />
-              <path
-                className="hero-flow-path"
-                opacity="0.5"
-                d="M -100,400 C 150,200 400,600 700,400 C 1000,200 1100,600 1300,400"
-              />
-            </svg>
-          </div>
-
-          <div className="mb-6 inline-block">
-            <span className="bg-[#f3f3f4] text-[#1a1c1c] font-mono text-[12px] px-4 py-1.5 rounded-full border border-[#1a1c1c]/10">
-              Visual tutoring that adapts with evidence
-            </span>
-          </div>
-
-          <h1 className="text-[28px] md:text-[48px] leading-tight font-extrabold tracking-tight text-[#141414] mb-6 max-w-3xl">
-            Draw the question. See{" "}
-            <span className="relative whitespace-nowrap">
-              <span className="relative z-10">understanding take shape.</span>
-              <span className="absolute bottom-1 left-0 w-full h-3 bg-[#f5b041]/40 -z-10 skew-x-12" />
-            </span>
-          </h1>
-
-          <p className="text-[18px] leading-7 text-[#5e5e5e] max-w-2xl mx-auto mb-10">
-            Y turns a handwritten question into a visual lesson, checks the
-            learner&apos;s work, and updates an evidence-aware learning profile.
-            Studio is designed for tablets; Mobile Demo brings the same loop to phones.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-            <Link
-              href="/app"
-              className="primary-btn px-8 py-3 rounded-full font-mono text-[12px] uppercase tracking-wider flex items-center gap-2"
-            >
-              Open Y
-              <span className="material-symbols-outlined text-[18px] leading-none">
-                arrow_forward
-              </span>
-            </Link>
-            <a
-              href="#how"
-              className="px-8 py-3 rounded-full font-mono text-[12px] uppercase tracking-wider border border-[#1a1c1c]/20 text-[#1a1c1c] hover:bg-[#f3f3f4] transition-colors flex items-center gap-2"
-            >
-              <span className="material-symbols-outlined text-[18px] leading-none">
-                play_circle
-              </span>
-              See how it works
-            </a>
+    <div className={s.page}><ScrollLine /><div className={s.content}>
+      <header className={s.header}>
+        <Link href="/" className={s.logo} aria-label="Y home">Y<span>.</span></Link>
+        <nav aria-label="Main navigation"><a className={s.navLink} href="#how">How it works</a><a className={s.navLink} href="#features">Features</a><Link className={s.button} href="/app">Ask Y ↗</Link></nav>
+      </header>
+      <main>
+        <section className={s.hero}>
+          <p className={s.eyebrow}>A little curiosity. A different way to learn.</p>
+          <h1>Draw the question.<br />See <span className={s.mark}><span>understanding</span><svg viewBox="0 0 420 16" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M6 10C90 5 250 3 414 9" /></svg></span><br />take shape.</h1>
+          <p className={s.sub}>A place to work through what you don’t understand. Sketch a problem, follow a visual explanation, and ask the question that comes next.</p>
+          <div className={s.cta}><Link className={s.button} href="/app">Ask Y ↗</Link><a className={s.ghost} href="#how">See how it works</a></div>
+          <div className={s.board}>
+            <div className={s.boardTop}><span className={s.dots} aria-hidden="true">● ● ●</span><span>THE SHARED WHITEBOARD</span><span className={s.badge}>Illustrative preview</span></div>
+            <div className={s.boardGrid}>
+              <div className={s.pad}>
+                <div className={s.question}><span>A closed cylinder in a uniform field.<br />What is the net electric flux?</span><span className={s.questionMark}>?</span></div>
+                <svg viewBox="0 0 300 180" role="img" aria-label="Uniform electric field passing through a closed cylinder">
+                  <g fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M15 60H280M15 90H280M15 120H280"/><path d="m274 54 8 6-8 6m0 18 8 6-8 6m0 18 8 6-8 6"/></g>
+                  <g stroke="#292524" strokeWidth="2" fill="#fef3c7" fillOpacity=".65"><ellipse cx="95" cy="90" rx="22" ry="50"/><path d="M95 40H215M95 140H215" fill="none"/><ellipse cx="215" cy="90" rx="22" ry="50"/></g>
+                  <text x="23" y="35" fill="#2563eb" fontSize="15">E →</text><text x="75" y="166" fill="#78716c" fontSize="12">No enclosed charge</text>
+                </svg>
+              </div>
+              <div className={s.steps} aria-live="polite">
+                <div className={s.step}>Φ = ∮ E · dA<small>Split the surface into two end caps and a curved side.</small></div>
+                {revealed ? <><div className={s.step}>Φ<sub>side</sub> = 0<small>The field runs parallel to the curved side.</small></div><div className={s.step}>Φ = −EA + EA = 0<small>Flux entering one cap equals flux leaving the other.</small></div></> : <p className={s.previewHint}>A diagram. The essential steps.<br />Space to see why it works.</p>}
+                <p className={s.note}>Brief on the board. More reasoning in chat.</p>
+              </div>
+            </div>
+            <div className={s.boardFooter}><button className={s.button} onClick={() => setRevealed(v => !v)}>{revealed ? "Reset preview" : "Show explanation"}</button><span>A sample interaction, no model request needed.</span></div>
           </div>
         </section>
-
-        {/* Features */}
-        <section id="features" className="w-full">
-          <div className="flex flex-col items-center mb-16 text-center">
-            <h2 className="text-[32px] md:text-[40px] font-bold text-[#141414] tracking-tight mb-4">
-              Fluid Intelligence
-            </h2>
-            <div className="w-16 h-px bg-[#141414]/20" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <FeatureCard
-              icon="draw"
-              title="Understands what you draw"
-              body="Hand-write or sketch your question on a whiteboard. Mark the unknown with a ?. Y reads the canvas like a tutor reads a chalkboard."
-            />
-            <FeatureCard
-              className="md:mt-12"
-              icon="gesture"
-              title="Draws like a human"
-              body="The explanation appears stroke by stroke alongside spoken narration. Visual rhythm, not a wall of text."
-            />
-            <FeatureCard
-              icon="psychology"
-              title="Knows what you know"
-              body="A learner profile tracks the concepts you've practiced and adapts the next lesson. Teacher Mode adds private notes for educators."
-            />
+        <section id="features" className={s.section}>
+          <p className={s.eyebrow}>Made for thinking things through</p><h2>Give your questions room.</h2>
+          <div className={s.features}>
+            <article><span>01 / INPUT</span><h3>Start with your working</h3><p>Write an equation or sketch a diagram. Mark what you’re trying to find with a question mark.</p></article>
+            <article><span>02 / EXPLANATION</span><h3>See the essential steps</h3><p>Follow equations, diagrams, and short captions on the board. Open chat for the fuller explanation.</p></article>
+            <article><span>03 / UNDERSTANDING</span><h3>Explore a learning profile</h3><p>See concepts and uncertainty in the knowledge atlas. A labelled sample lets you explore the idea before building your own history.</p></article>
           </div>
         </section>
-
-        {/* How it works */}
-        <section id="how" className="w-full relative py-16 rounded-3xl overflow-hidden border border-[#1a1c1c]/5 bg-[#f9f9f9]">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 px-8 md:px-16">
-            <Step n={1} title="Sketch your question" body="Open the whiteboard, write equations or doodle a diagram, and place a ? where you need help." />
-            <Step n={2} title="Tap Teach me" body="Gemma 4 reads the canvas and streams a structured visual lesson from either the local or hosted model runtime." />
-            <Step n={3} title="Answer the checkpoint" body="Draw your response, check it, and see the Bayesian learner profile update from the new evidence." />
-          </div>
+        <section id="how" className={s.section}><h2>Follow the question.</h2><ol className={s.how}>
+          {[["Sketch your question", "Write, draw, or pick a sample to get started."], ["Tap Teach me", "Y reads the canvas and builds a visual explanation with optional narration."], ["Keep exploring", "Ask a follow-up in chat, replay the explanation, or try another problem."]].map(([title, body], i) => <li key={title}><b>0{i + 1}</b><div><h3>{title}</h3><p>{body}</p></div></li>)}
+        </ol></section>
+        <section className={s.section}><h2>Visualize the abstract.</h2><p className={s.sub}>Sometimes a few lines make the idea click.</p>
+          <div className={s.tabs} aria-label="Diagram topics">{topics.map((name, i) => <button key={name} aria-pressed={topic === i} onClick={() => setTopic(i)}>{name}</button>)}</div>
+          <div className={s.stage}><svg key={topic} viewBox="0 0 300 180" role="img" aria-label={topics[topic]}>
+            {topic === 0 ? <><path className={s.drawPath} pathLength="1" style={{"--delay":"0s"} as React.CSSProperties} d="M75 150H225V50Z M213 150V138H225" stroke="#292524" strokeWidth="2.5"/><g className={s.diagramLabels} fill="#292524" fontSize="15"><text x="141" y="170">b</text><text x="236" y="108">a</text><text x="133" y="93">c</text><text x="45" y="28" fill="#b45309">a² + b² = c²</text></g></> : topic === 1 ? <><path className={s.drawPath} pathLength="1" style={{"--delay":"0s"} as React.CSSProperties} d="M20 90H280" stroke="#d6d3d1"/><path className={s.drawPath} pathLength="1" style={{"--delay":".25s"} as React.CSSProperties} d={wave(x => 90 - 45 * Math.sin((x - 20) / 260 * Math.PI * 2))} stroke="#a8a29e"/><path className={s.drawPath} pathLength="1" style={{"--delay":".5s"} as React.CSSProperties} d={wave(x => 90 - 15 * Math.sin((x - 20) / 260 * Math.PI * 6))} stroke="#d97706"/><path className={s.drawPath} pathLength="1" style={{"--delay":".75s"} as React.CSSProperties} d={wave(x => 90 - 45 * Math.sin((x - 20) / 260 * Math.PI * 2) - 15 * Math.sin((x - 20) / 260 * Math.PI * 6))} stroke="#292524" strokeWidth="2.5"/></> : <><path className={s.drawPath} pathLength="1" style={{"--delay":"0s"} as React.CSSProperties} d="M20 140H280 M150 30V140" stroke="#a8a29e"/><path className={s.drawPath} pathLength="1" style={{"--delay":".35s"} as React.CSSProperties} d={wave(x => 140 - 110 * Math.exp(-(((x - 150) / 48) ** 2) / 2))} stroke="#d97706" strokeWidth="3"/><g className={s.diagramLabels}><text x="144" y="162" fill="#292524">μ</text><text x="105" y="20" fill="#78716c" fontSize="12">±1σ ≈ 68%</text></g></>}
+          </svg><p>{captions[topic]}</p></div>
         </section>
-
-        {/* Illustration */}
-        <section className="w-full relative py-20 rounded-3xl overflow-hidden border border-[#1a1c1c]/5 bg-[#f9f9f9] flex items-center justify-center min-h-[400px]">
-          <div className="absolute inset-0 z-0 flex items-center justify-center opacity-40">
-            <svg
-              height="80%"
-              width="80%"
-              viewBox="0 0 400 400"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M50,200 C100,50 300,350 350,200"
-                fill="none"
-                stroke="#f5b041"
-                strokeWidth={2}
-              />
-              <circle cx="50" cy="200" fill="#141414" r={4} />
-              <circle cx="350" cy="200" fill="#141414" r={4} />
-              <circle
-                cx="200"
-                cy="200"
-                fill="none"
-                r={8}
-                stroke="#141414"
-                strokeWidth={1}
-              />
-              <path
-                d="M150,200 L250,200"
-                stroke="#141414"
-                strokeDasharray="4,4"
-                strokeWidth={1}
-              />
-            </svg>
-          </div>
-          <div className="relative z-10 text-center max-w-lg px-6">
-            <h3 className="text-[28px] md:text-[32px] font-bold text-[#141414] tracking-tight mb-4">
-              Visualize the Abstract
-            </h3>
-            <p className="text-[16px] text-[#5e5e5e] mb-8">
-              When words fail, lines connect. Watch complex theories distill
-              into elegant single-stroke diagrams.
-            </p>
-            <Link
-              href="/app"
-              className="primary-btn inline-flex px-6 py-2.5 rounded-full font-mono text-[12px] uppercase tracking-wider items-center gap-2"
-            >
-              Try the whiteboard
-              <span className="material-symbols-outlined text-[18px] leading-none">arrow_forward</span>
-            </Link>
-          </div>
-        </section>
+        <section className={s.end}><p className={s.eyebrow}>Bring your curiosity</p><h2>What are you stuck on?</h2><div className={s.cta}><Link className={s.button} href="/app">Ask Y ↗</Link><Link className={s.ghost} href="/app?ui=mobile">Try it on your phone</Link></div><p className={s.note}>An early prototype. Best with a tablet or a larger screen.</p></section>
       </main>
-
-      <footer className="w-full py-12 bg-white border-t border-[#1a1c1c]/5 mt-auto relative z-10">
-        <div className="flex flex-col md:flex-row justify-between items-center px-4 md:px-12 gap-6 max-w-[1200px] mx-auto w-full">
-          <div className="flex flex-col items-center md:items-start gap-2 mb-6 md:mb-0">
-            <span className="text-[20px] font-extrabold text-[#1a1c1c]">Y</span>
-            <span className="font-mono text-[12px] text-[#5e5e5e]">
-              {`(c) ${new Date().getFullYear()} Y. Drawn with precision.`}
-            </span>
-          </div>
-          <div className="flex flex-wrap justify-center gap-6 font-mono text-[12px] text-[#514535]">
-            <Link className="hover:text-[#f5b041] transition-colors" href="/app">Automatic UI</Link>
-            <Link className="hover:text-[#f5b041] transition-colors" href="/app?ui=mobile">Mobile Demo</Link>
-            <a className="hover:text-[#f5b041] transition-colors" href="https://github.com/Abhijithreddydasari/Y" target="_blank" rel="noopener noreferrer">GitHub</a>
-          </div>
-        </div>
-      </footer>
-    </div>
-  );
-}
-
-function FeatureCard(props: { icon: string; title: string; body: string; className?: string }) {
-  return (
-    <div className={`minimalist-card rounded-2xl p-10 flex flex-col items-start gap-6 h-full ${props.className ?? ""}`}>
-      <div className="w-12 h-12 rounded-full bg-[#f3f3f4] flex items-center justify-center border border-[#1a1c1c]/5">
-        <span className="material-symbols-outlined text-[#f5b041] text-2xl">{props.icon}</span>
-      </div>
-      <div>
-        <h3 className="text-[18px] font-bold text-[#141414] mb-2">{props.title}</h3>
-        <p className="text-[16px] text-[#5e5e5e]">{props.body}</p>
-      </div>
-    </div>
-  );
-}
-
-function Step({ n, title, body }: { n: number; title: string; body: string }) {
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#141414] text-white font-mono text-sm">
-          {n}
-        </span>
-        <h3 className="text-[18px] font-bold text-[#141414]">{title}</h3>
-      </div>
-      <p className="text-[16px] text-[#5e5e5e] leading-7">{body}</p>
-    </div>
+      <footer className={s.footer}><span>© 2026 Y. Room to think.</span><a href="https://github.com/Abhijithreddydasari/Y">GitHub ↗</a></footer>
+    </div></div>
   );
 }

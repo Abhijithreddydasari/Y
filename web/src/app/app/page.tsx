@@ -5,6 +5,7 @@ import MobileShell from "@/components/mobile/MobileShell";
 import StudioShell from "@/components/studio/StudioShell";
 import { useInterfaceMode } from "@/hooks/useInterfaceMode";
 import { useTutorSession } from "@/hooks/useTutorSession";
+import PracticePanel from "@/components/PracticePanel";
 
 export default function AppPage() {
   const session = useTutorSession();
@@ -13,6 +14,7 @@ export default function AppPage() {
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-[#fafafa]">
       <Whiteboard mode={interfaceMode.mode} onReady={session.onWhiteboardReady} />
+      <PracticePanel />
       {interfaceMode.mode === "mobile" ? (
         <MobileShell session={session} interfaceMode={interfaceMode} />
       ) : (

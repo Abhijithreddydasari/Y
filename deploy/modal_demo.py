@@ -51,6 +51,8 @@ api_image = (
     })
     .pip_install(
         "fastapi>=0.115",
+        "sqlalchemy>=2.0.36,<3",
+        "psycopg[binary]>=3.2,<4",
         "uvicorn[standard]>=0.32",
         "ollama>=0.4",
         "openai>=2.0",

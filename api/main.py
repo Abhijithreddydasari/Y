@@ -76,6 +76,7 @@ from teacher import (  # noqa: E402
 from parser import IncrementalTagParser  # noqa: E402
 from salvage import salvage_raw_to_primitives  # noqa: E402
 from validator import validate_and_repair  # noqa: E402
+from learning.router import router as learning_router  # noqa: E402
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
@@ -110,6 +111,7 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Y API", version="0.2.0", lifespan=_lifespan)
+app.include_router(learning_router)
 
 _cors_origins = [
     "http://localhost:3000",

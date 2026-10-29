@@ -34,6 +34,8 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
         "fastapi>=0.115",
+        "sqlalchemy>=2.0.36,<3",
+        "psycopg[binary]>=3.2,<4",
         "uvicorn[standard]>=0.32",
         "ollama>=0.4",  # optional; not actually used when cloud-only
         "pydantic>=2.9",

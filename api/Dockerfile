@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir uv==0.5.* && \
     rm -rf /var/lib/apt/lists/*
 
 COPY api/pyproject.toml api/uv.lock* ./
-RUN uv venv && uv sync --no-dev
+RUN uv venv && uv sync --no-dev --extra postgres
 
 FROM python:3.11-slim AS runtime
 WORKDIR /app

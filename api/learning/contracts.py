@@ -146,8 +146,9 @@ class Observation(Contract):
     label: Label
     status: Literal["accepted", "abstained", "pending_review"]
     reasons: tuple[str, ...]
-    provider: Literal["deterministic", "jev", "none"]
+    provider: Literal["deterministic", "jev", "baseten", "none"]
     model_version: str | None = None
+    model_is_alias: bool = False
     probabilities: dict[Label, Probability] | None = None
     provider_confidence: Probability | None = None
     source: SourceRef

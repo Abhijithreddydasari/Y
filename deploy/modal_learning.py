@@ -1,7 +1,8 @@
 """Optional CPU deployment for the first learning slice; does not deploy the teacher.
 
 Create a Modal secret named y-learning containing LEARNING_DATABASE_URL and
-TYPESAFE_API_KEY; initialize the database with learning_preflight.py --init-db.
+BASETEN_API_KEY (or DECISION_PROVIDER=jev and TYPESAFE_API_KEY); initialize the
+database with learning_preflight.py --init-db.
 Then: modal deploy deploy/modal_learning.py
 Point Vercel's server-only LEARNING_API_BASE at the returned base URL.
 """

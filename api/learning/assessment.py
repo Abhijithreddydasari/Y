@@ -1,4 +1,4 @@
-"""Capture policy: provenance first, explicit uncertainty, Jev in shadow mode."""
+"""Capture policy: provenance first, explicit uncertainty, decision models in shadow mode."""
 from __future__ import annotations
 
 import asyncio
@@ -6,7 +6,7 @@ import time
 from uuid import uuid4
 
 from .contracts import Assessment, CapturedAttempt, Observation, digest, now_iso
-from .jev import JevClient, ProviderFailure
+from .decisions import DecisionProvider, ProviderFailure
 from .verifiers import verify_number
 
 
@@ -19,7 +19,7 @@ def provenance_valid(capture: CapturedAttempt) -> bool:
     )
 
 
-async def assess_capture(capture: CapturedAttempt, provider: JevClient) -> Assessment:
+async def assess_capture(capture: CapturedAttempt, provider: DecisionProvider) -> Assessment:
     started = time.perf_counter()
     observations = []
     raw, error, usage = None, None, {}
@@ -65,12 +65,13 @@ async def assess_capture(capture: CapturedAttempt, provider: JevClient) -> Asses
                     reasons.append("uncertain_distribution")
                 status = "abstained" if reasons else "pending_review"
                 if not reasons:
-                    reasons.append("jev_shadow_mode")
+                    reasons.append("decision_shadow_mode")
                 if not capture.attempt.assistance.independent:
                     reasons.append("assisted_attempt")
                 observations.append(Observation(
                     dimension=dimension, label=answer.choice, status=status,
-                    reasons=tuple(reasons), provider="jev", model_version=result.model,
+                    reasons=tuple(reasons), provider=provider.provider_name, model_version=result.model,
+                    model_is_alias=result.model.endswith("-latest"),
                     probabilities=answer.probabilities, provider_confidence=answer.confidence,
                     source=capture.source,
                 ))

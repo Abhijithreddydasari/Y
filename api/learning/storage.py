@@ -209,12 +209,16 @@ class CaptureStore:
         if changed.rowcount != 1:
             raise StoreError(429, "assessment_budget_exhausted")
 
-    def claim(self, owner: str, attempt_id: UUID) -> tuple[str, CapturedAttempt] | None:
+    def claim(self, owner: str, attempt_id: UUID, reserve_budget: bool = True) -> tuple[str, CapturedAttempt] | None:
         aid, now, token = str(attempt_id), time.time(), secrets.token_hex(16)
         with self.engine.begin() as conn:
             row = self._attempt(conn, owner, aid)
             if row["state"] == "assessed":
                 return None
+            if not reserve_budget and row["latest_json"]:
+                latest = Assessment.model_validate_json(row["latest_json"])
+                if latest.provider_error == "provider_not_configured":
+                    return None
             if row["run_count"] >= 3:
                 raise StoreError(409, "assessment_retry_limit")
             changed = conn.execute(update(attempts).where(
@@ -225,8 +229,9 @@ class CaptureStore:
                 raise StoreError(409, "assessment_in_progress")
             # Shared across containers; a rolled-back claim also rolls back reservations.
             hour = int(now // 3600)
-            self._spend(conn, f"global:{hour}", 120)
-            self._spend(conn, f"{owner}:{hour}", 20)
+            if reserve_budget:
+                self._spend(conn, f"global:{hour}", 120)
+                self._spend(conn, f"{owner}:{hour}", 20)
             return token, CapturedAttempt.model_validate_json(row["capture_json"])
 
     def complete(self, owner: str, attempt_id: UUID, token: str, result: Assessment) -> dict:
@@ -237,6 +242,7 @@ class CaptureStore:
                 attempts.c.attempt_id == str(attempt_id), attempts.c.owner_id == owner,
                 attempts.c.lease_token == token, attempts.c.lease_until > time.time(),
             ).values(state="captured" if result.provider_error else "assessed",
+                     run_count=attempts.c.run_count - (1 if result.provider_error == "provider_not_configured" else 0),
                      latest_json=canonical(result), lease_token=None, lease_until=0))
             if changed.rowcount != 1:
                 raise StoreError(409, "assessment_lease_lost")

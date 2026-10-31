@@ -14,3 +14,10 @@ New work on `feature/session-learning-capture`:
 - Backend/frontend regression and failure-path tests.
 
 This work does not include a live provider accuracy result, deployed service, trained model, GEPA optimization run, or measured retention improvement. No PR has been opened.
+
+October 30 follow-up:
+
+- Added hosted Baseten Elephant, Mammoth, and Joey selection using the same evidence contracts. Elephant is the default; TypeSafe Jev remains explicitly selectable. Mutable model aliases are marked in observations.
+- Hardened wire JSON validation against duplicate keys, nonfinite values, excessive nesting, and invalid Unicode that could prevent persistence.
+- Preserved retry allowance and provider budgets when credentials are missing, with recovery of the same attempt after configuration.
+- Added 28 mocked-provider and API recovery tests. Live accuracy, latency, and credit eligibility still need verification after credentials are configured.

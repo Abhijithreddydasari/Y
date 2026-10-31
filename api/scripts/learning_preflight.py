@@ -17,7 +17,7 @@ sys.path.insert(0, str(API_ROOT))
 
 import httpx
 from learning.contracts import AttemptInput, CapturedAttempt, SourceRef, digest, now_iso
-from learning.jev import JevClient, ProviderFailure
+from learning.decisions import ProviderFailure, configured_provider
 from learning.packs import TASKS
 from learning.storage import CaptureStore, make_engine
 
@@ -33,9 +33,18 @@ def load_environment():
 
 async def preflight(live: bool, init_db: bool) -> dict:
     report = {"jev_configured": bool(os.environ.get("TYPESAFE_API_KEY")),
+              "baseten_configured": bool(os.environ.get("BASETEN_API_KEY")),
               "meta_configured": bool(os.environ.get("MODEL_API_KEY")),
               "database_configured": bool(os.environ.get("LEARNING_DATABASE_URL")),
               "live_requested": live}
+    try:
+        provider = configured_provider()
+    except ValueError:
+        report["decision_configuration"] = "invalid"
+        return report
+    report["decision_provider"] = provider.provider_name
+    report["decision_model"] = provider.model
+    report["decision_configured"] = bool(provider.api_key)
     url = os.environ.get("LEARNING_DATABASE_URL")
     if init_db and not url:
         report["database"] = "not_configured"
@@ -55,7 +64,7 @@ async def preflight(live: bool, init_db: bool) -> dict:
                 engine.dispose()
     if not live:
         return report
-    if report["jev_configured"]:
+    if report["decision_configured"]:
         text = "Because A is linear, A(-2v)=-2Av=3(-2v), so the eigenvalue stays 3."
         task = TASKS["linear.eigenvector.explain.v1"]
         capture = CapturedAttempt(owner_id="synthetic", session_id=uuid4(),
@@ -63,10 +72,12 @@ async def preflight(live: bool, init_db: bool) -> dict:
             source=SourceRef(event_id=uuid4(), content_hash=digest(text), start=0, end=len(text)), captured_at=now_iso())
         try:
             async with asyncio.timeout(12):
-                response, _ = await JevClient(os.environ["TYPESAFE_API_KEY"], model=os.environ.get("JEV_MODEL", "jev-1.14.0")).assess(capture)
-            report["jev"] = {"status": "contract_verified", "model": response.model, "usage": response.usage.model_dump()}
+                response, _ = await provider.assess(capture)
+            report["decision"] = {"status": "contract_verified", "provider": provider.provider_name,
+                                  "model": response.model, "model_is_alias": response.model.endswith("-latest"),
+                                  "usage": response.usage.model_dump()}
         except (ProviderFailure, TimeoutError) as exc:
-            report["jev"] = exc.code if isinstance(exc, ProviderFailure) else "provider_timeout"
+            report["decision"] = exc.code if isinstance(exc, ProviderFailure) else "provider_timeout"
     if report["meta_configured"]:
         try:
             async with httpx.AsyncClient(timeout=15) as client:

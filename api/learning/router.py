@@ -12,7 +12,7 @@ from starlette.concurrency import run_in_threadpool
 
 from .assessment import assess_capture
 from .contracts import AttemptInput, Contract
-from .jev import JevClient
+from .decisions import DecisionProvider, configured_provider
 from .packs import TASKS, public_catalog
 from .storage import CaptureStore, StoreError, local_database_url, make_engine
 
@@ -46,8 +46,11 @@ def get_store() -> CaptureStore:
         return _cached_store()
 
 
-def get_provider() -> JevClient:
-    return JevClient(os.environ.get("TYPESAFE_API_KEY", ""), model=os.environ.get("JEV_MODEL", "jev-1.14.0"))
+def get_provider() -> DecisionProvider:
+    try:
+        return configured_provider()
+    except ValueError as exc:
+        raise HTTPException(503, "decision_provider_configuration_invalid") from exc
 
 
 async def call_store(method, *args):
@@ -111,8 +114,8 @@ async def attempt(attempt_id: UUID, owner: str = Depends(require_owner), store: 
 
 @router.post("/attempts/{attempt_id}/assess")
 async def assess(attempt_id: UUID, owner: str = Depends(require_owner),
-                 store: CaptureStore = Depends(get_store), provider: JevClient = Depends(get_provider)):
-    claim = await call_store(store.claim, owner, attempt_id)
+                 store: CaptureStore = Depends(get_store), provider: DecisionProvider = Depends(get_provider)):
+    claim = await call_store(store.claim, owner, attempt_id, bool(provider.api_key))
     if claim is None:
         return await call_store(store.get_attempt, owner, attempt_id)
     token, captured = claim

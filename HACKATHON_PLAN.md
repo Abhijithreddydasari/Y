@@ -17,7 +17,7 @@ Success means a student can do something independently after using Y, return to 
 Agreed scope:
 
 - Keep Excalidraw and the existing equation/drawing renderer.
-- Start with Jev's hosted decision API for evidence capture. Establish faithful capture before trusting persistent adaptation.
+- Start with hosted Baseten Elephant for evidence capture, compare Mammoth and Joey on reviewed cases, and keep TypeSafe Jev as an explicitly selectable alternative. Establish faithful capture before trusting persistent adaptation.
 - Consolidate durable learner knowledge and teaching notes **between sessions**. Continue responding to mistakes during the lesson using temporary session context.
 - Make Meta models central to board perception, teaching, structured actions, and optional speech input.
 - Include a reusable interactive visualization registry and one advanced reference experience; introduce their contracts early. Validate a second, smaller topic pack through the same core.
@@ -31,7 +31,7 @@ This is a competitive product hypothesis, not a prediction of placing in the top
 ### Required
 
 1. A coherent teaching journey: diagnostic attempt, explanation/exploration, learner response, feedback, independent exit check.
-2. Jev assessments grounded in learner-produced evidence, with abstention and evaluation.
+2. Decision-model assessments grounded in learner-produced evidence, with abstention and evaluation.
 3. Persisted sessions, board/assets, attempts, events, and resumable tasks.
 4. Session finalization that updates a versioned learner profile exactly once.
 5. A concept/prerequisite graph with a personal evidence overlay.
@@ -80,7 +80,7 @@ flowchart TD
     D --> E[Explain, draw, narrate, or open a widget]
     E --> F[Student predicts, draws, calculates, or explains]
     F --> G[Save original attempt and assistance history]
-    G --> H[Verify calculations and assess grounded evidence with Jev]
+    G --> H[Verify calculations and assess grounded evidence with selected decision model]
     H --> I{Evidence clear?}
     I -->|No| J[Clarify or preserve as uncertain]
     J --> D
@@ -122,7 +122,7 @@ flowchart LR
     PACKS --> VERIFY
     PACKS --> WIDGET
     HARNESS --> CAPTURE[Grounded evidence capture]
-    CAPTURE --> JEV[Jev decision API]
+    CAPTURE --> JEV[Baseten or TypeSafe decision API]
     API --> DB[(Postgres: sessions, events, evidence, profiles, jobs)]
     API --> ASSETS[(Private asset storage)]
     CONTEXT --> DB
@@ -214,7 +214,9 @@ Modal supports FastAPI hosting, configurable autoscaling, and concurrent inputs 
 
 These names are proposed implementation locations, not files that currently exist.
 
-## 6. Jev capture: the first gate
+## 6. Decision-model capture: the first gate
+
+**October 30 provider update:** Baseten Elephant, Mammoth, and Joey are implemented through the shared System One contract in `api/learning/decisions.py`. `DECISION_PROVIDER=baseten` is the default; `DECISION_PROVIDER=jev` selects TypeSafe explicitly. The following Jev-specific research remains relevant to the original provider, while the capture/evaluation requirements apply to either. Baseten's documented `-latest` model names are mutable aliases, recorded as such; do not describe them as pinned revisions. No accuracy or latency comparison has run yet. Start with Elephant as a baseline and choose among providers using reviewed cases, not model size alone. [Baseten decision-model contract](https://docs.baseten.co/inference/model-apis/decision-models)
 
 ### What is assessed
 
@@ -405,7 +407,7 @@ Deliverables and timing:
 - **November 2:** run a capped optimization experiment on session-reflection/next-action selection if capture and the live journey pass their gates.
 - **November 3:** compare baseline and candidate per pack, record the result, and promote or retain the baseline. An inconclusive experiment is a valid result; do not imply deployed optimization when none passed.
 
-The evaluator and baseline are planned work. The optimization run and deployment are gated. Keep raw evidence and shared content truth immutable. GEPA runs outside active lessons, and a promoted policy version stays fixed within a session.
+The capture evaluator, promotion guard, and baseline identifier are implemented in `api/learning/evaluation.py`; fourteen seed cases remain unreviewed engineering fixtures. This is groundwork, not a GEPA integration or teaching-policy evaluator. The GEPA adapter, teaching/reflection traces and scoring, optimization run, and deployment remain gated work. Keep raw evidence and shared content truth immutable. GEPA runs outside active lessons, and a promoted policy version stays fixed within a session.
 
 Current GEPA supports a custom evaluator through `optimize_anything`; existing Python services can supply scores and diagnostic feedback without a full DSPy migration. Pin the version tested at implementation time. Use a small call/time/spend cap, preserve all candidates, and compare a frozen baseline against the candidate on unseen task families. [GEPA quickstart](https://gepa-ai.github.io/gepa/guides/quickstart/), [paper](https://arxiv.org/abs/2507.19457)
 
@@ -447,6 +449,8 @@ Implementation update: the first capture slice is on `feature/session-learning-c
 **Exit:** one exact attempt can be captured, traced to its source, assessed or abstained, and inspected. No persistent mastery claim yet. If API access fails, keep captured fixtures and provider interface; do not fabricate outputs.
 
 ### October 30 — Saved sessions and one real teaching loop
+
+Implementation status: added interchangeable Baseten/TypeSafe decision providers and hardened capture recovery and response validation. This follow-up does **not** complete today's saved-canvas/Meta teaching loop or the November 1 consolidation milestone. The current Practice flow persists typed attempts and assessments only; `profile_updated` remains false. See [current setup and boundaries](docs/learning-capture.md).
 
 - Add transactional ownership, sessions/events, scene restoration, task/attempt identities, and idempotency.
 - Tag board authorship; bind typed/voice/board answers to the same task.
@@ -528,7 +532,7 @@ Required evaluation groups:
 
 Tiny pilots provide usability and near-term transfer evidence, not a causal claim of long-term educational efficacy. Keep baseline versus improved-policy comparisons separate from human learner outcomes.
 
-Available credits as reported by the user: Modal about $150, Baseten $100, Meta $150. Jev needs separate API access/billing. Before experiments, set per-provider spend ceilings and keep a reserve for recording and judging. Bound GEPA by calls/time/spend. Do not start large self-hosted open-weight serving or training merely to use credits. Use Meta Standard mode for actual learner material; Contributor mode permits training use of content. [Meta pricing/modes](https://dev.meta.ai/docs/pricing-rate-limits)
+Available credits as reported by the user: Modal about $150, Baseten $100, Meta $150. Prefer Baseten's hosted decision models if the credit grant covers these Model API calls; TypeSafe Jev remains an alternative with separate access/billing. Baseten inference is paid, not indefinitely free. Before experiments, set per-provider spend ceilings and keep a reserve for recording and judging. Bound GEPA by calls/time/spend. Do not start large self-hosted open-weight serving or training merely to use credits. Use Meta Standard mode for actual learner material; Contributor mode permits training use of content. [Meta pricing/modes](https://dev.meta.ai/docs/pricing-rate-limits)
 
 Three-minute narrative target:
 

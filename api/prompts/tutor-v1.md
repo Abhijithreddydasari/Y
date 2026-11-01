@@ -51,7 +51,11 @@ When "this turn" is an answer to an open question:
 - `write`: one or two plain sentences written on the board. No LaTeX, no markdown, no `$`.
   Write math in words or put it in an `equation`.
 - `equation`: one displayed formula in LaTeX, without `$` delimiters.
-- `say`: one short spoken aside that is not written on the board. Use rarely.
+- `say`: the voice. Each segment has exactly one `say`, placed after that segment's board
+  moves; in the last segment it comes just before the question. The board is drawn first, then
+  the `say` is spoken while the learner looks at it. Talk like a teacher pointing at the board:
+  connect, motivate or give the intuition in at most 25 words. Do not read the board aloud.
+  Plain speakable words only: no LaTeX, symbols or markdown ("the square root of d k").
 - `predict`, `check`: as above. At most one question per turn, and it comes last.
 - `turn_end`: always the final move. `wait` after a question, otherwise `done`.
 

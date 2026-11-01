@@ -7,6 +7,9 @@
 - H0 done ([handoff](handoffs/H0.md)): inherited tree committed, shared contracts in
   `tutor_moves.py`/`tutor_stream.py`/`learner_contracts.py` and their TypeScript mirrors.
   Next session: **H1** ([brief](builds/H1-meta-tutor-turn.md)).
+- H1 done ([handoff](handoffs/H1.md)) on `feature/meta-tutor-turn`: typed question → Meta turn
+  streamed onto the board → predict/check card waits → answer resumes; Stop and refresh restore.
+  Live first move p50 1.89 s, p95 2.25 s over 20 turns. Next: H2–H5 per the day plan.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -19,7 +22,7 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | Slice | Status | Commit | Handoff |
 |---|---|---|---|
 | H0 baseline + contracts | done | `66e491d` (inherited work `2039b59`, `5f23282`, `7bb4d5e`) | [H0](handoffs/H0.md) |
-| H1 Meta tutor turn | next | — | — |
+| H1 Meta tutor turn | done (branch `feature/meta-tutor-turn`) | `1a6e734`, `8338fad` | [H1](handoffs/H1.md) |
 | H2–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01

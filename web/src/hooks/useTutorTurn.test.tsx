@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   fetchTutorState: vi.fn(),
   streamTutorTurn: vi.fn(),
   enqueued: [] as { tag: string; args: Record<string, unknown> }[],
+  voice: [] as string[],
 }));
 
 vi.mock("@/lib/api", () => ({ fetchHealth: vi.fn().mockResolvedValue(null), fetchLearner: vi.fn().mockResolvedValue(null),
@@ -18,10 +19,14 @@ vi.mock("@/lib/tutor-turn", async (original) => ({ ...await original<object>(),
   fetchTutorState: mocks.fetchTutorState, streamTutorTurn: mocks.streamTutorTurn }));
 vi.mock("@/lib/lesson-player", () => ({
   LessonPlayer: class {
-    constructor(private opts: { onRendered?: () => void }) {}
+    constructor(private opts: { onRendered?: () => void; onCaption?: (text: string) => void; pacing?: string }) { mocks.voice.push(`pacing:${opts.pacing}`); }
     enqueue(tag: { tag: string; args: Record<string, unknown> }) { mocks.enqueued.push(tag); this.opts.onRendered?.(); }
+    beginSegment() { mocks.voice.push("segment"); }
+    say(text: string) { mocks.voice.push(`say:${text}`); this.opts.onCaption?.(text); }
+    setMuted(muted: boolean) { mocks.voice.push(`muted:${muted}`); }
     async finishDrawing() {}
-    cancel() {}
+    async finishNarration() {}
+    cancel() { mocks.voice.push("cancel"); }
   },
 }));
 
@@ -51,6 +56,7 @@ describe("tutor turn flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.enqueued.length = 0;
+    mocks.voice.length = 0;
     mocks.fetchTutorState.mockResolvedValue({ configured: true, model: "m", open: null, turns: [] });
   });
 
@@ -74,7 +80,12 @@ describe("tutor turn flow", () => {
     const body = mocks.streamTutorTurn.mock.calls[0][1] as TurnBody;
     expect(body).toMatchObject({ kind: "question", text: "Why divide by root d_k?", board: { request_id: "r" } });
     expect(mocks.enqueued.map((t) => t.tag)).toEqual(["title", "card"]);
+    // The say is bound to its segment in the player, which captions it when it is spoken.
+    expect(mocks.voice).toEqual(["pacing:segment", "muted:false", "segment", "say:Watch the sums."]);
     expect(result.current.tutor.caption).toBe("Watch the sums.");
+    act(() => result.current.toggleTts());
+    expect(mocks.voice.at(-1)).toBe("muted:true");
+    expect(result.current.ttsEnabled).toBe(false);
     expect(result.current.tutor.draft).toBe("");
     expect(result.current.tutor.timing).toMatchObject({ server_first_move_ms: 1800 });
     expect(result.current.tutor.timing?.first_render_ms).toBeGreaterThanOrEqual(0);

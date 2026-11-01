@@ -33,6 +33,26 @@ describe("learning proxy boundary", () => {
     expect(fetcher.mock.calls[1][0]).toContain(`/learning/sessions/${sid}/tutor/turns`);
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/tutor/other`))).status).toBe(404);
   });
+  it("forwards push-to-talk audio as WAV and serves Kokoro speech", async () => {
+    const sid = "12345678-1234-1234-1234-123456789abc";
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response('{"text":"hi"}'))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([82, 73, 70, 70]), { headers: { "Content-Type": "audio/wav" } }));
+    vi.stubGlobal("fetch", fetcher);
+    const wav = new Uint8Array(500_000);
+    const sent = await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST", body: wav }), context(`sessions/${sid}/transcribe`));
+    expect(sent.status).toBe(200);
+    expect((fetcher.mock.calls[0][1].headers as Headers).get("Content-Type")).toBe("audio/wav");
+    expect((fetcher.mock.calls[0][1].body as Uint8Array).byteLength).toBe(500_000);
+    await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST" }), context(`sessions/${sid}/transcribe/warm`));
+    expect(fetcher.mock.calls[1][0]).toContain(`/learning/sessions/${sid}/transcribe/warm`);
+    const speech = await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST", body: '{"text":"hi"}' }), context("speech"));
+    expect(speech.headers.get("Content-Type")).toBe("audio/wav");
+    const huge = await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST", body: new Uint8Array(1_100_001) }), context(`sessions/${sid}/transcribe`));
+    expect(huge.status).toBe(413);
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
   it("rejects cross-origin writes and arbitrary paths before forwarding", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     const cross = await POST(new NextRequest("https://y.test/api/learning/identity", {

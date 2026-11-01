@@ -1,8 +1,10 @@
 // Backend Kokoro narration with a best-effort browser Speech fallback.
 // A speech session can be interrupted to change voice without completing the
 // surrounding lesson primitive: synthesis resumes from the next word.
+// Kokoro is served by the learning API behind the same-origin proxy, so the
+// identity cookie applies and the browser needs no public API base.
 
-import { API_BASE } from "./api";
+const SPEECH_URL = "/api/learning/speech";
 
 export interface SpeakOptions {
   rate?: number;
@@ -11,7 +13,16 @@ export interface SpeakOptions {
   onProgress?: (charsSpoken: number) => void;
   /** Already-synthesized clip from the narration look-ahead queue. */
   prepared?: Promise<PreparedSpeech | undefined>;
+  /** How long to wait for `prepared` before using the browser voice (default 450 ms). */
+  preparedWaitMs?: number;
+  /** Skip Kokoro, e.g. after it already failed in this turn, so one turn keeps one voice. */
+  browserOnly?: boolean;
+  /** The first sound of this call is playing (first-audio timing). */
+  onAudible?: (engine: "kokoro" | "browser") => void;
 }
+
+/** Which engine spoke: Kokoro, the browser fallback, or nothing (empty text, cancelled first). */
+export type SpokenWith = "kokoro" | "browser" | "none";
 
 export interface WarmSpeechOptions {
   voiceName?: string;
@@ -86,8 +97,9 @@ export async function prepareSpeech(
   const clean = text.trim().slice(0, 500);
   if (!clean || opts.signal?.aborted) return undefined;
   const voiceName = opts.voiceName ?? preferredVoiceName;
-  const response = await fetch(`${API_BASE}/speech`, {
+  const response = await fetch(SPEECH_URL, {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       text: clean,
@@ -139,13 +151,18 @@ async function playKokoroSegment(
     const prepared = baseOffset === 0 && opts.prepared
       ? await Promise.race([
           opts.prepared,
-          new Promise<"speech-warming">((resolve) =>
-            window.setTimeout(() => resolve("speech-warming"), 450),
-          ),
+          new Promise<"speech-warming">((resolve) => {
+            window.setTimeout(() => resolve("speech-warming"), opts.preparedWaitMs ?? 450);
+            controller.signal.addEventListener("abort", () => resolve("speech-warming"), { once: true });
+          }),
         ])
       : undefined;
     if (prepared === "speech-warming") {
       throw new Error("prepared speech is still warming");
+    }
+    // The warm-up already failed (no Kokoro on this server): do not ask again for the same line.
+    if (baseOffset === 0 && opts.prepared && !prepared) {
+      throw new Error("prepared speech failed");
     }
     if (session.cancelled || revision !== session.revision) {
       return { ended: false, charsSpoken: 0 };
@@ -157,8 +174,9 @@ async function playKokoroSegment(
     ) {
       blob = prepared.blob;
     } else {
-      const response = await fetch(`${API_BASE}/speech`, {
+      const response = await fetch(SPEECH_URL, {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
@@ -233,6 +251,7 @@ async function playKokoroSegment(
       frame = requestAnimationFrame(animateProgress);
     };
     session.interrupt = interruptAudio;
+    audio.onplaying = () => { if (baseOffset === 0) opts.onAudible?.("kokoro"); };
     audio.onloadedmetadata = () => {
       reportProgress();
       frame = requestAnimationFrame(animateProgress);
@@ -294,6 +313,7 @@ async function playBrowserSegment(
       finish(false);
     };
     session.interrupt = interruptBrowser;
+    utterance.onstart = () => opts.onAudible?.("browser");
     utterance.onboundary = (event) => {
       charsSpoken = Math.max(charsSpoken, event.charIndex ?? 0);
       opts.onProgress?.(baseOffset + charsSpoken);
@@ -333,9 +353,9 @@ async function loadBrowserVoices(): Promise<SpeechSynthesisVoice[]> {
   return speech.getVoices();
 }
 
-export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
+export async function speak(text: string, opts: SpeakOptions = {}): Promise<SpokenWith> {
   const clean = text.trim().slice(0, 500);
-  if (!clean || !ttsAvailable()) return;
+  if (!clean || !ttsAvailable()) return "none";
   cancelSpeech();
   const requestedVoice = opts.voiceName ?? preferredVoiceName;
   preferredVoiceName = requestedVoice;
@@ -349,7 +369,7 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
   };
   activeSession = session;
   let cursor = 0;
-  let browserFallback = false;
+  let browserFallback = Boolean(opts.browserOnly);
 
   try {
     while (cursor < clean.length && !session.cancelled) {
@@ -360,13 +380,13 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
           ? await playBrowserSegment(session, remaining, cursor, opts)
           : await playKokoroSegment(session, remaining, cursor, opts);
       } catch {
-        if (session.cancelled) return;
+        if (session.cancelled) return browserFallback ? "browser" : "none";
         // A backend or media failure is non-blocking. Continue the same
         // unfinished segment through the browser's speech engine.
         browserFallback = true;
         continue;
       }
-      if (session.cancelled) return;
+      if (session.cancelled) break;
       if (result.ended) {
         cursor = clean.length;
       } else {
@@ -375,6 +395,7 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
         opts.onProgress?.(cursor);
       }
     }
+    return browserFallback ? "browser" : "kokoro";
   } finally {
     session.controller?.abort();
     session.interrupt?.();

@@ -24,10 +24,14 @@ export interface TutorTurnState {
   caption: string;
   error: string;
   timing: TutorTimeline | null;
+  /** The voice is still talking through a drawn turn; Stop stays available. */
+  narrating: boolean;
   setDraft: (text: string) => void;
   ask: (text: string) => void;
   answer: (value: TutorAnswer) => void;
   cardRect: (qid: string) => DOMRect | null;
+  /** Silence the narration only (the learner started talking). */
+  hush: () => void;
 }
 
 interface CachedLesson {
@@ -138,6 +142,7 @@ export function useTutorSession(): TutorSession {
   // Narration is part of the event demo's core loop. The backend Kokoro voice
   // is preferred when available, while tts.ts falls back to browser speech.
   const [ttsEnabled, setTtsEnabled] = useState(true);
+  const ttsRef = useRef(true);
   const [voice, setVoice] = useState("kokoro_af_heart");
   const voiceRef = useRef("kokoro_af_heart");
   const [teacherMode, setTeacherMode] = useState(false);
@@ -521,8 +526,15 @@ export function useTutorSession(): TutorSession {
       const view = prepared.request.viewport;
       // A blank board starts inside the view; otherwise the builder's area beside the work.
       const origin = prepared.packet.focused.length ? prepared.packet.response_area : { x: view.x + Math.min(120, view.w * 0.1), y: view.y + 100 };
-      const player = new LessonPlayer({ origin, handle, ttsEnabled, voiceName: voiceRef.current, onNarratingChange: setNarrating,
-        signal: controller.signal, onRendered: () => { stages.first_render_ms ??= performance.now() - started; } });
+      // The board is written at board speed; each segment's `say` is spoken once its visuals are drawn.
+      const player = new LessonPlayer({ origin, handle, ttsEnabled: true, voiceName: voiceRef.current, onNarratingChange: setNarrating,
+        signal: controller.signal, pacing: "segment", visualGapMs: 150, onCaption: setCaption,
+        onRendered: () => { stages.first_render_ms ??= performance.now() - started; },
+        onAudible: ({ engine, waitMs }) => {
+          stages.first_audio_ms ??= performance.now() - started;
+          console.debug("[tutor] audible", JSON.stringify({ engine, wait_ms: Math.round(waitMs) }));
+        } });
+      player.setMuted(!ttsRef.current);
       playerRef.current = player;
       setStatus("Thinking…");
       await streamTutorTurn(board.session, { ...body, board: prepared.request }, {
@@ -530,7 +542,8 @@ export function useTutorSession(): TutorSession {
         onMove: (move) => {
           stages.first_move_ms ??= performance.now() - started;
           moved = true;
-          if (move.type === "say") { setCaption(move.text); return; }
+          if (move.type === "say") { player.say(move.text); return; }
+          if (move.type === "seg") player.beginSegment();
           asked = questionOf(move) ?? asked;
           const tag = moveToPrimitive(move);
           if (tag) player.enqueue(tag);
@@ -540,6 +553,8 @@ export function useTutorSession(): TutorSession {
       }, controller.signal);
       await player.finishDrawing();
       stages.drawn_ms = performance.now() - started;
+      void player.finishNarration().then(() => console.debug("[tutor] narrated", JSON.stringify({
+        narrated_ms: Math.round(performance.now() - started), first_audio_ms: stages.first_audio_ms && Math.round(stages.first_audio_ms) })));
       await board.flush().catch(() => {});
       setQuestion(asked);
       // Stop after the stream ended skips queued drawing; the server already holds the full turn.
@@ -564,7 +579,7 @@ export function useTutorSession(): TutorSession {
       if (tutorAbortRef.current === controller) tutorAbortRef.current = null;
       setTutorBusy(false);
     }
-  }, [busy, question, ttsEnabled, tutorBusy]);
+  }, [busy, question, tutorBusy]);
 
   const ask = useCallback((text: string) => {
     const clean = text.trim();
@@ -609,11 +624,19 @@ export function useTutorSession(): TutorSession {
     setStatus(resumed ? `Switching to ${label}…` : `Narration voice set to ${label}.`);
   }, []);
 
+  const toggleTts = useCallback(() => {
+    ttsRef.current = !ttsRef.current;
+    setTtsEnabled(ttsRef.current);
+    playerRef.current?.setMuted(!ttsRef.current);
+  }, []);
+
+  const hush = useCallback(() => { playerRef.current?.cancel(); cancelSpeech(); }, []);
+
   const stop = useCallback(() => {
-    const tutorRunning = Boolean(tutorAbortRef.current);
+    const tutorRunning = Boolean(tutorAbortRef.current) || narrating;
     tutorAbortRef.current?.abort(); abortRef.current?.abort(); playerRef.current?.cancel(); cancelSpeech();
     setStatus(tutorRunning ? "Stopped. What was drawn is kept." : "Stopped. Your board is unchanged."); setBusy(false); setEducatorBusy(false);
-  }, []);
+  }, [narrating]);
 
   return {
     status, busy: busy || tutorBusy, narrating, ttsEnabled, voice, teacherMode, modelChoice, modelReady,
@@ -623,11 +646,11 @@ export function useTutorSession(): TutorSession {
     assess: () => { void assess(); },
     replay: () => { void runLesson("replay"); },
     stop, clearBoard, insertSample,
-    toggleTts: () => setTtsEnabled((value) => !value),
+    toggleTts,
     toggleTeacherMode: () => setTeacherMode((value) => !value),
     changeModel: setModelChoice, changeVoice, resetLearner: resetLearnerProfile,
     sendChatMessage, cancelChat, clearChat,
-    tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing,
-      setDraft, ask, answer, cardRect },
+    tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing, narrating,
+      setDraft, ask, answer, cardRect, hush },
   };
 }

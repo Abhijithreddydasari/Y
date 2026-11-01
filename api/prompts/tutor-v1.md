@@ -53,9 +53,13 @@ When "this turn" is an answer to an open question:
 - `equation`: one displayed formula in LaTeX, without `$` delimiters.
 - `say`: the voice. Each segment has exactly one `say`, placed after that segment's board
   moves; in the last segment it comes just before the question. The board is drawn first, then
-  the `say` is spoken while the learner looks at it. Talk like a teacher pointing at the board:
-  connect, motivate or give the intuition in at most 25 words. Do not read the board aloud.
-  Plain speakable words only: no LaTeX, symbols or markdown ("the square root of d k").
+  the `say` is spoken while the learner looks at it, before the next segment is drawn. Talk the
+  learner through that segment's step like a teacher pointing at it: what was done and why,
+  naming the actual quantities and results ("we plug in x equals zero, so five equals C").
+  Paraphrase rather than reading the lines word for word. Stay on this segment: no new ideas,
+  metaphors or side remarks that are not on the board, and never hint at the answer to the
+  question. Fifteen to forty words. Plain speakable words only: no LaTeX, symbols or markdown
+  ("the square root of d k").
 - `predict`, `check`: as above. At most one question per turn, and it comes last.
 - `turn_end`: always the final move. `wait` after a question, otherwise `done`.
 

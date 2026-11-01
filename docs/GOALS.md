@@ -16,25 +16,30 @@ define backend schemas or tutor behavior.
 
 ## Priority order
 
-1. Reliable question-to-explanation workflow on the shared board.
-2. Accurate, bounded reference/context handling without manual region setup.
-3. Voice input and paced, interruptible audiovisual teaching.
-4. Reusable interactive visuals that clarify a concept.
-5. Short quizzes/checks, reflection and a review queue grounded in learner work.
-6. Between-session adaptation and a small evidence-backed knowledge map.
-7. GEPA evaluator/baseline and, if gates pass, a capped offline optimization experiment.
+1. Smooth whiteboard interaction; nothing interrupts drawing.
+2. Tutor accuracy and latency (Muse Spark, measured per stage).
+3. Voice in and narration that follows what is drawn.
+4. Self-learning that visibly changes the next session's teaching.
+5. Learner representation: the **Constellation** map.
+6. A calm, polished UI (glass chrome, opaque content, motion that never costs frames).
+7. Interactive widgets and diagrams on the board; generated illustrations.
+8. Quizzes woven into teaching: predict, check, exit ticket, review.
+
+Pedagogy runs through all of these: find what the learner knows, one step at a time, predict
+and check, reteach from a different representation. Saved sessions are called **Canvases**.
+GEPA policy improvement is an offline extra after the above works.
 
 Preserve saved work and provenance throughout. Accuracy and honest uncertainty
 take precedence over an impressive but wrong demonstration.
 
 ## Reference journeys
 
-- Differential equations: write several steps, circle step 3, ask why it works;
-  Y explains beside it, pauses, and accepts a follow-up without task setup.
-- Linear algebra: ask about a transformation, explore a parameterized plot,
-  and explain a prediction using the same product flow.
-- Computer vision: explore residual-block information flow through an animated
-  diagram. This is a later reference, not a prerequisite for the first build.
+- Demo arc (ML): session 1 on attention and softmax, with an interactive attention widget
+  and a captured misconception; session 2 on multi-head attention or the KV cache, where Y
+  skips what is solid, targets the misconception, and the Constellation shows the change.
+- Linear algebra: ask about a transformation, explore a matrix/plot widget, answer a check;
+  same code path as the ML arc (reuse check).
+- Handwritten work: write steps, circle one, ask why; Y reads it, points at an error if any.
 
 Each build must work for at least two relevant examples through the same code.
 Passing examples demonstrates reuse, not universal subject accuracy.
@@ -52,10 +57,10 @@ accessible tablet UI and independent-user isolation in the required feature set.
 See the [feature coverage map](builds/FEATURE-COVERAGE.md) for every earlier idea,
 including bounded 3D, Mermaid, images, tests, review and learning representation.
 
-General 3D generation, arbitrary executable widgets, collaborative classrooms,
-leaderboards, full exam administration, custom learner-model training and account/
-billing systems are explicitly outside the hackathon scope. Bounded 3D or generated
-illustrations are conditional additions, not dependencies of the core experience.
+Model-written executable sims are deferred. Collaborative classrooms, leaderboards, full
+exam administration, custom learner-model training and account/billing systems are outside
+the hackathon scope. The 3D Constellation map and Muse Image illustrations are in scope;
+neither may block the core teaching turn.
 
 ## Deadline rule
 

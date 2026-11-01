@@ -2,6 +2,9 @@
 
 Reconciled against `HACKATHON_PLAN.md` and the user's voice/pen workflow, 2026-11-01.
 This map closes omissions; the [roadmap](ROADMAP.md) owns dates and acceptance gates.
+Note: B-numbers below predate the H-slice roadmap of 2026-11-01. Where they differ, the
+roadmap and [harness decisions](../decisions/2026-11-01-harness.md) win (for example, the
+3D Constellation and Muse Image illustrations are now in scope).
 
 ## Required within the coding window
 

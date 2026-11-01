@@ -1,279 +1,141 @@
-# Thin-slice build roadmap
+# Hackathon build plan
 
-Current direction: 2026-11-01. All feature builds below are **planned**, not shipped.
-Existing capture foundations are work in progress; see [workflow](../workflow.md).
-Build IDs are stable scope identifiers, not day numbers. The dated schedule below
-sets the hackathon coding deadline; estimates do not establish completion.
+Status: active plan, 2026-11-01 (replaces the earlier B00–B09 sequence). Feature coding
+ends **November 3, 22:00 IST**; November 4 is demo recording, editing and submission.
+Design rationale and measured provider behavior: [harness decisions](../decisions/2026-11-01-harness.md).
+Visual design overview: the "Y Harness Blueprint" artifact shared in the planning session.
 
-One build delivers one coherent user capability. Start one session with one build
-brief and end with a scoped commit. If investigation reveals that the build cannot
-be completed and verified in one session, split its acceptance scenario before
-expanding scope. No architecture-only rewrite disguised as a feature build.
+Each slice delivers one learner-visible capability, with tests, a measured check and a scoped
+commit. Slices marked with the same day can run in parallel sessions when their file ownership
+does not overlap (table below). Priority tiers: **P0** must work end to end before **P1**
+starts; **P2** only after P0 and P1 are stable.
 
-## B00 — Establish a trustworthy baseline
+## Slices
 
-**Outcome:** current capture work has a reproducible starting point for new builds.
+### H0 — Baseline and shared contracts (Nov 1, P0)
 
-- Inventory the dirty tree and distinguish existing changes from new session work.
-- Verify root startup, duplicate-key regression, saved-board refresh, offline
-  recovery, and typed Practice compatibility. Do not redesign Practice here.
-- Run relevant suites, TypeScript, changed-file lint, and production build.
-- Run a real browser journey; record any blocked device/provider checks explicitly.
-- Review and commit the existing capture implementation in its own scope; the
-  documentation commit does not certify or include that implementation.
-- Artifact: baseline commit, exact check results, known issues in the handoff.
+- Run backend/frontend suites, TypeScript and build on the inherited dirty tree; record results.
+- Commit the inherited capture/board-context work in its own scoped commit(s) so later slices
+  start from a clean tree. Do not redesign it.
+- Add versioned contracts used by every later slice:
+  - `TutorMove` (strict JSON schema; kinds: seg, write, equation, diagram, widget, image, say,
+    predict, check, because, point, turn_end) with server-side semantic validation.
+  - `Observation` (concept, dimension, outcome, misconception, miss class, assistance, confidence, sources).
+  - `LearnerBrief` and `ProfileRevision`; `ConstellationGraph` (nodes, edges, revisions) with a mock fixture.
+- Gate: suites pass (or failures recorded); contracts have schema tests; nothing learner-visible breaks.
 
-**Gate:** no known source-loss or startup blocker. Live accuracy remains unverified
-until credentials and reviewed cases are available. B01 follows this baseline.
+### H1 — Meta tutor turn with pause and resume (Nov 1–2, P0, critical path)
 
-## B01 — Ask a natural question and receive a board explanation
+Brief: [H1](H1-meta-tutor-turn.md). Muse Spark 1.3 (`minimal` effort) streams strict-JSON moves,
+parsed per move into the existing primitives; pedagogy prompt v1; predict/check cards end the
+turn and the learner's answer starts the next; bounded session memory; question composer.
+- Gate: blank-board and native-text questions work; first move p50 ≤ 3.0 s, p95 ≤ 5 s on 20 live
+  turns; a check waits for the learner; Stop and refresh behave; invalid moves are dropped or
+  repaired once, never rendered.
 
-**Outcome:** type a question on an empty or native-text board; Meta answers beside it.
+### H2 — Voice in, narration out (Nov 2, P0)
 
-- One question composer, one authenticated board-turn path, and a Meta tutor adapter.
-- Send the actual question with a saved revision and bounded native context.
-- Use the current view/explicit selection as initial focus; no mandatory regions.
-- Reuse validated primitives, renderer, model attribution, persistence, and Stop.
-- Show unavailable/configuration errors without losing the question or board.
-- No handwriting, voice, new graph widgets, evidence grading, or durable adaptation.
-- Artifact: [B01 brief](B01-natural-board-question.md), route/stream tests, two-subject
-  browser cases, request-to-first-visible-explanation measurements.
+- Push-to-talk → Muse Voice Transcribe (`/v1/asr/transcribe`, multipart `request` + `audio`,
+  `audioEncoding: "WAV"`), proxied by the API; keyword hints from the board's terms.
+- `say` moves bind to their segment's visuals; reuse `lesson-player.ts` lockstep with Kokoro and
+  browser fallback; visuals render before their narration.
+- Gate: spoken question → same turn path as typed; end-of-speech to transcript ≤ 3 s for a
+  10 s question; Stop silences audio within 150 ms; denied mic leaves typing usable.
 
-**Gate:** blank-board question and native-board follow-up both work; refresh retains
-the explanation; Stop prevents later output; Practice is never needed.
+### H3 — Board artifacts (Nov 2, P0 for diagrams + 2 widgets, P1 for the rest)
 
-## B02 — Ask about a marked handwritten step
+- `diagram` moves: Mermaid → native Excalidraw elements through Excalidraw's converter.
+- Widget host via Excalidraw embeddables (`renderEmbeddable`); fall back to an overlay positioned
+  from scroll/zoom if the spike fails. Widgets: `plot` (expression + parameter sliders, safe
+  evaluator, no code execution) and `attention` (tokens + temperature; widget computes scores).
+  P1: `matrix`, `stepper`.
+- `image` moves (P1): Muse Image generated asynchronously (~11 s measured), inserted as an image
+  element with provenance when ready; illustrations only, never the source of math.
+- Gate: sliders update locally with no network; widgets survive pan/zoom/refresh; pen input is
+  not captured by widgets; a failed image leaves the lesson intact.
 
-**Outcome:** circle a step, type “why this step?”, and receive a relevant explanation.
+### H4 — Evidence capture (Nov 2, P0)
 
-- Fuse the question, recent marks, referenced labels, and spatial relationships.
-- Distinguish a pointer/annotation from answer content; do not assume every circle
-  encloses the latest text. Use indexed bounds/relationships, not pairwise scene scans.
-- Highlight the inferred target unobtrusively; allow a tap to correct the target.
-- Preserve exact native content and send bounded crops for visual content directly
-  to the multimodal tutor when usable; structured reader only where needed.
-- For unresolved consequential symbols, perform at most one focused re-read, then
-  ask one specific clarification. Never silently solve a guessed problem.
-- Cache normalized readings with source/spatial/model/prompt keys and shared claims.
-- Artifact: human-reviewed handwriting/reference cases, native-versus-visual routing
-  tests, coverage/cache tests, 500/5,000-element measurements.
+- Every answered predict/check (tap, typed, spoken, ink) becomes an `Observation` request.
+- Baseten decision model labels outcome/misconception/miss class asynchronously; deterministic
+  verifiers first; assistance and format weights recorded. Teaching never waits on labeling.
+- Gate: duplicate submits do not double-count; tutor-authored content never counts as learner
+  evidence; labeling failure is visible in the trace, not to the learner.
 
-**Gate:** off-screen dependencies, boundary strokes, ambiguous exponents, and two
-possible “step 3” targets behave correctly. Unrelated content cannot grow input
-without bound. Report critical-symbol errors and unresolved cases separately.
+### H5 — Session-wise learner model and visible adaptation (Nov 2–3, P0)
 
-## B03 — Speak a question into the same board workflow
+- "End session" seals evidence; reducer updates Beta beliefs per concept × dimension (recall,
+  understand, apply, analyze, transfer), recall half-life, misconception ledger.
+- Muse Spark Open on Baseten (`meta-models/muse-spark-open-1026`, strict JSON) proposes teaching
+  notes that must cite event IDs; uncited notes are dropped.
+- Compile a ≤ 600-token brief for the next session's topic; `because` chips whose refs must
+  exist in the brief; a Memory on/off toggle for the comparison.
+- `profile_updated` reflects the real consolidation result.
+- Gate: replaying session close does not double-count; session 2 opens with a visibly different
+  first turn that cites session-1 evidence; Memory off reproduces the generic turn.
 
-**Outcome:** hold/tap the microphone, ask, and get the same board response as B01/B02.
+### H6 — Constellation (Nov 2 on mock data, Nov 3 wired, P1)
 
-- Push-to-talk first, with permission, recording, sending, and cancellation states.
-- Replaceable transcription provider; verify Meta transcription's current contract
-  during this build. No mandatory local speech-model download for hosted users.
-- Transcript and referenced board revision form one tutor turn, not a parallel chat.
-- Bind recent board marks to that utterance; preserve timing/source references.
-- Show editable transcript on failure or request; typing remains available.
-- Bound recording duration/size; define audio retention and deletion before storing it.
-  Raw audio is not automatically learner-assessment evidence.
-- Artifact: speech adapter tests, denied-permission/offline cases, tablet-browser
-  microphone check, end-of-recording-to-transcript latency/cost measurements.
+- 3D concept map (three + @react-three/fiber + drei + d3-force-3d): state colors, five-arc
+  dimension ring, misconception flare, spring "wobble" drag, focus fly-to with evidence sheet,
+  revision scrubber; lazy-loaded, render-on-demand, ≤ 150 nodes, static 2D for reduced motion.
+- Gate: 60 fps on the demo laptop while idle-dragging; never mounted while drawing on the board.
 
-**Gate:** empty-board and marked-step spoken questions work; denied permission and
-mis-transcription are recoverable; one recording creates one turn.
+### H7 — Study loop extras (Nov 3 AM, P1)
 
-## B04 — Explain aloud, pause, and accept interruption
+- Warm-up review cards at session start (due by half-life), exit ticket, hint ladder, voice
+  teach-back labeled for the understand dimension; Canvas list to resume saved sessions.
+- Gate: a session can run warm-up → teach → checks → exit ticket → close without dead ends.
 
-**Outcome:** tutor draws and narrates a short explanation, then yields to the learner.
+### H8 — Pointing, trace drawer, UI polish (Nov 3, P1)
 
-- Segment explanations with IDs shared by narration and visual actions.
-- Reuse the existing player/queue behind a speech-output adapter; verify a suitable
-  hosted or browser fallback. Speech transcription is not speech synthesis.
-- Explicit explain/wait/continue states; learner questions interrupt immediately.
-- Teach with prediction, hints, scaffolded steps, exploration and short retrieval
-  checks. Respect requests for a full explanation; do not force a quiz every turn.
-- Stop cancels generation, queued audio, and pending animations; completed work stays.
-- Mute/captions/replay remain available. Audio failure leaves visual teaching usable.
-- Initially interrupt via Stop/new question/mic activation; automatic acoustic
-  barge-in, echo cancellation, and full-duplex conversation are deferred.
-- Artifact: timing/cancellation tests, segment trace, real tablet audio/unlock checks.
+- `point` moves: Muse Spark grounding mapped crop → board, snapped to the learner's ink group via
+  the reported line; ring drawn on the learner's work.
+- Trace drawer: which model did what, latency per stage. Glass chrome on toolbar/composer/cards;
+  opaque surfaces under ink/equations; motion respects reduced-motion; no frame drops on the board.
 
-**Gate:** narration does not explain a diagram before it is visible; no old-turn audio
-or drawing leaks after interruption. The tutor waits after requesting learner input.
+### H9 — Deployment (thin slice Nov 2 evening, final Nov 3, P0)
 
-## B05 — Explore one reusable interactive plot
+- Web on Vercel, API on Modal (CPU), Postgres, Kokoro hosting chosen by measured first-audio.
+- Gate: a judge can open the URL, ask a question and get a voiced board answer; secrets stay
+  server-side; per-owner budgets active.
 
-**Outcome:** change a slider on the board and watch a curve/transform change immediately.
+### H10 — Policy improvement with GEPA (evaluator Nov 2–3, run Nov 3, P2)
 
-- Build one anchored React widget layer that follows board pan/zoom and saves state.
-- Tutor emits a validated plot specification: supported expressions, domains, labels,
-  units, parameter ranges. No generated code execution or unrestricted evaluation.
-- Compute updates locally; slider movements never trigger model requests.
-- Reuse the widget for a differential-equation family and a linear-algebra example.
-- Keep a small versioned topic-pack registry for concepts, tasks, rubrics, verifiers
-  and widget specs; no subject-specific routes. Use one advanced reference and a
-  smaller second-topic case. Preserve existing equations and static diagrams.
-- Include widget specs/current values in bounded context and evidence references;
-  supply a readable fallback for restore/export/unsupported rendering.
-- Artifact: spec/version contract, numeric reference checks, pan/zoom/restore/touch
-  tests, interaction frame-time measurements on a named device.
+- `api/policy_eval/`: scenarios (persona + hidden misconception + question), simulated student,
+  judge, validator score; GEPA over `pedagogy_policy` / `check_writer` / `feedback_policy` with
+  `max_metric_calls≈150`; promote only on held-out improvement ≥ 0.05.
+- Gate: report baseline vs candidate honestly; no live prompt mutation.
 
-**Gate:** both examples use the same renderer; values and plots agree; widgets do
-not block pen input or disappear after refresh. General 3D remains deferred.
+## Day plan (IST)
 
-## B06 — Animate a reusable diagram (optional before B07)
+| Day | Must finish | Parallel | Exit check |
+|---|---|---|---|
+| Nov 1 | H0; start H1 | — | Contracts committed; first Meta turn renders on the board |
+| Nov 2 | H1, H2, H3 (P0 part), H4, H5 reducer + brief | H6 on mock; H9 thin deploy; H10 evaluator | Ask by voice → board + voice answer → check → answer recorded → close → brief changes next turn |
+| Nov 3 AM | H5 complete, H6 wired, H7 | H3 P1 widgets + images | Two-session demo arc works locally |
+| Nov 3 PM | H8, H9 final, pilot with 2 people, fixes | H10 run if H5 is stable | Freeze 22:00, release commit, known issues listed |
+| Nov 4 | Demo recording, edit, submit | — | Submitted before 07:30 IST Nov 5 (9 PM ET Nov 4) |
 
-**Outcome:** follow information through a diagram, such as a residual block.
+If a day's exit check slips, cut in this order: H10 → H8 polish → H7 teach-back → H3 P1 widgets
+and images → H6 scrubber. Never cut H1, H2, H4, H5 or H9.
 
-- A bounded node/edge/step specification drives a reusable diagram renderer.
-- Play/pause/step controls share the narration timing contract from B04.
-- Use the same tool for a second graph/algorithm; no hardcoded residual-network route.
-- Preserve diagram source, model provenance, current step, and restoration behavior.
-- Artifact: graph validation/layout checks, reviewed examples, playback/interrupt tests.
+## File ownership for parallel sessions
 
-**Gate:** arrows and sequence match the intended computation; playback remains
-readable and stoppable. This build can be skipped without delaying evidence work.
+| Slice | Owns |
+|---|---|
+| H1 | `api/teacher.py` (Meta adapter), `api/learning/tutor_*.py`, `api/learning/board_router.py`, `web/src/lib/lesson-player.ts`, `web/src/lib/board-api.ts`, `web/src/hooks/useTutorSession.ts`, composer/check-card components |
+| H2 | `api/transcription.py`, `web/src/lib/wav-recorder.ts`, mic UI, `web/src/lib/tts.ts` |
+| H3 | `web/src/components/widgets/*`, `web/src/lib/renderer.ts` registry hook, Mermaid conversion, image insertion |
+| H4/H5 | `api/learning/observations.py`, `profile*.py`, `decisions.py`, `storage.py` additions |
+| H6 | `web/src/components/constellation/*` |
+| H10 | `api/policy_eval/*` |
 
-## B07 — Capture evidence unobtrusively during learning
+Contracts from H0 are the only shared surface; changing one needs a note in the handoff.
 
-**Outcome:** learner responses leave trustworthy, inspectable observations in the background.
+## Shared checks for every slice
 
-- Append source-linked events for question, help, explanation, learner response,
-  correction, widget prediction, and independent check. Reuse original board receipts.
-- Trigger rubric assessment on meaningful learner answers/checkpoints, not each edit.
-- Offer short board-based quizzes and an independent exit question; record hints,
-  retries and assistance. Add a brief end-of-session reflection without interrupting
-  ordinary questions or forcing users into the old Practice panel.
-- Distinguish human, assisted, model, mixed, unknown, and unanswered material.
-- Use applicable deterministic checks and selected Baseten/TypeSafe decision adapter.
-- Assessment failure never blocks teaching. Shared budgets, idempotency, bounded
-  background processing, and recovery apply; no in-process-only durable work queue.
-- Store uncertainty/coverage, not a fabricated ability score; `profile_updated=false`.
-- Artifact: event contract, reviewed rubric cases, attribution/duplicate-work tests,
-  background job timing/cost traces and an optional evidence inspector.
-- Session split: B07a delivers short checks with source receipts and reflection;
-  B07b delivers background rubric observations. Each has its own tests and commit.
-
-**Gate:** tutor-written answers cannot become independent mastery evidence;
-watching a diagram produces exposure, not a successful assessment.
-
-## B08 — Make the next session meaningfully different
-
-**Outcome:** resume later and receive a justified adjustment based on prior evidence.
-
-- Explicit, idempotent session close enqueues consolidation outside the live response.
-- Version a learner-specific evidence overlay on concepts/propositions/prerequisites.
-- Separate observed answers from inferred gaps and suggested next steps; retain sources.
-- Begin with a transparent reducer/policy, not training per-user model weights.
-- Retrieve a small relevant profile for a new turn; never inject the whole graph.
-- Show a small concept/prerequisite map: encountered, assisted, supported and unknown
-  are distinct. A node opens its evidence, uncertainty and suggested next practice.
-- Add a compact review queue with due dates and mixed short questions based on the
-  observed gaps. Preserve real elapsed time; same-day transfer is not delayed retention.
-- Resume saved sessions/canvases from a minimal list; recover interrupted sessions
-  without treating them as completed. Reuse existing storage rather than a new dashboard.
-- Add an inspect/correct path and profile rollback; low evidence stays unknown.
-- Only this build introduces supported profile writes. Legacy learner updates must
-  remain isolated; `profile_updated` reflects the actual consolidation result.
-- Artifact: reducer/migration design, duplicate-close/replay/isolation tests, two-session
-  demonstration showing which evidence changed the second lesson and why.
-- Session split: B08a delivers consolidation and changed next-session context;
-  B08b delivers the small map/review queue and resumable-session entry point. Keep
-  the graph view narrow, with the same underlying records across both subjects.
-
-**Gate:** replaying finalization does not double-count; an unsupported misconception
-does not become fact; the second session uses the resulting profile revision.
-
-## B09 — Evaluate GEPA policy improvement offline
-
-**Outcome:** required evaluator/trace contract and frozen baseline; a capped GEPA
-experiment is conditional on the live product passing its gates before the freeze.
-
-- Pick one bounded target, such as choosing a hint or clarification prompt.
-- Build reviewed training/validation/held-out cases and a frozen baseline first.
-- Run GEPA behind a reproducible offline runner with explicit cost/call limits.
-- Evaluate teaching correctness, evidence fidelity, clarity, latency, and cost;
-  prevent learner/session leakage between splits and preserve held-out cases.
-- Promote only a versioned candidate that passes the declared gates; otherwise keep
-  the baseline. No prompt mutation during a learner's live session.
-- Artifact: dataset provenance, prompt/version hashes, optimizer configuration,
-  held-out comparison, promotion decision and rollback procedure.
-
-**Gate:** an improvement claim is supported by reviewed held-out results. Successful
-optimizer execution alone is not learning improvement. Complete the evaluator and
-baseline within the hackathon; attempt optimization only within the remaining
-pre-freeze budget. An inconclusive or unrun optimization is reported honestly.
-
-## Performance and release checks shared by all builds
-
-These are initial **targets to measure**, not achieved performance or timeout values.
-
-- Measure separately: saving, context selection, transcription, reader calls, tutor
-  first token, first useful rendered content, first audible segment, total turn.
-- Context selection: target p95 under 50 ms at 5,000 elements on a named test machine.
-- Native question: target p50 under 3 s / p95 under 6 s to first useful visual output
-  on a warm service. Visual turns: provisional p95 under 10 s, excluding user speech.
-- Speech transcription: target p95 under 2 s after recording ends for short questions.
-- Stop/mic activation: target local audio/animation stop within 150 ms, regardless
-  of provider cancellation latency. Prevent stale results from being applied.
-- Plot interaction: target p95 under 33 ms per update on the chosen tablet; no network.
-- Record sample count, model/version, warm/cold state, network/device, and errors.
-  Fewer than 20 trials: report individual/range results rather than a meaningful p95.
-- Gate builds on measured behavior; missed targets require a specific fix or an
-  explicit documented adjustment. UI spinners do not count as useful output.
-- Existing caps remain: 200 detailed elements, 24 KiB structured context, at most
-  two bounded crops per reading call, no inference while drawing.
-- Every build includes applicable regression/security/source-preservation checks,
-  tablet layout review, and honest mocked/live/browser validation status.
-
-## Dated execution plan — all times IST
-
-This replaces open-ended delivery. Feature coding ends **November 3 at 22:00**;
-November 4 is recording/editing/submission with narrow fixes, not another build day.
-Required scope is ambitious and completion is not guaranteed by this schedule.
-Keep each session to one slice and commit; re-estimate after every gate.
-
-- **November 1: shared-board foundation.** B00 baseline, B01 Meta question-to-board,
-  B02 marked-step context. Start B09's small evaluation case/trace definition with
-  the first tutor contract. Exit: saved native and handwritten questions work without
-  Practice setup; ambiguous work is not guessed. Record the first live provider results.
-- **November 2: the learning experience.** B03 voice input, B04 paced narration,
-  B05 one interactive visualization, B07a short checks/reflection. Establish the
-  first deployed thin slice on Vercel/Modal/Postgres and exercise real tablet input.
-  Exit: ask -> see/hear -> manipulate -> answer -> save, across two reference topics.
-- **November 3, first half: the learning loop.** B07b evidence, B08a consolidation,
-  B08b small map/review/resume. Review B09 baseline cases and run the capped GEPA
-  experiment only if the live loop is healthy. Exit: a second session uses traceable
-  prior evidence and serves an appropriate review, with duplicate-close protection.
-- **November 3, second half through 22:00: integration and freeze.** Complete the
-  release slice, multi-owner/isolation/recovery checks, browser journeys, correctness
-  review, latency/cost measurements and final UI polish. No optional feature may
-  consume this reserved verification block. Record the release commit and open issues.
-- **November 4:** record the working product, edit, check public links and submit.
-  Use the user-agreed deadline from the original plan; recheck the event page when
-  preparing submission rather than assuming its old schedule is still current.
-
-B06 diagram animation, additional Mermaid conversion, bounded 3D and image
-generation compete only for spare pre-freeze capacity. They do not delay B07/B08.
-See [FEATURE-COVERAGE.md](FEATURE-COVERAGE.md) for restored scope and explicit cuts.
-
-## Release strategy and schedule recovery
-
-B01/B02 establish the core; B03/B04 establish the intended voice experience.
-B05 is the first interactive-visual milestone. B06 is optional; B07/B08 establish
-the actual session-learning loop. B09's evaluator/baseline is required; optimizer
-execution/promotion depends on evidence quality and remaining pre-freeze time.
-
-Treat deployment as a small separate release slice when a tested milestone is ready:
-web on Vercel, CPU API on Modal, shared Postgres, hosted model APIs. Verify SSE,
-cookies/ownership, migrations, restore, provider configuration and cold starts.
-Exclude or secure legacy unowned endpoints before exposing a public service.
-No AWS or own GPU fleet is required by this design. These are deployment choices,
-not a claim that the existing services have already been deployed or load-tested.
-
-Maintain a working integrated build at every commit. If a daily exit gate slips,
-stop optional additions and report the concrete remaining work that day. Reduce
-widget types/parameters, map breadth, animation polish and experiment size first.
-Reuse the narrator, renderer, typed assessment and storage already present. Preserve
-voice/board interaction, one visual exploration, trustworthy checks and a real
-next-session change as the target product. Do not silently redefine these as later
-work. If a required capability cannot pass by freeze, explicitly report the miss
-and submit only working behavior rather than hide a failure or fabricate results.
+- Measure, don't assume: record sample count, model, effort, warm/cold and network for latency.
+- Mocked tests ≠ live validation; say which ran. Keep provider calls bounded and budgeted.
+- No inference while drawing; Stop cancels pending output; learner ink is never moved or covered.
+- Existing caps stay: 200 detailed elements, 24 KiB structured context, ≤ 2 crops per call.

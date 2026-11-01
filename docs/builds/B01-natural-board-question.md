@@ -1,6 +1,7 @@
 # B01: natural question to native board explanation
 
-Status: planned, not implemented by this documentation session.
+Status: **superseded** on 2026-11-01 by [H1](H1-meta-tutor-turn.md) (Meta tutor with strict
+JSON moves, pedagogy and pause/resume). Kept for history.
 Prerequisite: B00 reviewed, checks recorded and capture work committed.
 Starting branch/commit: record at implementation start; never assume main is clean.
 

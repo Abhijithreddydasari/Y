@@ -1,6 +1,14 @@
 # Feature sessions and handoff
 
-## Current handoff — 2026-11-01
+## Current handoff — 2026-11-01 (planning complete)
+
+- Plan: [ROADMAP](builds/ROADMAP.md) H0–H10 with a dated day plan; decisions and live provider
+  measurements in [harness decisions](decisions/2026-11-01-harness.md). License: MIT.
+- Next session: **H0** (baseline checks, commit the inherited dirty tree in its own scope,
+  shared contracts), then **H1** ([brief](builds/H1-meta-tutor-turn.md)).
+- The notes below describe the state before planning and remain accurate for the dirty tree.
+
+## Earlier handoff — 2026-11-01
 
 - Branch: `feature/board-context`. This session organizes documentation only.
 - Documentation baseline: `8b2ed3b`. Follow-up reconciles original features, fixes

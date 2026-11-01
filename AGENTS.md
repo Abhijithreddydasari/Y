@@ -9,7 +9,8 @@ Read this index, then only the docs needed for the assigned build.
 - Current handoff and session/commit rules: [docs/workflow.md](docs/workflow.md).
 - System boundaries: [docs/architecture.md](docs/architecture.md).
 - Learner experience: [docs/design.md](docs/design.md).
-- Next feature specification: [docs/builds/B01-natural-board-question.md](docs/builds/B01-natural-board-question.md).
+- Measured provider behavior and settled design decisions: [docs/decisions/2026-11-01-harness.md](docs/decisions/2026-11-01-harness.md).
+- Next feature specification: [docs/builds/H1-meta-tutor-turn.md](docs/builds/H1-meta-tutor-turn.md) (after H0 in the roadmap).
 - Existing capture contracts/setup: [docs/board-context.md](docs/board-context.md).
 - Selective ECC skill use: [docs/ecc-usage.md](docs/ecc-usage.md); never install/configure it for the user.
 - Older hackathon plans and legacy architecture are historical, not current scope.
@@ -73,6 +74,7 @@ For changed-file lint, run `npm run lint -- src/path/to/changed-file.ts` (path r
 - Keep ownership checks, source-version validation, cancellation, and recovery intact.
 - Keep `profile_updated=false` until B08 explicitly adds tested session consolidation.
 - No arbitrary model-generated JavaScript/HTML execution; use validated tool specs.
+- License is MIT. learnharness (AGPL-3.0) may inform ideas only; never copy its code or prompt text.
 - Measure latency and fidelity separately; never present mocks as live validation.
 - Follow `web/AGENTS.md` and local Next.js docs when changing frontend behavior.
 - Keep scratch notes in ignored `scratch-pad.md`; durable decisions belong in docs.

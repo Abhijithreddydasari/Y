@@ -38,6 +38,23 @@ Use explicit workflow states, not independently chatting agents. Code handles
 extraction, selection, layout, authorization and state transitions. Models handle
 visual perception, explanation and rubric interpretation.
 
+Four loops at four timescales: the live turn (seconds; the only latency-critical path),
+evidence labeling (async per answer), reflection (once per session close) and policy
+improvement (offline GEPA). Measured choices for each — model, effort, wire format — are
+recorded in [harness decisions](decisions/2026-11-01-harness.md).
+
+## Model routing
+
+| Job | Model |
+|---|---|
+| Live tutor, board vision, pointing | `muse-spark-1.3`, `reasoning_effort=minimal`, strict JSON moves |
+| Voice in | Muse Voice Transcribe (`muse-voice-transcribe-1.0`) |
+| Voice out | Kokoro, browser speech fallback (no Meta TTS exists) |
+| Evidence labels | Baseten decision model (Elephant default) + deterministic verifiers |
+| Session consolidation notes | `meta-models/muse-spark-open-1026` on Baseten, strict JSON |
+| Illustrations | `muse-image-1.0`, async |
+| Offline judge / GEPA reflection | `muse-spark-1.3` at medium or high effort |
+
 ## Contracts and ownership
 
 - **TutorTurn** (planned): request ID, question/transcript, input kind, saved board
@@ -97,9 +114,12 @@ Layout code reserves response space and protects learner ink from model coordina
 ## Visual and speech tools
 
 Keep Excalidraw for ink/text/static diagrams; reuse KaTeX, primitive validation,
-renderer and player. Interactive plots use a board-anchored React layer with a
-versioned saved spec, board transforms, hit testing, touch and export fallback.
-No arbitrary generated HTML/JavaScript. Slider calculations run locally.
+renderer and player. Mermaid from the tutor converts to native Excalidraw elements.
+Interactive widgets are typed specs rendered through Excalidraw embeddables (fallback: a
+board-anchored overlay), with saved state, touch handling and an export fallback. Widgets
+derive their own numbers from small specs so the model cannot supply inconsistent data.
+No arbitrary generated HTML/JavaScript; sandboxed model-written sims are deferred. Slider
+calculations run locally. Generated images are illustrations only.
 
 Transcription and synthesis are separate adapters. Start with push-to-talk and
 segmented speech with Stop/Continue; do not infer hosted TTS or full-duplex voice
@@ -128,11 +148,15 @@ remain explicit release work; deployment/capacity is not yet verified.
 
 ## Adaptation
 
-Before B08 keep `profile_updated=false`. B07 records provisional observations;
-B08 consolidates once per finalized session and retrieves a bounded profile later.
-No per-stroke grading or online weight training. B09 uses GEPA offline against
-reviewed held-out cases, promoting a versioned policy only after evaluation.
-Never silently mutate live tutor policy or original learner evidence.
+Before H5 keep `profile_updated=false`. H4 records observations (concept, dimension —
+recall, understand, apply, analyze, transfer — outcome, misconception, miss class,
+assistance, confidence). H5 consolidates once per finalized session: a deterministic
+reducer updates Beta beliefs per concept × dimension, recall half-lives and a misconception
+ledger; Muse Spark Open proposes teaching notes that must cite events. A ≤ 600-token brief
+is retrieved for the next session; `because` chips must cite brief ids. No per-stroke
+grading or online weight training. H10 uses GEPA offline on simulated-learner scenarios,
+promoting a versioned pedagogy policy only after held-out evaluation. Never silently mutate
+live tutor policy or original learner evidence.
 
 ## Study loop and progress representation
 
@@ -145,8 +169,8 @@ inside the board workflow. A session-end reflection is learner-reported evidence
 not proof of mastery. Consolidation produces suggested teaching notes and due review
 items with provenance; retain actual timestamps to distinguish transfer from retention.
 
-Expose a small graph view and review queue over existing records, not a separate
-graph database or ability-scoring service. Distinguish encountered, assisted,
+Expose the Constellation (3D concept map, lazy-loaded) and a review queue over existing
+records, not a separate graph database or ability-scoring service. Distinguish encountered, assisted,
 supported and unknown nodes. Open a node to its sources and next suggested task.
 Resume entry points list saved sessions and canvases; interrupted work is recoverable.
 

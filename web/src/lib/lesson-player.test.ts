@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WhiteboardHandle } from "@/components/Whiteboard";
-import { clauses, LessonPlayer } from "./lesson-player";
+import { clauses, LessonPlayer, SEGMENTS_AHEAD } from "./lesson-player";
 
 const tts = vi.hoisted(() => ({ log: [] as string[], finish: new Map<string, () => void>() }));
 vi.mock("./tts", () => ({
@@ -29,8 +29,8 @@ function handle() {
 
 const until = (check: () => boolean) => vi.waitFor(() => { if (!check()) throw new Error("not yet"); }, { timeout: 4_000, interval: 10 });
 const at = (entry: string) => tts.log.indexOf(entry);
-const player = (captions: string[] = []) => new LessonPlayer({ origin: { x: 0, y: 0 }, handle: handle(), ttsEnabled: true, pacing: "segment",
-  visualGapMs: 0, onCaption: (text) => captions.push(text) });
+const player = (captions: string[] = [], segmentsAhead?: number) => new LessonPlayer({ origin: { x: 0, y: 0 }, handle: handle(), ttsEnabled: true,
+  pacing: "segment", visualGapMs: 0, onCaption: (text) => captions.push(text), segmentsAhead });
 
 beforeEach(() => { tts.log.length = 0; tts.finish.clear(); });
 
@@ -49,7 +49,7 @@ describe("clauses", () => {
 describe("LessonPlayer segment pacing", () => {
   it("writes a segment, explains it, then writes the next: the voice never trails the board", async () => {
     const captions: string[] = [];
-    const p = player(captions);
+    const p = player(captions, 0);
     p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Why scale" } }); p.enqueue({ tag: "text", args: { content: "Sums grow." } });
     p.say("Look how the sums grow.");
     p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Divide" } }); p.say("So we divide.");
@@ -79,6 +79,30 @@ describe("LessonPlayer segment pacing", () => {
     tts.finish.get("Your turn.")!();
     await p.finishNarration();
     expect(captions).toEqual(["Look how the sums grow.", "So we divide.", "Your turn."]);
+  });
+
+  it("by default draws at most one segment ahead of the voice", async () => {
+    expect(SEGMENTS_AHEAD).toBe(1);
+    const p = player();
+    p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Why scale" } }); p.say("Look how the sums grow.");
+    p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Divide" } }); p.say("So we divide.");
+    p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Check" } }); p.say("Your turn.");
+    const drawn = p.finishDrawing();
+    await until(() => at("speak:Look how the sums grow.") >= 0);
+    expect(at("draw:Why scale")).toBeLessThan(at("speak:Look how the sums grow."));
+    // Segment 2 draws while segment 1 is spoken; segment 3 waits for segment 1's voice.
+    await until(() => at("draw:Divide") >= 0);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(at("draw:Check")).toBe(-1);
+    expect(at("speak:So we divide.")).toBe(-1);
+    tts.finish.get("Look how the sums grow.")!();
+    await until(() => at("speak:So we divide.") >= 0);
+    await drawn;
+    expect(at("draw:Check")).toBeGreaterThan(at("speak:Look how the sums grow."));
+    tts.finish.get("So we divide.")!();
+    await until(() => at("speak:Your turn.") >= 0);
+    tts.finish.get("Your turn.")!();
+    await p.finishNarration();
   });
 
   it("reads the written lines and the question when a segment has no say", async () => {

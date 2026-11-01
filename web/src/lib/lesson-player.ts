@@ -10,8 +10,8 @@
 // - "segment" (tutor turns): the board is written at board speed and the
 //   voice is the turn's `say` moves. A segment's narration starts once its
 //   visuals are drawn, the segment is closed and the previous narration has
-//   ended. The next segment draws only after that narration, so the voice always
-//   talks about what was just written, as a teacher writes and then explains.
+//   ended. The board may draw `segmentsAhead` segments ahead of the voice
+//   (default SEGMENTS_AHEAD; 0 is write-then-explain).
 
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import { LessonRenderer, wrapText, type RenderResult } from "./renderer";
@@ -127,6 +127,8 @@ interface PlayerOptions {
   onCaption?: (text: string) => void;
   /** Segment pacing: a line became audible `waitMs` after its visuals were done (first-audio timing). */
   onAudible?: (value: { text: string; engine: "kokoro" | "browser"; waitMs: number }) => void;
+  /** Segment pacing: how many segments the board may draw ahead of the voice (default SEGMENTS_AHEAD). */
+  segmentsAhead?: number;
 }
 
 /** What one segment says, and what to read aloud if the model gave it no `say`. */
@@ -139,11 +141,11 @@ interface Segment { says: string[]; writes: string[]; question: string }
 const FIRST_CLIP_WAIT_MS = 3_500;
 const NEXT_CLIP_WAIT_MS = 8_000;
 /**
- * How many segments the board may draw ahead of the voice. 0 is write-then-explain: the voice always talks
- * about the segment just written (a two-segment turn is fully drawn in about 15-18 s). 1 fills the board in
- * about 4-5 s, but the voice then trails a segment behind what the learner is reading.
+ * How many segments the board may draw ahead of the voice. 1 (current choice) fills the board in about
+ * 4-5 s, but the voice trails a segment behind what the learner is reading. 0 is write-then-explain: the
+ * voice always talks about the segment just written, and a two-segment turn takes about 15-18 s to draw.
  */
-const SEGMENTS_AHEAD = 0;
+export const SEGMENTS_AHEAD = 1;
 
 /**
  * Split a spoken line into clauses so Kokoro (about real time on a laptop CPU) can start on a short clip and
@@ -181,6 +183,7 @@ export class LessonPlayer {
   private readonly segmentPacing: boolean;
   private readonly onCaption?: (text: string) => void;
   private readonly onAudible?: PlayerOptions["onAudible"];
+  private readonly segmentsAhead: number;
 
   private readonly renderer: LessonRenderer;
   // Segment pacing: the open segment, the voice queue and each closed segment's narration.
@@ -217,6 +220,7 @@ export class LessonPlayer {
     this.segmentPacing = opts.pacing === "segment";
     this.onCaption = opts.onCaption;
     this.onAudible = opts.onAudible;
+    this.segmentsAhead = Math.max(0, opts.segmentsAhead ?? SEGMENTS_AHEAD);
     this.renderer = new LessonRenderer(opts.origin);
     opts.signal?.addEventListener("abort", () => this.cancel(), { once: true });
   }
@@ -225,8 +229,8 @@ export class LessonPlayer {
   beginSegment(): void {
     this.closeSegment();
     this.segment = { says: [], writes: [], question: "" };
-    // Write, then explain: this segment draws only after the narration SEGMENTS_AHEAD + 1 segments back ended.
-    const gate = this.narrations.at(-1 - SEGMENTS_AHEAD);
+    // This segment draws only after the narration segmentsAhead + 1 segments back has ended.
+    const gate = this.narrations.at(-1 - this.segmentsAhead);
     if (gate) this.drawChain = this.drawChain.then(() => gate);
   }
 

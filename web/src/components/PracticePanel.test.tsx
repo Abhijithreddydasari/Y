@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor, cleanup } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import PracticePanel from "./PracticePanel";
 import * as api from "@/lib/learning-api";
+import { boardRequest, type BoardAttempt } from "@/lib/board-api";
+import type { WhiteboardHandle } from "./Whiteboard";
+
+vi.mock("@/lib/board-api", async original => ({ ...await original<typeof import("@/lib/board-api")>(), boardRequest: vi.fn() }));
 
 vi.mock("@/lib/learning-api", async importOriginal => {
   const original = await importOriginal<typeof api>();
@@ -37,6 +41,37 @@ async function open() {
 }
 
 describe("Practice evidence flow", () => {
+  it.each([false, true])("renders repeated crop hashes once across restore and assessment (crop metadata: %s)", async withMetadata => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const first = "a".repeat(64), second = "b".repeat(64);
+    const bounds = { x: 0, y: 0, w: 100, h: 100 };
+    const answer: BoardAttempt = { attempt_id: "board-attempt", packet: {
+      source: { session_id: "session", revision: 1, element_revisions: {}, content_hash: "source", crop_hashes: [first, first, second, second] },
+      task_id: "number", focused: [], response_area: bounds,
+      coverage: { complete: true, omitted: 0, outside_task: [], missing_visual: [] },
+      ...(withMetadata ? { crops: [
+        { asset_hash: first, bounds, element_ids: ["ink"], purpose: "initial" as const },
+        { asset_hash: first, bounds, element_ids: ["ink"], purpose: "detail" as const },
+        { asset_hash: second, bounds, element_ids: ["more-ink"], purpose: "initial" as const },
+      ] } : {}),
+    }, result: null, corrections: [] };
+    vi.mocked(boardRequest).mockResolvedValueOnce([answer]).mockResolvedValueOnce(answer)
+      .mockResolvedValueOnce({ ...answer, result: { status: "pending_review", provider_error: null, observations: [], interpretation: null } });
+    const board = { board: { session: "session", state: { regions: [] } } } as unknown as WhiteboardHandle;
+    try {
+      render(<PracticePanel board={board} />);
+      fireEvent.click(screen.getByRole("button", { name: "Practice" }));
+      await screen.findByText("Board answer · revision 1");
+      expect(screen.getAllByRole("link", { name: "View original crop", hidden: true })).toHaveLength(2);
+      fireEvent.click(screen.getByRole("button", { name: "Retry board assessment" }));
+      await screen.findByText("pending review");
+      const links = screen.getAllByRole("link", { name: "View original crop", hidden: true });
+      expect(links).toHaveLength(2);
+      expect(links[0]).toHaveAttribute("href", `/api/learning/sessions/session/board/assets/${first}`);
+      expect(links[1]).toHaveAttribute("href", `/api/learning/sessions/session/board/assets/${second}`);
+      expect(error.mock.calls.some(args => args.some(arg => String(arg).includes("same key")))).toBe(false);
+    } finally { error.mockRestore(); }
+  });
   it("saves exact learner text before assessment and shows a receipt", async () => {
     await open();
     fireEvent.change(screen.getByLabelText("Your answer"), { target: { value: " 4 " } });

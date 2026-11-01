@@ -3,12 +3,24 @@
 Local: uvicorn learning.app:app --env-file ../.env --port 8101
 The existing main.app also mounts the same router.
 """
+from contextlib import asynccontextmanager
+
+import httpx
 from fastapi import FastAPI
 
 from .router import router
+from .board_router import router as board_router
 
-app = FastAPI(title="Y learning capture", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app):
+    async with httpx.AsyncClient(limits=httpx.Limits(max_connections=8, max_keepalive_connections=4)) as client:
+        app.state.board_http = client
+        yield
+
+app = FastAPI(title="Y learning capture", version="0.2.0", lifespan=lifespan)
 app.include_router(router)
+app.include_router(board_router)
 
 
 @app.get("/health")

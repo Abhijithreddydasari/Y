@@ -85,8 +85,9 @@ class CaptureStore:
         self.engine = engine
 
     def initialize(self) -> None:
-        """Explicit bootstrap for schema v1; future schema changes require migrations."""
-        metadata.create_all(self.engine)
+        """Idempotent v1 -> v2 additive upgrade; safe for existing typed captures."""
+        from .board_storage import upgrade
+        upgrade(self.engine)
 
     def issue_identity(self) -> str:
         token = secrets.token_urlsafe(32)

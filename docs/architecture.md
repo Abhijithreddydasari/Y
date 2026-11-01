@@ -133,3 +133,23 @@ B08 consolidates once per finalized session and retrieves a bounded profile late
 No per-stroke grading or online weight training. B09 uses GEPA offline against
 reviewed held-out cases, promoting a versioned policy only after evaluation.
 Never silently mutate live tutor policy or original learner evidence.
+
+## Study loop and progress representation
+
+Use a small versioned topic-pack registry for concepts/propositions, scoped
+prerequisites, tasks, rubrics, verifiers, widgets and review-item templates. Broad
+explanations can work outside a pack; verified assessment coverage remains explicit.
+
+Short prediction/retrieval/exit questions capture original answers and assistance
+inside the board workflow. A session-end reflection is learner-reported evidence,
+not proof of mastery. Consolidation produces suggested teaching notes and due review
+items with provenance; retain actual timestamps to distinguish transfer from retention.
+
+Expose a small graph view and review queue over existing records, not a separate
+graph database or ability-scoring service. Distinguish encountered, assisted,
+supported and unknown nodes. Open a node to its sources and next suggested task.
+Resume entry points list saved sessions and canvases; interrupted work is recoverable.
+
+The selected hackathon implementation, including deployment and verification, must
+finish by November 3 at 22:00 IST. The roadmap's dated gates govern scope; optional
+visuals/optimization must not consume the final integration block.

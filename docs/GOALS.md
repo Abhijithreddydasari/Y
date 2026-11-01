@@ -20,9 +20,9 @@ define backend schemas or tutor behavior.
 2. Accurate, bounded reference/context handling without manual region setup.
 3. Voice input and paced, interruptible audiovisual teaching.
 4. Reusable interactive visuals that clarify a concept.
-5. Faithful background evidence of learner work and assistance.
-6. Between-session adaptation grounded in that evidence.
-7. Evaluated offline policy improvement with GEPA.
+5. Short quizzes/checks, reflection and a review queue grounded in learner work.
+6. Between-session adaptation and a small evidence-backed knowledge map.
+7. GEPA evaluator/baseline and, if gates pass, a capped offline optimization experiment.
 
 Preserve saved work and provenance throughout. Accuracy and honest uncertainty
 take precedence over an impressive but wrong demonstration.
@@ -47,13 +47,21 @@ Passing examples demonstrates reuse, not universal subject accuracy.
 - No claim of improved retention until an appropriate evaluation supports it.
 - Winning a prize is an ambition; the acceptance criteria are usable behavior.
 
-Defer general 3D generation, arbitrary executable widgets, collaborative classrooms,
-leaderboards, custom learner-model training, and account/billing systems. Do not
-make them dependencies of the shared-board experience.
+Keep exact equations/LaTeX, diagrams, saved canvases, two-subject topic packs,
+accessible tablet UI and independent-user isolation in the required feature set.
+See the [feature coverage map](builds/FEATURE-COVERAGE.md) for every earlier idea,
+including bounded 3D, Mermaid, images, tests, review and learning representation.
+
+General 3D generation, arbitrary executable widgets, collaborative classrooms,
+leaderboards, full exam administration, custom learner-model training and account/
+billing systems are explicitly outside the hackathon scope. Bounded 3D or generated
+illustrations are conditional additions, not dependencies of the core experience.
 
 ## Deadline rule
 
-Retain November 3 as the last planned feature-building day and November 4 for
-demo/editing and narrow fixes, per the user's agreed schedule. The roadmap extends
-beyond that window. Ship the highest completed, verified slice; do not represent
-future builds as working features or compress all builds into the hackathon.
+Complete selected hackathon feature coding by **November 3, 22:00 IST**. November 4
+is reserved for demo recording/editing, submission and narrow fixes. The roadmap's
+dated schedule replaces the earlier open-ended delivery wording. All required
+hackathon slices are planned inside this window; optional work enters only after
+the core gates pass. If execution slips, surface it immediately and reduce breadth
+explicitly, rather than silently move required work beyond the deadline or skip tests.

@@ -68,6 +68,12 @@ topic-specific observations with sources, uncertainty and assistance when useful
 “This step was difficult last time” needs supporting evidence. Corrections create
 new records rather than rewriting sources.
 
+Short quizzes/checks happen beside the learner's work, with hints and optional
+reflection. A compact progress map opens evidence/next practice, while a review
+queue offers a few due or mixed questions. Keep these in secondary views; no
+leaderboard, compulsory diagnostic wizard or dashboard stands between a learner
+and asking a question. Provide a minimal saved-session list to return to prior work.
+
 For each UI build record a real browser journey or sufficient screenshots, device,
 input method and remaining limitations. Mocked tests alone do not establish a
 usable live voice/pen experience.

@@ -3,6 +3,9 @@
 ## Current handoff — 2026-11-01
 
 - Branch: `feature/board-context`. This session organizes documentation only.
+- Documentation baseline: `8b2ed3b`. Follow-up reconciles original features, fixes
+  coding freeze at November 3 22:00 IST, archives old submission drafts, and adds
+  selective ECC guidance. The user installs ECC; no installation/config changes.
 - Existing board persistence/context/assessment/Teach work is in the dirty tree,
   excluded from this documentation commit. Inventory it before editing.
 - See [board-context.md](board-context.md) for implemented foundations. Voice/chat
@@ -25,10 +28,14 @@
 - `docs/architecture.md`: intended system boundaries.
 - `docs/design.md`: learner behavior and UI rules.
 - `docs/builds/ROADMAP.md`: sequence and acceptance gates.
+- `docs/builds/FEATURE-COVERAGE.md`: earlier ideas, required/conditional/excluded scope.
+- `docs/ecc-usage.md`: four on-demand skills plus one optional security specialist.
 - `docs/builds/Bxx-*.md`: one feature's detailed implementation contract.
 - This file: active handoff, verification and next action.
 - Existing capture/setup docs: current API details and limitations.
 - Legacy architecture and earlier hackathon calendars are history, not current scope.
+- Do not read/search/index `starvector_test/`, `research/`, or `training/` without
+  explicit user override. Do not load archived docs during ordinary feature work.
 - Ignored `scratch-pad.md`: short reminders, never the sole record of a decision.
 
 Do not duplicate architecture in `SPEC/ARCHITECTURE.md`; use the one authoritative
@@ -40,6 +47,8 @@ document and links. User instructions take precedence over repo documents.
    instructions. Read adjacent implementation as needed, not the whole repository.
 2. Establish learner-visible outcome/exclusions. Split an oversized brief before
    expanding implementation; retain a testable user journey for each slice.
+   Check the dated schedule. Report a missed gate that day; do not silently move
+   required work beyond November 3 or borrow November 4 for feature development.
 3. Implement UI/request/service/persistence as needed. Reuse foundations, without
    unrelated cleanup or framework migration.
 4. Test failures and the whole journey. Run applicable regressions, types, changed-file

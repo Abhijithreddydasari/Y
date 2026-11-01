@@ -2,7 +2,8 @@
 
 Current direction: 2026-11-01. All feature builds below are **planned**, not shipped.
 Existing capture foundations are work in progress; see [workflow](../workflow.md).
-Build numbers describe dependency order, not days or duration promises.
+Build IDs are stable scope identifiers, not day numbers. The dated schedule below
+sets the hackathon coding deadline; estimates do not establish completion.
 
 One build delivers one coherent user capability. Start one session with one build
 brief and end with a scoped commit. If investigation reveals that the build cannot
@@ -87,6 +88,8 @@ mis-transcription are recoverable; one recording creates one turn.
 - Reuse the existing player/queue behind a speech-output adapter; verify a suitable
   hosted or browser fallback. Speech transcription is not speech synthesis.
 - Explicit explain/wait/continue states; learner questions interrupt immediately.
+- Teach with prediction, hints, scaffolded steps, exploration and short retrieval
+  checks. Respect requests for a full explanation; do not force a quiz every turn.
 - Stop cancels generation, queued audio, and pending animations; completed work stays.
 - Mute/captions/replay remain available. Audio failure leaves visual teaching usable.
 - Initially interrupt via Stop/new question/mic activation; automatic acoustic
@@ -105,6 +108,9 @@ or drawing leaks after interruption. The tutor waits after requesting learner in
   units, parameter ranges. No generated code execution or unrestricted evaluation.
 - Compute updates locally; slider movements never trigger model requests.
 - Reuse the widget for a differential-equation family and a linear-algebra example.
+- Keep a small versioned topic-pack registry for concepts, tasks, rubrics, verifiers
+  and widget specs; no subject-specific routes. Use one advanced reference and a
+  smaller second-topic case. Preserve existing equations and static diagrams.
 - Include widget specs/current values in bounded context and evidence references;
   supply a readable fallback for restore/export/unsupported rendering.
 - Artifact: spec/version contract, numeric reference checks, pan/zoom/restore/touch
@@ -133,6 +139,9 @@ readable and stoppable. This build can be skipped without delaying evidence work
 - Append source-linked events for question, help, explanation, learner response,
   correction, widget prediction, and independent check. Reuse original board receipts.
 - Trigger rubric assessment on meaningful learner answers/checkpoints, not each edit.
+- Offer short board-based quizzes and an independent exit question; record hints,
+  retries and assistance. Add a brief end-of-session reflection without interrupting
+  ordinary questions or forcing users into the old Practice panel.
 - Distinguish human, assisted, model, mixed, unknown, and unanswered material.
 - Use applicable deterministic checks and selected Baseten/TypeSafe decision adapter.
 - Assessment failure never blocks teaching. Shared budgets, idempotency, bounded
@@ -140,6 +149,8 @@ readable and stoppable. This build can be skipped without delaying evidence work
 - Store uncertainty/coverage, not a fabricated ability score; `profile_updated=false`.
 - Artifact: event contract, reviewed rubric cases, attribution/duplicate-work tests,
   background job timing/cost traces and an optional evidence inspector.
+- Session split: B07a delivers short checks with source receipts and reflection;
+  B07b delivers background rubric observations. Each has its own tests and commit.
 
 **Gate:** tutor-written answers cannot become independent mastery evidence;
 watching a diagram produces exposure, not a successful assessment.
@@ -153,18 +164,28 @@ watching a diagram produces exposure, not a successful assessment.
 - Separate observed answers from inferred gaps and suggested next steps; retain sources.
 - Begin with a transparent reducer/policy, not training per-user model weights.
 - Retrieve a small relevant profile for a new turn; never inject the whole graph.
+- Show a small concept/prerequisite map: encountered, assisted, supported and unknown
+  are distinct. A node opens its evidence, uncertainty and suggested next practice.
+- Add a compact review queue with due dates and mixed short questions based on the
+  observed gaps. Preserve real elapsed time; same-day transfer is not delayed retention.
+- Resume saved sessions/canvases from a minimal list; recover interrupted sessions
+  without treating them as completed. Reuse existing storage rather than a new dashboard.
 - Add an inspect/correct path and profile rollback; low evidence stays unknown.
 - Only this build introduces supported profile writes. Legacy learner updates must
   remain isolated; `profile_updated` reflects the actual consolidation result.
 - Artifact: reducer/migration design, duplicate-close/replay/isolation tests, two-session
   demonstration showing which evidence changed the second lesson and why.
+- Session split: B08a delivers consolidation and changed next-session context;
+  B08b delivers the small map/review queue and resumable-session entry point. Keep
+  the graph view narrow, with the same underlying records across both subjects.
 
 **Gate:** replaying finalization does not double-count; an unsupported misconception
 does not become fact; the second session uses the resulting profile revision.
 
 ## B09 — Evaluate GEPA policy improvement offline
 
-**Outcome:** an evaluated policy candidate may improve one teaching decision safely.
+**Outcome:** required evaluator/trace contract and frozen baseline; a capped GEPA
+experiment is conditional on the live product passing its gates before the freeze.
 
 - Pick one bounded target, such as choosing a hint or clarification prompt.
 - Build reviewed training/validation/held-out cases and a frozen baseline first.
@@ -177,7 +198,9 @@ does not become fact; the second session uses the resulting profile revision.
   held-out comparison, promotion decision and rollback procedure.
 
 **Gate:** an improvement claim is supported by reviewed held-out results. Successful
-optimizer execution alone is not learning improvement. This is post-core work.
+optimizer execution alone is not learning improvement. Complete the evaluator and
+baseline within the hackathon; attempt optimization only within the remaining
+pre-freeze budget. An inconclusive or unrun optimization is reported honestly.
 
 ## Performance and release checks shared by all builds
 
@@ -201,11 +224,43 @@ These are initial **targets to measure**, not achieved performance or timeout va
 - Every build includes applicable regression/security/source-preservation checks,
   tablet layout review, and honest mocked/live/browser validation status.
 
-## Release strategy
+## Dated execution plan — all times IST
+
+This replaces open-ended delivery. Feature coding ends **November 3 at 22:00**;
+November 4 is recording/editing/submission with narrow fixes, not another build day.
+Required scope is ambitious and completion is not guaranteed by this schedule.
+Keep each session to one slice and commit; re-estimate after every gate.
+
+- **November 1: shared-board foundation.** B00 baseline, B01 Meta question-to-board,
+  B02 marked-step context. Start B09's small evaluation case/trace definition with
+  the first tutor contract. Exit: saved native and handwritten questions work without
+  Practice setup; ambiguous work is not guessed. Record the first live provider results.
+- **November 2: the learning experience.** B03 voice input, B04 paced narration,
+  B05 one interactive visualization, B07a short checks/reflection. Establish the
+  first deployed thin slice on Vercel/Modal/Postgres and exercise real tablet input.
+  Exit: ask -> see/hear -> manipulate -> answer -> save, across two reference topics.
+- **November 3, first half: the learning loop.** B07b evidence, B08a consolidation,
+  B08b small map/review/resume. Review B09 baseline cases and run the capped GEPA
+  experiment only if the live loop is healthy. Exit: a second session uses traceable
+  prior evidence and serves an appropriate review, with duplicate-close protection.
+- **November 3, second half through 22:00: integration and freeze.** Complete the
+  release slice, multi-owner/isolation/recovery checks, browser journeys, correctness
+  review, latency/cost measurements and final UI polish. No optional feature may
+  consume this reserved verification block. Record the release commit and open issues.
+- **November 4:** record the working product, edit, check public links and submit.
+  Use the user-agreed deadline from the original plan; recheck the event page when
+  preparing submission rather than assuming its old schedule is still current.
+
+B06 diagram animation, additional Mermaid conversion, bounded 3D and image
+generation compete only for spare pre-freeze capacity. They do not delay B07/B08.
+See [FEATURE-COVERAGE.md](FEATURE-COVERAGE.md) for restored scope and explicit cuts.
+
+## Release strategy and schedule recovery
 
 B01/B02 establish the core; B03/B04 establish the intended voice experience.
 B05 is the first interactive-visual milestone. B06 is optional; B07/B08 establish
-the actual session-learning loop. B09 depends on evidence quality, not the calendar.
+the actual session-learning loop. B09's evaluator/baseline is required; optimizer
+execution/promotion depends on evidence quality and remaining pre-freeze time.
 
 Treat deployment as a small separate release slice when a tested milestone is ready:
 web on Vercel, CPU API on Modal, shared Postgres, hosted model APIs. Verify SSE,
@@ -214,5 +269,11 @@ Exclude or secure legacy unowned endpoints before exposing a public service.
 No AWS or own GPU fleet is required by this design. These are deployment choices,
 not a claim that the existing services have already been deployed or load-tested.
 
-Freeze at the highest stable milestone before demo day. Do not rush missing voice,
-widgets, or adaptation into an otherwise working demo; name omissions honestly.
+Maintain a working integrated build at every commit. If a daily exit gate slips,
+stop optional additions and report the concrete remaining work that day. Reduce
+widget types/parameters, map breadth, animation polish and experiment size first.
+Reuse the narrator, renderer, typed assessment and storage already present. Preserve
+voice/board interaction, one visual exploration, trustworthy checks and a real
+next-session change as the target product. Do not silently redefine these as later
+work. If a required capability cannot pass by freeze, explicitly report the miss
+and submit only working behavior rather than hide a failure or fabricate results.

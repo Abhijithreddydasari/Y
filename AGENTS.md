@@ -11,6 +11,7 @@ Read this index, then only the docs needed for the assigned build.
 - Learner experience: [docs/design.md](docs/design.md).
 - Next feature specification: [docs/builds/B01-natural-board-question.md](docs/builds/B01-natural-board-question.md).
 - Existing capture contracts/setup: [docs/board-context.md](docs/board-context.md).
+- Selective ECC skill use: [docs/ecc-usage.md](docs/ecc-usage.md); never install/configure it for the user.
 - Older hackathon plans and legacy architecture are historical, not current scope.
 
 ## Repo map
@@ -57,6 +58,10 @@ For changed-file lint, run `npm run lint -- src/path/to/changed-file.ts` (path r
 
 - One learner-visible feature per session, with tests, handoff, and a scoped commit.
 - Inspect git status first. Never reset, stage, or commit unrelated existing work.
+- Never read, search, index, or load files in `starvector_test/`, `research/`, or `training/` unless the user explicitly overrides this restriction.
+- Scope searches to active app/docs paths; exclude those folders even in repository-wide searches.
+- Do not load `docs/legacy/` by default; open a specific archived file only when requested or necessary for an explicitly scoped historical task.
+- Complete selected hackathon feature coding by November 3, 22:00 IST; November 4 is demo/submission and narrow fixes only.
 - No PR or push unless requested. Branch names must contain neither `codex` nor `data`.
 - Voice/pen-first shared board is the product; typed input is the first implementation slice.
 - Never require Practice, task-region creation, or capture review to ask for help.

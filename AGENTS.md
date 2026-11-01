@@ -64,6 +64,7 @@ For changed-file lint, run `npm run lint -- src/path/to/changed-file.ts` (path r
 - Do not load `docs/legacy/` by default; open a specific archived file only when requested or necessary for an explicitly scoped historical task.
 - Complete selected hackathon feature coding by November 3, 22:00 IST; November 4 is demo/submission and narrow fixes only.
 - No PR or push unless requested. Branch names must contain neither `codex` nor `data`.
+- No AI tool or assistant names and no co-author/attribution trailers in branches, commits or PRs.
 - Voice/pen-first shared board is the product; typed input is the first implementation slice.
 - Never require Practice, task-region creation, or capture review to ask for help.
 - Keep APIs, storage, and tutor logic independent of demo subjects.

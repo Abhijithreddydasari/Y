@@ -20,3 +20,10 @@ written from the verified release, not revived from these drafts.
 Active `../hackathon-contributions.md`, `../board-context.md` and
 `../learning-capture.md` remain outside this archive because they document current
 contribution boundaries and implemented capture behavior.
+
+Archived on 2026-11-01 after the H-slice plan replaced them:
+
+- `HACKATHON_PLAN.md`: the earlier October 29 hackathon architecture and calendar.
+- `B01-natural-board-question.md`: superseded by `../builds/H1-meta-tutor-turn.md`.
+- `FEATURE-COVERAGE.md`: B-numbered idea map; scope now lives in `../builds/ROADMAP.md`
+  and `../decisions/2026-11-01-harness.md`.

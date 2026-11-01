@@ -1,7 +1,7 @@
 # H1: Meta tutor turn with pause and resume
 
 Status: planned. Prerequisite: H0 baseline commit and contracts.
-Supersedes the earlier [B01 brief](B01-natural-board-question.md).
+Supersedes the earlier B01 brief (archived in `docs/legacy/`).
 
 ## Learner story
 

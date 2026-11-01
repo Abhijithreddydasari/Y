@@ -54,8 +54,8 @@ Passing examples demonstrates reuse, not universal subject accuracy.
 
 Keep exact equations/LaTeX, diagrams, saved canvases, two-subject topic packs,
 accessible tablet UI and independent-user isolation in the required feature set.
-See the [feature coverage map](builds/FEATURE-COVERAGE.md) for every earlier idea,
-including bounded 3D, Mermaid, images, tests, review and learning representation.
+The [roadmap](builds/ROADMAP.md) maps every in-scope idea to a slice; the earlier feature
+coverage map is archived in `legacy/`.
 
 Model-written executable sims are deferred. Collaborative classrooms, leaderboards, full
 exam administration, custom learner-model training and account/billing systems are outside

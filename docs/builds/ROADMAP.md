@@ -3,7 +3,7 @@
 Status: active plan, 2026-11-01 (replaces the earlier B00–B09 sequence). Feature coding
 ends **November 3, 22:00 IST**; November 4 is demo recording, editing and submission.
 Design rationale and measured provider behavior: [harness decisions](../decisions/2026-11-01-harness.md).
-Visual design overview: the "Y Harness Blueprint" artifact shared in the planning session.
+Visual design overview (diagrams): the "Y Harness Blueprint" artifact, https://claude.ai/artifact/7ezDiekZtjfS9g4x4N2CDi (owner access).
 
 Each slice delivers one learner-visible capability, with tests, a measured check and a scoped
 commit. Slices marked with the same day can run in parallel sessions when their file ownership

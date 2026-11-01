@@ -6,7 +6,20 @@
   measurements in [harness decisions](decisions/2026-11-01-harness.md). License: MIT.
 - Next session: **H0** (baseline checks, commit the inherited dirty tree in its own scope,
   shared contracts), then **H1** ([brief](builds/H1-meta-tutor-turn.md)).
+- Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
+  moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
+
+## Slice status
+
+Updated by whichever session finishes or integrates a slice. Details live in that slice's
+`docs/handoffs/Hn.md`.
+
+| Slice | Status | Commit | Handoff |
+|---|---|---|---|
+| H0 baseline + contracts | next | — | — |
+| H1 Meta tutor turn | planned | — | — |
+| H2–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 
@@ -24,8 +37,7 @@
   separately. These are historical results, not a freshly verified baseline.
 - Real browser capture smoke, live provider fidelity and Postgres runtime checks
   remain outstanding. This documentation session makes no live verification claim.
-- Next session: B00 baseline verification/review and scoped capture commit.
-  Next feature afterward: [B01](builds/B01-natural-board-question.md).
+- Next session (superseded by the H-plan above): B00 baseline, then B01.
 - No PR/push. Agent checks should precede requests for user testing; ask for
   device-only feedback or credentials only when needed.
 
@@ -35,10 +47,11 @@
 - `docs/GOALS.md`: product purpose, priorities and exclusions.
 - `docs/architecture.md`: intended system boundaries.
 - `docs/design.md`: learner behavior and UI rules.
-- `docs/builds/ROADMAP.md`: sequence and acceptance gates.
-- `docs/builds/FEATURE-COVERAGE.md`: earlier ideas, required/conditional/excluded scope.
+- `docs/builds/ROADMAP.md`: slices, day plan, file ownership and acceptance gates.
+- `docs/decisions/*.md`: settled decisions with the measurements behind them.
 - `docs/ecc-usage.md`: four on-demand skills plus one optional security specialist.
-- `docs/builds/Bxx-*.md`: one feature's detailed implementation contract.
+- `docs/builds/Hn-*.md`: one slice's detailed implementation contract.
+- `docs/handoffs/Hn.md`: what a slice session did, measured, left open and decided.
 - This file: active handoff, verification and next action.
 - Existing capture/setup docs: current API details and limitations.
 - Legacy architecture and earlier hackathon calendars are history, not current scope.
@@ -65,7 +78,8 @@ document and links. User instructions take precedence over repo documents.
    next step. Never mark a blocked check as passed.
 6. Stage only the slice's files/hunks and inspect the staged diff. Commit with a
    descriptive message, e.g. `feat: explain native board questions`. Never use
-   `git add .` on inherited work. No automatic push or PR.
+   `git add .` on inherited work. No automatic push or PR. No AI tool or assistant
+   names and no co-author/attribution trailers in branch names, commits or PRs.
 7. Report outcome, commit, checks and material limitation. An incomplete checkpoint
    commit must be labeled incomplete and does not close the build.
 
@@ -86,11 +100,41 @@ boundaries, not speculative file-by-file implementation instructions.
 
 ## Start a fresh chat
 
-Example instruction for the next feature after B00:
+Use one fresh chat per slice, not one per day: a slice fits comfortably in one context, and
+the repository docs carry everything between chats. A day is several chats. Slices that the
+roadmap marks as parallel can run at the same time only when their owned files do not
+overlap; give each its own worktree/branch so they never edit the same checkout.
 
-> Implement B01 from docs/builds/B01-natural-board-question.md. Read AGENTS.md and
-> docs/workflow.md first. Stay within this slice, test it, update the handoff and
-> make a scoped commit. Do not open a PR or push. Preserve unrelated work.
+What a new chat needs, in order (it should read nothing else up front):
+1. `AGENTS.md` (loaded automatically) — rules and repo map.
+2. This file — current handoff and slice status.
+3. `docs/builds/ROADMAP.md` — the slice's scope, gate and owned files.
+4. The slice brief `docs/builds/Hn-*.md`. If none exists, the chat writes it first and
+   asks the user to confirm before coding.
+5. `docs/decisions/2026-11-01-harness.md` — measured model behavior and settled choices.
+6. Handoffs of slices it depends on (`docs/handoffs/Hm.md`).
 
-For the immediate next session request B00 from the roadmap. Until its baseline
-commit exists, a fresh chat must account for the inherited working tree.
+Every slice chat ends by writing `docs/handoffs/Hn.md` (done, commit, checks run with mocked
+vs live labels, latency samples, open issues, decisions made), updating its row in
+**Slice status**, and committing. Parallel chats only touch their own handoff file; the
+end-of-day integration chat updates the table, merges branches and reruns all checks.
+
+### Kickoff prompts
+
+Slice chat:
+
+> Implement H\<n\> from docs/builds/ROADMAP.md. Read docs/workflow.md (current handoff and
+> slice status), the H\<n\> brief (write it first and show me if it doesn't exist) and
+> docs/decisions/2026-11-01-harness.md before coding. Stay inside the slice's owned files.
+> Test it (say which checks are mocked and which are live), write docs/handoffs/H\<n\>.md,
+> update the slice status and make a scoped commit. No push or PR.
+
+End-of-day integration chat:
+
+> Integrate today's slices. Read docs/workflow.md and every docs/handoffs/H*.md from today.
+> Merge the slice branches into the working branch, run the full frontend and backend
+> checks and the main browser journey, fix integration breaks only, update Slice status and
+> the current handoff, and write briefs for tomorrow's slices. Report what is behind the
+> day plan in docs/builds/ROADMAP.md.
+
+Until H0's baseline commit exists, a fresh chat must account for the inherited working tree.

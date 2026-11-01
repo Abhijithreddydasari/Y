@@ -5,12 +5,12 @@ export const runtime = "nodejs";
 export const maxDuration = 180;
 
 const ALLOWED = /^(identity|catalog|sessions|sessions\/[a-f0-9-]{36}(?:\/attempts)?|attempts\/[a-f0-9-]{36}(?:\/assess)?)$/;
-const BOARD = /^(sessions\/[a-f0-9-]{36}\/board(?:\/(?:edits|regions|attempts|context|teach|assets(?:\/[a-f0-9]{64})?))?|board-attempts\/[a-f0-9-]{36}(?:\/(?:assess|corrections))?)$/;
+const BOARD = /^(sessions\/[a-f0-9-]{36}\/tutor(?:\/turns)?|sessions\/[a-f0-9-]{36}\/board(?:\/(?:edits|regions|attempts|context|teach|assets(?:\/[a-f0-9]{64})?))?|board-attempts\/[a-f0-9-]{36}(?:\/(?:assess|corrections))?)$/;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const path = (await context.params).path.join("/");
   if (!ALLOWED.test(path) && !BOARD.test(path)) return Response.json({ detail: "Unknown learning endpoint" }, { status: 404 });
-  const streaming = path.endsWith("/teach");
+  const streaming = path.endsWith("/teach") || path.endsWith("/tutor/turns");
   const limit = path.endsWith("/assets") ? 2 * 1024 * 1024 : path.endsWith("/edits") ? 1024 * 1024 : 40_000;
   const origin = request.headers.get("origin");
   if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== request.nextUrl.origin)) {

@@ -22,6 +22,17 @@ describe("learning proxy boundary", () => {
     expect(stream.headers.get("Content-Type")).toBe("text/event-stream");
     expect(await stream.text()).toContain("event: done");
   });
+  it("forwards tutor state and streams tutor turns", async () => {
+    const sid = "12345678-1234-1234-1234-123456789abc";
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response('{"configured":true}'))
+      .mockResolvedValueOnce(new Response("event: done\ndata: {}\n\n", { headers: { "Content-Type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetcher);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/tutor`))).status).toBe(200);
+    const turn = await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST", body: "{}" }), context(`sessions/${sid}/tutor/turns`));
+    expect(turn.headers.get("X-Accel-Buffering")).toBe("no");
+    expect(fetcher.mock.calls[1][0]).toContain(`/learning/sessions/${sid}/tutor/turns`);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/tutor/other`))).status).toBe(404);
+  });
   it("rejects cross-origin writes and arbitrary paths before forwarding", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     const cross = await POST(new NextRequest("https://y.test/api/learning/identity", {

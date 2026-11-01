@@ -5,6 +5,8 @@ import CheckpointCard from "@/components/CheckpointCard";
 import EducatorPanel from "@/components/EducatorPanel";
 import LearnerPanel from "@/components/LearnerPanel";
 import Toolbar from "@/components/Toolbar";
+import TutorComposer from "@/components/TutorComposer";
+import TutorQuestionCard from "@/components/TutorQuestionCard";
 import type { useInterfaceMode } from "@/hooks/useInterfaceMode";
 import type { TutorSession } from "@/hooks/useTutorSession";
 
@@ -51,6 +53,8 @@ export default function StudioShell({ session, interfaceMode }: Props) {
         onCancel={session.cancelChat}
       />
       <CheckpointCard checkpoint={session.checkpoint} evidence={session.lastEvidence} />
+      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} />
+      <TutorComposer tutor={session.tutor} blocked={session.busy && !session.tutor.busy} onStop={session.stop} />
       {session.teacherMode && <EducatorPanel notes={session.educatorNotes} busy={session.educatorBusy} />}
     </div>
   );

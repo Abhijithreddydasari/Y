@@ -1,5 +1,11 @@
 # Y — a whiteboard tutor that learns with you
 
+Current development starts with [AGENTS.md](AGENTS.md),
+[product goals](docs/GOALS.md), and the [thin-slice roadmap](docs/builds/ROADMAP.md).
+See [the handoff](docs/workflow.md) for implemented versus planned behavior.
+The older demo and learner-adapter description below is not the completion status
+of the new shared-board workflow.
+
 Y reads a learner's whiteboard, teaches on the same canvas, asks a short
 checkpoint, and changes the next lesson using evidence from the answer. It is
 built for the moment when a learner can draw the question more easily than

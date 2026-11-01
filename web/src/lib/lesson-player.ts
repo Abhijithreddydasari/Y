@@ -105,6 +105,7 @@ class TextRevealer {
 }
 
 interface PlayerOptions {
+  validateSource?: () => boolean;
   origin: { x: number; y: number };
   handle: WhiteboardHandle;
   ttsEnabled: boolean;
@@ -117,6 +118,7 @@ interface PlayerOptions {
 }
 
 export class LessonPlayer {
+  private readonly validateSource?: () => boolean;
   private readonly origin: { x: number; y: number };
   private readonly handle: WhiteboardHandle;
   private readonly ttsEnabled: boolean;
@@ -136,6 +138,7 @@ export class LessonPlayer {
   private readonly warmed = new Map<string, Promise<PreparedSpeech | undefined>>();
 
   constructor(opts: PlayerOptions) {
+    this.validateSource = opts.validateSource;
     this.origin = opts.origin;
     this.handle = opts.handle;
     this.ttsEnabled = opts.ttsEnabled;
@@ -265,6 +268,7 @@ export class LessonPlayer {
 
   private async playOne(tag: PrimitiveTag): Promise<void> {
     if (this.signal?.aborted) return;
+    if (this.validateSource && !this.validateSource()) { this.cancel(); this.report("Your question changed. Ask again using the updated board."); return; }
     try {
       const cleanTag = sanitizeTag(tag);
 
@@ -274,6 +278,7 @@ export class LessonPlayer {
 
       const { convertToExcalidrawElements } = await loadExcalidraw();
       const els = convertToExcalidrawElements(skeletons, { regenerateIds: false });
+      if (this.validateSource && !this.validateSource()) { this.cancel(); return; }
       if (files) this.handle.addFiles(files);
 
       // For draw / draw_part: hide the image element initially so the

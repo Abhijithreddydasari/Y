@@ -1,0 +1,681 @@
+{
+  "schema_version": 1,
+  "description": "Two-session attention/softmax demo arc: session-1 evidence, the profile revision it produced, the brief that opens session 2, session 2's first turn, and the Constellation after both sessions.",
+  "observations": [
+    {
+      "schema_version": 1,
+      "observation_id": "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b",
+      "session_id": "5bc21b4d-13d4-5472-88cb-296598662888",
+      "check_id": "s1.c1",
+      "concept": "softmax",
+      "dimension": "understand",
+      "outcome": "incorrect",
+      "misconception": "softmax_is_linear_normalization",
+      "miss_class": "structural",
+      "assistance": {
+        "hint_ids": [],
+        "solution_revealed": false,
+        "self_reported_help": false
+      },
+      "confidence": 0.8,
+      "labeler": "deterministic",
+      "label_confidence": null,
+      "sources": [
+        {
+          "event_id": "b1c91241-ebfe-5d23-8bc2-b006a4ef13cc",
+          "modality": "tap",
+          "content_hash": "2352da7280f1decc3acf1ba84eb945c9fc2b7b541094e1d0992dbffd1b6664cc",
+          "element_ids": [],
+          "author": "learner"
+        }
+      ],
+      "created_at": "2026-11-03T09:40:00+00:00"
+    },
+    {
+      "schema_version": 1,
+      "observation_id": "59300456-aea2-5fa8-b41d-075ac6ed94c1",
+      "session_id": "5bc21b4d-13d4-5472-88cb-296598662888",
+      "check_id": "s1.c2",
+      "concept": "dot_product",
+      "dimension": "apply",
+      "outcome": "correct",
+      "misconception": null,
+      "miss_class": null,
+      "assistance": {
+        "hint_ids": [],
+        "solution_revealed": false,
+        "self_reported_help": false
+      },
+      "confidence": 0.7,
+      "labeler": "deterministic",
+      "label_confidence": null,
+      "sources": [
+        {
+          "event_id": "31e5c2cb-4e34-588a-82e6-1504a51cba00",
+          "modality": "typed",
+          "content_hash": "9250b9912ee91d6b46e23299459ecd6eb8154451d62558a3a0a708a77926ad04",
+          "element_ids": [],
+          "author": "learner"
+        }
+      ],
+      "created_at": "2026-11-03T09:40:00+00:00"
+    },
+    {
+      "schema_version": 1,
+      "observation_id": "d4bfbdae-d0d6-5575-9fd9-a6bed14cde0e",
+      "session_id": "5bc21b4d-13d4-5472-88cb-296598662888",
+      "check_id": "s1.c3",
+      "concept": "dot_product_variance",
+      "dimension": "analyze",
+      "outcome": "partial",
+      "misconception": null,
+      "miss_class": "execution",
+      "assistance": {
+        "hint_ids": [],
+        "solution_revealed": false,
+        "self_reported_help": false
+      },
+      "confidence": 0.4,
+      "labeler": "baseten",
+      "label_confidence": 0.72,
+      "sources": [
+        {
+          "event_id": "b8249401-eaa2-583d-95f9-7df43217391c",
+          "modality": "ink",
+          "content_hash": "de2d91dc0a2580414e9a70f7dfc76af727b69cac0838f2cbe0a88d12642efcbf",
+          "element_ids": [
+            "ink-17",
+            "ink-18"
+          ],
+          "author": "learner"
+        }
+      ],
+      "created_at": "2026-11-03T09:40:00+00:00"
+    },
+    {
+      "schema_version": 1,
+      "observation_id": "292ce661-f8cf-52e3-ad3f-64c2d8ebc3db",
+      "session_id": "5bc21b4d-13d4-5472-88cb-296598662888",
+      "check_id": "s1.c4",
+      "concept": "softmax_temperature",
+      "dimension": "understand",
+      "outcome": "correct",
+      "misconception": null,
+      "miss_class": null,
+      "assistance": {
+        "hint_ids": [
+          "s1.c4.h1"
+        ],
+        "solution_revealed": false,
+        "self_reported_help": false
+      },
+      "confidence": 0.6,
+      "labeler": "baseten",
+      "label_confidence": 0.88,
+      "sources": [
+        {
+          "event_id": "7fc3487d-c1f9-5d2f-9c68-d28b2596b380",
+          "modality": "spoken",
+          "content_hash": "1b2501a20fe1bcd82b48c8db1e0f9dd2da9de58d6b618fa04a81c51c3a86cea2",
+          "element_ids": [],
+          "author": "learner"
+        }
+      ],
+      "created_at": "2026-11-03T09:40:00+00:00"
+    }
+  ],
+  "profile_revision": {
+    "schema_version": 1,
+    "revision": 1,
+    "parent_revision": null,
+    "session_id": "5bc21b4d-13d4-5472-88cb-296598662888",
+    "observation_ids": [
+      "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b",
+      "59300456-aea2-5fa8-b41d-075ac6ed94c1",
+      "d4bfbdae-d0d6-5575-9fd9-a6bed14cde0e",
+      "292ce661-f8cf-52e3-ad3f-64c2d8ebc3db"
+    ],
+    "beliefs": [
+      {
+        "concept": "softmax",
+        "dimension": "understand",
+        "alpha": 1.0,
+        "beta": 2.6,
+        "half_life_hours": 18.0,
+        "last_evidence_at": "2026-11-03T09:40:00+00:00"
+      },
+      {
+        "concept": "dot_product",
+        "dimension": "apply",
+        "alpha": 2.8,
+        "beta": 1.0,
+        "half_life_hours": 72.0,
+        "last_evidence_at": "2026-11-03T09:40:00+00:00"
+      },
+      {
+        "concept": "dot_product_variance",
+        "dimension": "analyze",
+        "alpha": 1.5,
+        "beta": 1.6,
+        "half_life_hours": 24.0,
+        "last_evidence_at": "2026-11-03T09:40:00+00:00"
+      },
+      {
+        "concept": "softmax_temperature",
+        "dimension": "understand",
+        "alpha": 2.0,
+        "beta": 1.2,
+        "half_life_hours": 36.0,
+        "last_evidence_at": "2026-11-03T09:40:00+00:00"
+      }
+    ],
+    "misconceptions": [
+      {
+        "id": "softmax_is_linear_normalization",
+        "concept": "softmax",
+        "description": "Treats softmax as dividing each score by the sum, so expects scaling all scores to leave the weights unchanged.",
+        "status": "active",
+        "evidence": [
+          "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b"
+        ]
+      }
+    ],
+    "notes": [
+      {
+        "text": "Temperature intuition landed after one hint; reuse it to explain scaling scores.",
+        "cites": [
+          "292ce661-f8cf-52e3-ad3f-64c2d8ebc3db"
+        ]
+      },
+      {
+        "text": "Computes a dot product fluently by hand; skip the definition.",
+        "cites": [
+          "59300456-aea2-5fa8-b41d-075ac6ed94c1"
+        ]
+      }
+    ],
+    "consolidator": "meta-models/muse-spark-open-1026",
+    "created_at": "2026-11-03T09:40:00+00:00"
+  },
+  "brief": {
+    "schema_version": 1,
+    "brief_id": "9e7d0152-fe07-555b-8c11-9cb7ed9a682d",
+    "topic": "Scaled dot-product attention",
+    "profile_revision": 1,
+    "items": [
+      {
+        "id": "K1",
+        "kind": "known",
+        "concept": "dot_product",
+        "text": "Computes dot products by hand and reads them as similarity.",
+        "evidence": [
+          "59300456-aea2-5fa8-b41d-075ac6ed94c1"
+        ]
+      },
+      {
+        "id": "S1",
+        "kind": "shaky",
+        "concept": "dot_product_variance",
+        "text": "Knows variances of independent terms add, but stalls on the variance of a product of two unit-variance components.",
+        "evidence": [
+          "d4bfbdae-d0d6-5575-9fd9-a6bed14cde0e"
+        ]
+      },
+      {
+        "id": "M3",
+        "kind": "misconception",
+        "concept": "softmax",
+        "text": "Thinks softmax divides each score by the sum, so believes multiplying all scores by a constant leaves the weights unchanged (confident: 0.8).",
+        "evidence": [
+          "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b"
+        ]
+      },
+      {
+        "id": "P1",
+        "kind": "preference",
+        "concept": null,
+        "text": "Prefers a small numeric example before the general formula.",
+        "evidence": []
+      },
+      {
+        "id": "N2",
+        "kind": "note",
+        "concept": "softmax_temperature",
+        "text": "Understood temperature as sharpening or flattening a distribution after one hint.",
+        "evidence": [
+          "292ce661-f8cf-52e3-ad3f-64c2d8ebc3db"
+        ]
+      }
+    ]
+  },
+  "turn": {
+    "moves": [
+      {
+        "type": "seg",
+        "id": "s1",
+        "goal": "Test the sum-normalization idea on numbers"
+      },
+      {
+        "type": "because",
+        "refs": [
+          "M3",
+          "P1"
+        ],
+        "text": "Last time softmax looked like dividing by the sum; let us test that with numbers."
+      },
+      {
+        "type": "write",
+        "text": "Scores [2, 1] versus [20, 10]"
+      },
+      {
+        "type": "predict",
+        "q": "Do [2, 1] and [20, 10] get the same softmax weights?",
+        "options": [
+          "Yes, same ratio",
+          "No, [20, 10] is sharper"
+        ],
+        "answer": "No, [20, 10] is sharper"
+      },
+      {
+        "type": "equation",
+        "latex": "\\mathrm{softmax}(z)_i = \\frac{e^{z_i}}{\\sum_j e^{z_j}}"
+      },
+      {
+        "type": "say",
+        "text": "Softmax exponentiates first, so multiplying every score by ten widens the gaps."
+      },
+      {
+        "type": "seg",
+        "id": "s2",
+        "goal": "Connect scale to temperature"
+      },
+      {
+        "type": "because",
+        "refs": [
+          "N2"
+        ],
+        "text": "You already read temperature as sharpening or flattening."
+      },
+      {
+        "type": "widget",
+        "kind": "attention",
+        "spec": "{\"tokens\": [\"the\", \"cat\", \"sat\", \"down\"], \"temp\": 1.0}"
+      },
+      {
+        "type": "equation",
+        "latex": "\\mathrm{Attention}(Q,K,V) = \\mathrm{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V"
+      },
+      {
+        "type": "say",
+        "text": "Dividing by the square root of d k acts like a temperature that undoes the growth of dot products."
+      },
+      {
+        "type": "check",
+        "kind": "mcq",
+        "q": "If d_k grows from 16 to 64 without scaling, what happens to the weights?",
+        "key": "They get sharper",
+        "concept": "scaled_dot_product",
+        "dim": "apply",
+        "options": [
+          "They stay the same",
+          "They get sharper",
+          "They get flatter"
+        ]
+      },
+      {
+        "type": "turn_end",
+        "reason": "wait"
+      }
+    ]
+  },
+  "constellation": {
+    "schema_version": 1,
+    "revision": 2,
+    "nodes": [
+      {
+        "id": "vectors",
+        "label": "Vectors",
+        "state": "unseen",
+        "dimensions": [],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      },
+      {
+        "id": "dot_product",
+        "label": "Dot product",
+        "state": "solid",
+        "dimensions": [
+          {
+            "dimension": "apply",
+            "mean": 0.74,
+            "evidence_count": 1
+          }
+        ],
+        "misconceptions": [],
+        "evidence": [
+          "59300456-aea2-5fa8-b41d-075ac6ed94c1"
+        ],
+        "due": false
+      },
+      {
+        "id": "dot_product_variance",
+        "label": "Variance of dot products",
+        "state": "shaky",
+        "dimensions": [
+          {
+            "dimension": "analyze",
+            "mean": 0.48,
+            "evidence_count": 1
+          }
+        ],
+        "misconceptions": [],
+        "evidence": [
+          "d4bfbdae-d0d6-5575-9fd9-a6bed14cde0e"
+        ],
+        "due": true
+      },
+      {
+        "id": "exponentials",
+        "label": "Exponentials",
+        "state": "unseen",
+        "dimensions": [],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      },
+      {
+        "id": "softmax",
+        "label": "Softmax",
+        "state": "learning",
+        "dimensions": [
+          {
+            "dimension": "understand",
+            "mean": 0.61,
+            "evidence_count": 3
+          },
+          {
+            "dimension": "apply",
+            "mean": 0.58,
+            "evidence_count": 1
+          }
+        ],
+        "misconceptions": [],
+        "evidence": [
+          "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b"
+        ],
+        "due": false
+      },
+      {
+        "id": "softmax_temperature",
+        "label": "Temperature",
+        "state": "learning",
+        "dimensions": [
+          {
+            "dimension": "understand",
+            "mean": 0.63,
+            "evidence_count": 1
+          }
+        ],
+        "misconceptions": [],
+        "evidence": [
+          "292ce661-f8cf-52e3-ad3f-64c2d8ebc3db"
+        ],
+        "due": false
+      },
+      {
+        "id": "query_key_value",
+        "label": "Queries, keys, values",
+        "state": "unseen",
+        "dimensions": [],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      },
+      {
+        "id": "scaled_dot_product",
+        "label": "Scaled dot-product",
+        "state": "learning",
+        "dimensions": [
+          {
+            "dimension": "understand",
+            "mean": 0.6,
+            "evidence_count": 1
+          },
+          {
+            "dimension": "apply",
+            "mean": 0.66,
+            "evidence_count": 1
+          }
+        ],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      },
+      {
+        "id": "attention_weights",
+        "label": "Attention weights",
+        "state": "unseen",
+        "dimensions": [],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      },
+      {
+        "id": "gradient_saturation",
+        "label": "Softmax saturation",
+        "state": "unseen",
+        "dimensions": [],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      },
+      {
+        "id": "multi_head_attention",
+        "label": "Multi-head attention",
+        "state": "unseen",
+        "dimensions": [],
+        "misconceptions": [],
+        "evidence": [],
+        "due": false
+      }
+    ],
+    "edges": [
+      {
+        "source": "vectors",
+        "target": "dot_product",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "dot_product",
+        "target": "dot_product_variance",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "exponentials",
+        "target": "softmax",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "softmax",
+        "target": "softmax_temperature",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "dot_product",
+        "target": "query_key_value",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "query_key_value",
+        "target": "scaled_dot_product",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "dot_product_variance",
+        "target": "scaled_dot_product",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "softmax",
+        "target": "scaled_dot_product",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "scaled_dot_product",
+        "target": "attention_weights",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "attention_weights",
+        "target": "multi_head_attention",
+        "kind": "prerequisite"
+      },
+      {
+        "source": "softmax_temperature",
+        "target": "scaled_dot_product",
+        "kind": "related"
+      },
+      {
+        "source": "gradient_saturation",
+        "target": "softmax_temperature",
+        "kind": "related"
+      },
+      {
+        "source": "softmax",
+        "target": "gradient_saturation",
+        "kind": "prerequisite"
+      }
+    ],
+    "revisions": [
+      {
+        "revision": 1,
+        "session_id": "5bc21b4d-13d4-5472-88cb-296598662888",
+        "created_at": "2026-11-03T09:40:00+00:00",
+        "summary": "Session 1: softmax misconception found; dot products solid.",
+        "nodes": [
+          {
+            "id": "dot_product",
+            "label": "Dot product",
+            "state": "solid",
+            "dimensions": [
+              {
+                "dimension": "apply",
+                "mean": 0.74,
+                "evidence_count": 1
+              }
+            ],
+            "misconceptions": [],
+            "evidence": [
+              "59300456-aea2-5fa8-b41d-075ac6ed94c1"
+            ],
+            "due": false
+          },
+          {
+            "id": "dot_product_variance",
+            "label": "Variance of dot products",
+            "state": "shaky",
+            "dimensions": [
+              {
+                "dimension": "analyze",
+                "mean": 0.48,
+                "evidence_count": 1
+              }
+            ],
+            "misconceptions": [],
+            "evidence": [
+              "d4bfbdae-d0d6-5575-9fd9-a6bed14cde0e"
+            ],
+            "due": true
+          },
+          {
+            "id": "softmax",
+            "label": "Softmax",
+            "state": "misconception",
+            "dimensions": [
+              {
+                "dimension": "understand",
+                "mean": 0.28,
+                "evidence_count": 1
+              }
+            ],
+            "misconceptions": [
+              "softmax_is_linear_normalization"
+            ],
+            "evidence": [
+              "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b"
+            ],
+            "due": true
+          },
+          {
+            "id": "softmax_temperature",
+            "label": "Temperature",
+            "state": "learning",
+            "dimensions": [
+              {
+                "dimension": "understand",
+                "mean": 0.63,
+                "evidence_count": 1
+              }
+            ],
+            "misconceptions": [],
+            "evidence": [
+              "292ce661-f8cf-52e3-ad3f-64c2d8ebc3db"
+            ],
+            "due": false
+          }
+        ]
+      },
+      {
+        "revision": 2,
+        "session_id": "1548a5f7-4962-5c9f-ae5f-e33ca3b17f60",
+        "created_at": "2026-11-03T10:25:00+00:00",
+        "summary": "Session 2: scaling tested on numbers; softmax misconception receding.",
+        "nodes": [
+          {
+            "id": "softmax",
+            "label": "Softmax",
+            "state": "learning",
+            "dimensions": [
+              {
+                "dimension": "understand",
+                "mean": 0.61,
+                "evidence_count": 3
+              },
+              {
+                "dimension": "apply",
+                "mean": 0.58,
+                "evidence_count": 1
+              }
+            ],
+            "misconceptions": [],
+            "evidence": [
+              "5c85b618-eb56-5a81-8b0a-874ed0c7ec6b"
+            ],
+            "due": false
+          },
+          {
+            "id": "scaled_dot_product",
+            "label": "Scaled dot-product",
+            "state": "learning",
+            "dimensions": [
+              {
+                "dimension": "understand",
+                "mean": 0.6,
+                "evidence_count": 1
+              },
+              {
+                "dimension": "apply",
+                "mean": 0.66,
+                "evidence_count": 1
+              }
+            ],
+            "misconceptions": [],
+            "evidence": [],
+            "due": false
+          }
+        ]
+      }
+    ]
+  }
+}

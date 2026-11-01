@@ -222,6 +222,7 @@ export class LessonRenderer {
       const offsetX = (COL_WIDTH - drawW) / 2;
       const skel: ExcalidrawElementSkeleton = {
         type: "image",
+        customData: { ySemantic: { kind: "equation", latex } },
         fileId: id,
         x: this.narrationX + offsetX,
         y: this.narrationY,
@@ -381,6 +382,7 @@ export class LessonRenderer {
     const imageId = makeRevealId();
     const imageSkel: ExcalidrawElementSkeleton = {
       type: "image",
+      customData: { ySemantic: { kind: "diagram", svg: parsed.outerSvg, caption: partName } },
       id: imageId,
       fileId,
       x: session.x,
@@ -452,6 +454,7 @@ export class LessonRenderer {
       id: imageId,
       fileId,
       x,
+      customData: { ySemantic: { kind: "diagram", svg: parsed.outerSvg, caption } },
       y,
       width: w,
       height: h,

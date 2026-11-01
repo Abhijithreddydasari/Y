@@ -2,9 +2,14 @@
 
 This file records the principal model, data, and runtime assets used by Y v2.
 It is not a substitute for the complete license texts distributed by each
-upstream project. The machine-readable dependency inventory is
-`sbom.spdx.json` and can be regenerated with
-`api/.venv/Scripts/python.exe api/scripts/generate_sbom.py`.
+upstream project. Generate the machine-readable dependency inventory from the
+lockfiles when needed (CMD, from the repository root):
+
+```bat
+api\.venv\Scripts\python.exe api\scripts\generate_sbom.py
+```
+
+This produces `sbom.spdx.json`, a generated artifact excluded from Git.
 
 ## Speech
 
@@ -41,4 +46,5 @@ source names, licenses, random seeds, and content hashes.
 ## Application libraries
 
 Python and JavaScript dependencies, resolved versions, and archive hashes are
-listed in `api/uv.lock`, `web/package-lock.json`, and `sbom.spdx.json`.
+listed in `api/uv.lock` and `web/package-lock.json`. The optional generated
+`sbom.spdx.json` combines those inventories.

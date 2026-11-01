@@ -15,6 +15,8 @@ New work on `feature/session-learning-capture`:
 
 This work does not include a live provider accuracy result, deployed service, trained model, GEPA optimization run, or measured retention improvement. No PR has been opened.
 
+Board-context branch adds versioned scene capture, IndexedDB recovery, app-observed authorship, automatic task regions, bounded structured context/crops, a replaceable Meta reader, lease-protected interpretation caching, provisional board assessment, and the authenticated structured-context bridge to existing teaching providers. These changes preserve evidence rather than updating the learner profile. Live handwriting accuracy and browser smoke verification remain outstanding; see [board context](board-context.md).
+
 October 30 follow-up:
 
 - Added hosted Baseten Elephant, Mammoth, and Joey selection using the same evidence contracts. Elephant is the default; TypeSafe Jev remains explicitly selectable. Mutable model aliases are marked in observations.

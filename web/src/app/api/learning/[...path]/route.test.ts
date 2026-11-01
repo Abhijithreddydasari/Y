@@ -7,6 +7,21 @@ afterEach(() => vi.unstubAllGlobals());
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split("/") }) });
 
 describe("learning proxy boundary", () => {
+  it("preserves board revision queries, binary assets and teaching streams", async () => {
+    const sid = "12345678-1234-1234-1234-123456789abc";
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response("{}"))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2]), { headers: { "Content-Type": "image/png" } }))
+      .mockResolvedValueOnce(new Response("event: done\ndata: {}\n\n", { headers: { "Content-Type": "text/event-stream" } }));
+    vi.stubGlobal("fetch", fetcher);
+    await GET(new NextRequest(`https://y.test/api/learning/sessions/${sid}/board?revision=5`), context(`sessions/${sid}/board`));
+    expect(fetcher.mock.calls[0][0]).toContain("?revision=5");
+    const image = await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/board/assets/${"a".repeat(64)}`));
+    expect(image.headers.get("Content-Type")).toBe("image/png");
+    expect([...new Uint8Array(await image.arrayBuffer())]).toEqual([1, 2]);
+    const stream = await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST", body: "{}" }), context(`sessions/${sid}/board/teach`));
+    expect(stream.headers.get("Content-Type")).toBe("text/event-stream");
+    expect(await stream.text()).toContain("event: done");
+  });
   it("rejects cross-origin writes and arbitrary paths before forwarding", async () => {
     const fetcher = vi.fn(); vi.stubGlobal("fetch", fetcher);
     const cross = await POST(new NextRequest("https://y.test/api/learning/identity", {

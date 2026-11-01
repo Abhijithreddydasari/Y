@@ -10,6 +10,7 @@ import { LessonPlayer } from "@/lib/lesson-player";
 import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
+import { streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
 
 interface CachedLesson {
   primitives: PrimitiveTag[];
@@ -237,8 +238,8 @@ export function useTutorSession(): TutorSession {
         roughness: shape.roughness ?? 1,
       });
     }
-    handle.clearAll();
-    handle.appendElements(convertToExcalidrawElements(skeletons));
+    handle.clearAll("system");
+    handle.appendElements(convertToExcalidrawElements(skeletons), "system");
     setCheckpoint(null);
     setLastEvidence(null);
     setStatus(`${subject[0].toUpperCase()}${subject.slice(1)} sample ready. Tap Teach me.`);
@@ -255,6 +256,7 @@ export function useTutorSession(): TutorSession {
     let origin: { x: number; y: number };
     let liveBlob: Blob | null = null;
     let cachedPrimitives: PrimitiveTag[] = [];
+    let prepared: { request: ContextRequest; packet: Packet } | null = null;
     if (mode === "replay") {
       if (!cachedRef.current) {
         setStatus("There is no lesson to replay yet.");
@@ -264,14 +266,20 @@ export function useTutorSession(): TutorSession {
       origin = cachedRef.current.origin;
       cachedPrimitives = cachedRef.current.primitives;
     } else {
-      const region = getAnswerRegion(getStudentBbox(handle.getElements()));
-      origin = { x: region.x, y: region.y };
-      liveBlob = await handle.exportPng();
-      if (!liveBlob) {
-        setStatus("I could not read the board. Add a question and try again.");
-        setBusy(false);
-        return;
-      }
+      try {
+        if (handle.board) {
+          setStatus("Saving relevant board context…");
+          prepared = await handle.board.prepare(undefined, true);
+          handle.board.generationSource = prepared.packet.source;
+          handle.board.generationArea = prepared.packet.response_area;
+          origin = prepared.packet.response_area;
+        } else {
+          const region = getAnswerRegion(getStudentBbox(handle.getElements()));
+          origin = { x: region.x, y: region.y };
+          liveBlob = await handle.exportPng();
+          if (!liveBlob) throw new Error("I could not read the board. Add a question and try again.");
+        }
+      } catch (error) { setStatus((error as Error).message); setBusy(false); return; }
       setStatus("Reading your board…");
     }
     const controller = new AbortController();
@@ -279,14 +287,27 @@ export function useTutorSession(): TutorSession {
     const player = new LessonPlayer({
       origin, handle, ttsEnabled, voiceName: voiceRef.current, onProgress: setStatus,
       onNarratingChange: setNarrating, signal: controller.signal,
+      validateSource: prepared ? () => Boolean(handle.board?.validSource(prepared!.packet.source)) : undefined,
     });
     playerRef.current = player;
+    if (prepared && handle.board) handle.board.onStaleSource = () => {
+      controller.abort(); player.cancel(); setStatus("Your question changed. Ask again using the updated board.");
+    };
     const collected: PrimitiveTag[] = [];
     const transcriptId = mode === "live" ? beginTranscript("lesson") : "";
     let streamError = "";
     let generationFinish: Promise<void> | null = null;
     try {
-      if (mode === "live" && liveBlob) {
+      if (mode === "live" && prepared && handle.board) {
+        await streamBoardTeach(handle.board.session, prepared.request, modelChoice, (event, value) => {
+          if (!handle.board?.validSource(prepared!.packet.source)) { controller.abort(); player.cancel(); throw new Error("Your question changed. Ask again using the updated board."); }
+          if (event === "primitive") {
+            const tag = value as PrimitiveTag;
+            collected.push(tag); player.enqueue(tag); appendTranscriptPrimitive(transcriptId, tag);
+          }
+          if (event === "status") setStatus((value as { text: string }).text);
+        }, controller.signal);
+      } else if (mode === "live" && liveBlob) {
         if (teacherMode) setEducatorBusy(true);
         await streamLesson(liveBlob, {
           onPrimitive: (tag) => { collected.push(tag); player.enqueue(tag); appendTranscriptPrimitive(transcriptId, tag); },
@@ -306,6 +327,7 @@ export function useTutorSession(): TutorSession {
         for (const tag of cachedPrimitives) player.enqueue(tag);
       }
       await player.finishDrawing();
+      if (handle.board) await handle.board.flush();
       setStatus(streamError ? `The lesson stopped: ${streamError}` : mode === "live"
         ? "Lesson ready. Ask a follow-up in chat or try another question." : "Replay complete.");
       if (mode === "live" && collected.length) {

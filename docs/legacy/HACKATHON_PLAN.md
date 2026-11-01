@@ -450,7 +450,7 @@ Implementation update: the first capture slice is on `feature/session-learning-c
 
 ### October 30 — Saved sessions and one real teaching loop
 
-Implementation status: added interchangeable Baseten/TypeSafe decision providers and hardened capture recovery and response validation. This follow-up does **not** complete today's saved-canvas/Meta teaching loop or the November 1 consolidation milestone. The current Practice flow persists typed attempts and assessments only; `profile_updated` remains false. See [current setup and boundaries](docs/learning-capture.md).
+Implementation status: `feature/board-context` now adds saved scene revisions/assets, edit attribution, automatic Practice regions, bounded context/crops, on-request Meta perception, provisional board assessment, and a structured-context bridge to existing teaching providers. Automated checks passed (118 backend, 32 frontend, lint/TypeScript/build); browser smoke, live provider fidelity, and Postgres runtime verification remain outstanding. See [board setup and boundaries](docs/board-context.md). The broader Meta teaching redesign and session consolidation remain subsequent work; `profile_updated` stays false.
 
 - Add transactional ownership, sessions/events, scene restoration, task/attempt identities, and idempotency.
 - Tag board authorship; bind typed/voice/board answers to the same task.

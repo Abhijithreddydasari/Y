@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import type { WhiteboardHandle } from "./Whiteboard";
+import { boardRequest, type BoardAttempt } from "@/lib/board-api";
 import {
   assessAnswer, captureAnswer, createPracticeSession, ensureLearningIdentity,
   fetchPracticeCatalog, fetchPracticeSession, LearningError,
@@ -8,6 +10,14 @@ import {
 } from "@/lib/learning-api";
 
 const SESSION_KEY = "y_practice_session_v1";
+
+function originalCropHashes(packet: BoardAttempt["packet"]) {
+  const hashes = packet.crops
+    ? packet.crops.filter(crop => crop.purpose === "initial").map(crop => crop.asset_hash)
+    : packet.source.crop_hashes;
+  // A re-read can reuse identical pixels; receipts retain both references.
+  return [...new Set(hashes)].slice(0, 2);
+}
 
 function observationText(observation: NonNullable<CapturedAnswer["assessment"]>["observations"][number]) {
   if (observation.reasons.some(reason => reason.startsWith("provider_"))) return "Assessment unavailable — your answer has not been judged";
@@ -19,7 +29,7 @@ function observationText(observation: NonNullable<CapturedAnswer["assessment"]>[
   return observation.label === "supported" ? "Numerical answer checks out" : "Numerical answer needs another look";
 }
 
-export default function PracticePanel() {
+export default function PracticePanel({ board }: { board?: WhiteboardHandle | null }) {
   const [open, setOpen] = useState(false);
   const [packs, setPacks] = useState<PracticePack[]>([]);
   const [taskId, setTaskId] = useState("");
@@ -32,6 +42,8 @@ export default function PracticePanel() {
   const [sessionId, setSessionId] = useState("");
   const [pending, setPending] = useState<CaptureInput | null>(null);
   const inFlight = useRef(false);
+  const [boardHistory, setBoardHistory] = useState<BoardAttempt[]>([]);
+  const [correction, setCorrection] = useState("");
   const tasks = packs.flatMap(pack => pack.tasks);
   const selected = tasks.find(task => task.task_id === taskId);
 
@@ -40,13 +52,14 @@ export default function PracticePanel() {
   }
 
   async function initialize() {
+    if (board === null) { setError("Wait until your board has restored."); return; }
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true); setError("");
     try {
       await ensureLearningIdentity();
       const catalog = await fetchPracticeCatalog();
-      let id = window.sessionStorage.getItem(SESSION_KEY) || crypto.randomUUID();
+      let id = board?.board?.session || window.sessionStorage.getItem(SESSION_KEY) || crypto.randomUUID();
       try { await createPracticeSession(id); }
       catch (cause) {
         if (!(cause instanceof LearningError) || cause.status !== 404) throw cause;
@@ -59,6 +72,7 @@ export default function PracticePanel() {
       setPacks(catalog.packs);
       setTaskId(current => current || catalog.packs[0]?.tasks[0]?.task_id || "");
       setHistory(restored.attempts);
+      if (board?.board) setBoardHistory(await boardRequest<BoardAttempt[]>(`sessions/${id}/board/attempts`));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Practice could not load."); }
     finally { setBusy(false); inFlight.current = false; }
   }
@@ -93,6 +107,23 @@ export default function PracticePanel() {
     finally { setBusy(false); inFlight.current = false; }
   }
 
+  async function boardWork(start = false, attemptId?: string) {
+    if (!board?.board || inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError("");
+    try {
+      if (start) { await board.board.startTask(taskId); return; }
+      const currentRegion = board.board.state.regions.find(r => r.region_id === board.board?.state.active_region);
+      if (!attemptId && currentRegion?.task_id !== taskId) throw new Error("Choose Answer on board to create an area for this task first.");
+      const prepared = attemptId ? null : await board.board.prepare({ self_reported_help: help, solution_revealed: revealed });
+      const id = attemptId ?? prepared!.request.request_id;
+      const saved = await boardRequest<BoardAttempt>(`board-attempts/${id}`);
+      setBoardHistory(current => [...current.filter(a => a.attempt_id !== id), saved]);
+      const assessed = await boardRequest<BoardAttempt>(`board-attempts/${id}/assess`, {});
+      setBoardHistory(current => [...current.filter(a => a.attempt_id !== id), assessed]);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Board check failed. Saved work can be retried."); }
+    finally { setBusy(false); inFlight.current = false; }
+  }
+
   return (
     <aside className="pointer-events-auto fixed right-3 top-36 z-[65] max-w-[calc(100vw-24px)] sm:top-24" aria-label="Practice and evidence">
       <button type="button" aria-expanded={open} aria-controls="practice-panel" onClick={() => {
@@ -113,6 +144,10 @@ export default function PracticePanel() {
             </select>
           </label>
           <p className="my-3 text-sm leading-6">{selected?.prompt}</p>
+          {board?.board && <div className="mb-3 flex gap-2">
+            <button type="button" disabled={busy} onClick={() => void boardWork(true)} className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-800 disabled:opacity-50">Answer on board</button>
+            <button type="button" disabled={busy} onClick={() => void boardWork()} className="rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">Check board work</button>
+          </div>}
           <label className="block text-xs font-semibold">Your answer
             <textarea value={text} maxLength={8000} disabled={busy || Boolean(pending)} onChange={event => setText(event.target.value)} rows={4} className="mt-1 w-full resize-y rounded-lg border border-slate-300 p-2 text-sm" />
           </label>
@@ -122,6 +157,24 @@ export default function PracticePanel() {
           {pending && !busy && <button type="button" onClick={() => { setPending(null); setError(""); }} className="mt-2 text-xs underline">Write a new attempt</button>}
         </form>}
         <div aria-live="polite" aria-busy={busy}>
+          {[...boardHistory].reverse().map(answer => <article key={answer.attempt_id} className="mt-3 rounded-xl border border-indigo-100 p-3 text-xs">
+            <p className="font-semibold">Board answer · revision {answer.packet.source.revision}</p>
+            <p className="mt-1">{answer.result?.status.replaceAll("_", " ") || "Saved; awaiting assessment"}</p>
+            {answer.result?.provider_error && <p className="mt-1 text-amber-800">Assessment unavailable. Your original work is saved.</p>}
+            {answer.result?.observations.map((o, i) => <p key={i}>{o.dimension}: {o.label} · {o.status}</p>)}
+            <details className="mt-2"><summary>How Y read this</summary>
+              {answer.packet.focused.filter(f => f.text).map(f => <p key={f.id} className="mt-1 whitespace-pre-wrap">{f.text} · {f.creator}{f.mixed ? " / mixed" : ""}</p>)}
+              {answer.result?.interpretation?.items.map((item, i) => <p key={i} className="mt-1 whitespace-pre-wrap">{item.text || "Unreadable marks"} · {item.status}</p>)}
+              <p className="mt-2 break-all">Source: {answer.packet.source.content_hash}</p>
+              {originalCropHashes(answer.packet).map(hash => <a key={hash} className="mr-2 underline" target="_blank" rel="noreferrer" href={`/api/learning/sessions/${sessionId}/board/assets/${hash}`}>View original crop</a>)}
+              <label className="mt-2 block">Clarify the reading<input value={correction} maxLength={8000} onChange={e => setCorrection(e.target.value)} className="mt-1 w-full rounded border p-1" /></label>
+              <button type="button" disabled={!correction.trim() || busy} className="mt-1 underline" onClick={() => {
+                void boardRequest<BoardAttempt>(`board-attempts/${answer.attempt_id}/corrections`, { correction_id: crypto.randomUUID(), text: correction }).then(updated => { setBoardHistory(current => current.map(a => a.attempt_id === updated.attempt_id ? updated : a)); setCorrection(""); }).catch(() => setError("Could not save that clarification. Retry."));
+              }}>Save clarification</button>
+              {answer.corrections.map((c, i) => <p key={i}>Learner clarification: {c.text}</p>)}
+            </details>
+            {(!answer.result || answer.result.provider_error) && <button type="button" disabled={busy} className="mt-2 underline" onClick={() => void boardWork(false, answer.attempt_id)}>Retry board assessment</button>}
+          </article>)}
           {busy && !packs.length && <p className="mt-3 text-sm">Loading your practice session…</p>}
           {history.length > 0 && <h3 className="mt-5 text-sm font-semibold">Saved attempts</h3>}
           {[...history].reverse().map(answer => <article key={answer.attempt_id} className="mt-3 rounded-xl bg-slate-50 p-3 text-xs">

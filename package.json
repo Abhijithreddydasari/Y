@@ -1,0 +1,14 @@
+{
+  "name": "y",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Repository commands for the Y whiteboard tutor",
+  "scripts": {
+    "setup": "npm --prefix web ci --legacy-peer-deps",
+    "dev": "npm --prefix web run dev --",
+    "build": "npm --prefix web run build --",
+    "start": "npm --prefix web run start --",
+    "test": "npm --prefix web run test --",
+    "lint": "npm --prefix web run lint --"
+  }
+}

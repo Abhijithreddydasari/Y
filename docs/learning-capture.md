@@ -2,6 +2,8 @@
 
 Branch: `feature/session-learning-capture`.
 
+Board-context follow-up: see [board-context.md](board-context.md) for saved scenes, provenance, automatic answer regions, on-request handwriting reading, bounded teaching context, schema upgrades, and current verification boundaries.
+
 This implements the October 29 capture milestone. A learner can open **Practice** on `/app`, select a task, submit an exact typed answer, inspect its evidence receipt, and recover the attempt after refresh or provider failure. It does **not** claim that persistent self-learning or improved learning outcomes have been demonstrated.
 
 ## What is implemented
@@ -19,7 +21,7 @@ This implements the October 29 capture milestone. A learner can open **Practice*
 
 The existing `main:app` serves `/learning/*`. For capture-only development without Torch, Ollama, or speech warmup:
 
-```powershell
+```bat
 cd api
 uv sync --extra postgres
 .\.venv\Scripts\python.exe -m uvicorn learning.app:app --env-file ../.env --port 8101
@@ -27,9 +29,9 @@ uv sync --extra postgres
 
 In another terminal:
 
-```powershell
+```bat
 cd web
-$env:LEARNING_API_BASE = 'http://127.0.0.1:8101'
+set "LEARNING_API_BASE=http://127.0.0.1:8101"
 npm.cmd run dev
 ```
 
@@ -50,13 +52,13 @@ Alternatives are `decision-models/baseten-mammoth-27b-latest` and `decision-mode
 
 For TypeSafe instead, set `DECISION_PROVIDER=jev`, `TYPESAFE_API_KEY`, and `JEV_MODEL=jev-1.14.0`. The Meta preflight uses `META_MODEL=muse-spark-1.3` unless overridden. Restart the API after changing its environment.
 
-```powershell
+```bat
 cd api
-# Configuration checks; no paid calls:
+REM Configuration checks; no paid calls:
 .\.venv\Scripts\python.exe scripts/learning_preflight.py
-# Tiny synthetic provider calls after adding credentials:
+REM Tiny synthetic provider calls after adding credentials:
 .\.venv\Scripts\python.exe scripts/learning_preflight.py --live
-# Initialize only the new learning tables in the configured database:
+REM Initialize only the new learning tables in the configured database:
 .\.venv\Scripts\python.exe scripts/learning_preflight.py --init-db
 ```
 

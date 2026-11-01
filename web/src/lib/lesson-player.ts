@@ -114,6 +114,8 @@ interface PlayerOptions {
   visualGapMs?: number;
   onProgress?: (status: string) => void;
   onNarratingChange?: (narrating: boolean) => void;
+  /** Called once a primitive's elements are on the board (timing, anchoring answer controls). */
+  onRendered?: (tag: PrimitiveTag, ids: string[]) => void;
   signal?: AbortSignal;
 }
 
@@ -126,6 +128,7 @@ export class LessonPlayer {
   private readonly visualGapMs: number;
   private readonly onProgress?: (status: string) => void;
   private readonly onNarratingChange?: (narrating: boolean) => void;
+  private readonly onRendered?: (tag: PrimitiveTag, ids: string[]) => void;
   private readonly signal?: AbortSignal;
 
   private readonly renderer: LessonRenderer;
@@ -146,6 +149,7 @@ export class LessonPlayer {
     this.visualGapMs = opts.visualGapMs ?? 380;
     this.onProgress = opts.onProgress;
     this.onNarratingChange = opts.onNarratingChange;
+    this.onRendered = opts.onRendered;
     this.signal = opts.signal;
     this.renderer = new LessonRenderer(opts.origin);
     opts.signal?.addEventListener("abort", () => this.cancel(), { once: true });
@@ -300,6 +304,7 @@ export class LessonPlayer {
       const latestId = latestIds.at(-1);
       if (latestId) this.handle.ensureElementVisible(latestId);
       this.rendered += 1;
+      this.onRendered?.(cleanTag, latestIds);
       this.report(`Drew ${this.rendered} element(s). Last: ${cleanTag.tag}`);
 
       // Build a mutation helper that always pins width/height so Excalidraw

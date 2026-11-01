@@ -10,7 +10,25 @@ import { LessonPlayer } from "@/lib/lesson-player";
 import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
-import { streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
+import { boardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
+import { cardId, fetchTutorState, moveToPrimitive, questionOf, streamTutorTurn, tutorErrorMessage,
+  type TurnBody, type TutorQuestion, type TutorTimeline } from "@/lib/tutor-turn";
+
+export interface TutorAnswer { choice?: string; text?: string; confidence: number | null; reveal?: boolean }
+export interface TutorTurnState {
+  /** null until the server reports whether a tutor key is configured. */
+  configured: boolean | null;
+  busy: boolean;
+  draft: string;
+  question: TutorQuestion | null;
+  caption: string;
+  error: string;
+  timing: TutorTimeline | null;
+  setDraft: (text: string) => void;
+  ask: (text: string) => void;
+  answer: (value: TutorAnswer) => void;
+  cardRect: (qid: string) => DOMRect | null;
+}
 
 interface CachedLesson {
   primitives: PrimitiveTag[];
@@ -109,6 +127,7 @@ export interface TutorSession {
   sendChatMessage: (text: string) => Promise<void>;
   cancelChat: () => void;
   clearChat: () => void;
+  tutor: TutorTurnState;
 }
 
 export function useTutorSession(): TutorSession {
@@ -140,6 +159,15 @@ export function useTutorSession(): TutorSession {
   const playerRef = useRef<LessonPlayer | null>(null);
   const userIdRef = useRef("anon");
   const conversationIdRef = useRef("default");
+  const [tutorConfigured, setTutorConfigured] = useState<boolean | null>(null);
+  const [tutorBusy, setTutorBusy] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [question, setQuestion] = useState<TutorQuestion | null>(null);
+  const [caption, setCaption] = useState("");
+  const [tutorError, setTutorError] = useState("");
+  const [timing, setTiming] = useState<TutorTimeline | null>(null);
+  const tutorAbortRef = useRef<AbortController | null>(null);
+  const tutorKnownRef = useRef(false);
 
   const refreshLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -158,10 +186,12 @@ export function useTutorSession(): TutorSession {
 
   useEffect(() => {
     let cancelled = false;
+    // Legacy model health speaks only until the tutor service has reported its own state.
+    const legacyStatus = (text: string) => { if (!tutorKnownRef.current) setStatus(text); };
     void fetchHealth().then((health) => {
       if (cancelled) return;
       if (!health) {
-        setStatus("The tutor is offline. Check the connection and try again.");
+        legacyStatus("The tutor is offline. Check the connection and try again.");
         return;
       }
       const ready: Partial<Record<ModelChoice, boolean>> = {};
@@ -171,20 +201,37 @@ export function useTutorSession(): TutorSession {
       setSttModel(health.transcription?.model ?? "moonshine-tiny-en");
       if (process.env.NEXT_PUBLIC_DEMO_MODE === "event") {
         setModelChoice("edge");
-        setStatus(ready.edge ? "Ready. Draw a question or try a sample." : "The hosted tutor is warming up…");
+        legacyStatus(ready.edge ? "Ready. Draw a question or try a sample." : "The hosted tutor is warming up…");
       } else if (health.preferred_model === "openai" && ready.openai) {
         setModelChoice("openai");
-        setStatus("Ready in cloud mode. Draw a question or try a sample.");
+        legacyStatus("Ready in cloud mode. Draw a question or try a sample.");
       } else if (!health.ollama_reachable) {
-        setStatus("The local tutor is offline. Start Ollama and try again.");
+        legacyStatus("The local tutor is offline. Start Ollama and try again.");
       } else {
-        setStatus("Ready. Draw a question or try a sample.");
+        legacyStatus("Ready. Draw a question or try a sample.");
       }
     });
     return () => { cancelled = true; };
   }, []);
 
+  // Restore the waiting state after a refresh; the board itself is restored by the board controller.
+  useEffect(() => {
+    let cancelled = false;
+    void boardSession().then(fetchTutorState).then((state) => {
+      if (cancelled) return;
+      tutorKnownRef.current = true;
+      setTutorConfigured(state.configured);
+      setQuestion(state.open);
+      const said = state.turns.at(-1)?.said.at(-1);
+      if (said) setCaption(said);
+      if (!state.configured) setStatus("The tutor is not configured on the server (MODEL_API_KEY is missing).");
+      else setStatus(state.open ? "Your turn: answer the card on the board." : "Ready. Ask a question about anything on the board.");
+    }).catch((error) => { if (!cancelled) setTutorError(tutorErrorMessage(error)); });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => () => {
+    tutorAbortRef.current?.abort();
     abortRef.current?.abort();
     chatAbortRef.current?.abort();
     playerRef.current?.cancel();
@@ -452,6 +499,98 @@ export function useTutorSession(): TutorSession {
 
   const clearChat = useCallback(() => { cancelChat(); setChatMessages([]); }, [cancelChat]);
 
+  const runTurn = useCallback(async (body: Omit<TurnBody, "board">, onAccepted?: () => void): Promise<boolean> => {
+    const handle = handleRef.current, board = handle?.board;
+    if (!handle || !board?.ready || tutorBusy || busy) {
+      setTutorError(board?.ready === false ? "Wait until the board has restored." : "");
+      return false;
+    }
+    playerRef.current?.cancel();
+    cancelSpeech();
+    setTutorBusy(true); setTutorError(""); setCaption("");
+    setStatus("Saving your board…");
+    const controller = new AbortController();
+    tutorAbortRef.current = controller;
+    const started = performance.now();
+    const stages: TutorTimeline = {};
+    let asked: TutorQuestion | null = null, accepted = false, moved = false;
+    const previous = question;
+    try {
+      const prepared = await board.prepare(undefined, true, false);
+      stages.prepare_ms = performance.now() - started;
+      const view = prepared.request.viewport;
+      // A blank board starts inside the view; otherwise the builder's area beside the work.
+      const origin = prepared.packet.focused.length ? prepared.packet.response_area : { x: view.x + Math.min(120, view.w * 0.1), y: view.y + 100 };
+      const player = new LessonPlayer({ origin, handle, ttsEnabled, voiceName: voiceRef.current, onNarratingChange: setNarrating,
+        signal: controller.signal, onRendered: () => { stages.first_render_ms ??= performance.now() - started; } });
+      playerRef.current = player;
+      setStatus("Thinking…");
+      await streamTutorTurn(board.session, { ...body, board: prepared.request }, {
+        onTurn: () => { accepted = true; if (body.kind === "question") setDraft(""); else setQuestion(null); onAccepted?.(); },
+        onMove: (move) => {
+          stages.first_move_ms ??= performance.now() - started;
+          moved = true;
+          if (move.type === "say") { setCaption(move.text); return; }
+          asked = questionOf(move) ?? asked;
+          const tag = moveToPrimitive(move);
+          if (tag) player.enqueue(tag);
+          setStatus("Explaining…");
+        },
+        onDone: (value) => { asked = value.question ?? asked; Object.assign(stages, Object.fromEntries(Object.entries(value.timing ?? {}).map(([k, v]) => [`server_${k}`, v]))); },
+      }, controller.signal);
+      await player.finishDrawing();
+      stages.drawn_ms = performance.now() - started;
+      await board.flush().catch(() => {});
+      setQuestion(asked);
+      // Stop after the stream ended skips queued drawing; the server already holds the full turn.
+      setStatus(controller.signal.aborted ? "Stopped. What was drawn is kept."
+        : asked ? "Your turn: answer the card on the board." : "Done. Ask a follow-up any time.");
+      return true;
+    } catch (error) {
+      // A drawn question stays answerable after Stop or a late failure, matching the server's record.
+      // A turn that drew nothing leaves the earlier question open, as the server does.
+      if (accepted) setQuestion(moved ? asked : previous);
+      if (controller.signal.aborted) setStatus("Stopped. What was drawn is kept.");
+      else {
+        const message = tutorErrorMessage(error);
+        setTutorError(message); setStatus(message);
+        if (error instanceof Error && "code" in error && error.code === "tutor_not_configured") setTutorConfigured(false);
+      }
+      return accepted;
+    } finally {
+      stages.total_ms = performance.now() - started;
+      setTiming(stages);
+      console.debug("[tutor] timing", JSON.stringify(stages));
+      if (tutorAbortRef.current === controller) tutorAbortRef.current = null;
+      setTutorBusy(false);
+    }
+  }, [busy, question, ttsEnabled, tutorBusy]);
+
+  const ask = useCallback((text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setDraft(clean);
+    void runTurn({ turn_id: crypto.randomUUID(), kind: "question", text: clean });
+  }, [runTurn]);
+
+  const answer = useCallback((value: TutorAnswer) => {
+    if (!question) return;
+    const handle = handleRef.current, label = value.reveal ? "You asked to be told." : `You answered: ${value.choice ?? value.text ?? ""}`
+      + (value.confidence === null ? "" : ` (${value.confidence}% sure)`);
+    void runTurn({ turn_id: crypto.randomUUID(), kind: "answer", question_id: question.qid, choice: value.choice,
+      text: value.text, confidence: value.confidence, reveal: value.reveal }, () => {
+      // Record the answer on the card itself; the server keeps the learner's input as the source of truth.
+      const frame = handle?.getElements().find((e) => e.id === cardId(question.qid));
+      const text = handle?.getElements().find((e) => e.id === `${cardId(question.qid)}-text`);
+      if (!handle || !frame || !text || text.type !== "text") return;
+      const extra = 46, next = `${text.text}\n\n${label}`;
+      handle.mutateElement(text.id, { text: next, originalText: next, height: text.height + extra });
+      handle.mutateElement(frame.id, { height: frame.height + extra });
+    });
+  }, [question, runTurn]);
+
+  const cardRect = useCallback((qid: string) => handleRef.current?.getElementScreenRect(cardId(qid)) ?? null, []);
+
   const resetLearnerProfile = useCallback(async () => {
     const id = userIdRef.current;
     if (!id || id === "anon") return;
@@ -471,12 +610,13 @@ export function useTutorSession(): TutorSession {
   }, []);
 
   const stop = useCallback(() => {
-    abortRef.current?.abort(); playerRef.current?.cancel(); cancelSpeech();
-    setStatus("Stopped. Your board is unchanged."); setBusy(false); setEducatorBusy(false);
+    const tutorRunning = Boolean(tutorAbortRef.current);
+    tutorAbortRef.current?.abort(); abortRef.current?.abort(); playerRef.current?.cancel(); cancelSpeech();
+    setStatus(tutorRunning ? "Stopped. What was drawn is kept." : "Stopped. Your board is unchanged."); setBusy(false); setEducatorBusy(false);
   }, []);
 
   return {
-    status, busy, narrating, ttsEnabled, voice, teacherMode, modelChoice, modelReady,
+    status, busy: busy || tutorBusy, narrating, ttsEnabled, voice, teacherMode, modelChoice, modelReady,
     hasReplay, educatorNotes, educatorBusy, learnerSnapshot, checkpoint, lastEvidence,
     chatMessages, chatBusy, sttAvailable, sttModel, onWhiteboardReady,
     solve: () => { void runLesson("live"); },
@@ -487,5 +627,7 @@ export function useTutorSession(): TutorSession {
     toggleTeacherMode: () => setTeacherMode((value) => !value),
     changeModel: setModelChoice, changeVoice, resetLearner: resetLearnerProfile,
     sendChatMessage, cancelChat, clearChat,
+    tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing,
+      setDraft, ask, answer, cardRect },
   };
 }

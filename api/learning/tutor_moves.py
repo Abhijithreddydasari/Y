@@ -189,10 +189,15 @@ def _field_schema(annotation, metadata=()) -> dict:
     return {"type": {str: "string", int: "integer", float: "number"}[annotation]}
 
 
-def move_schema() -> dict:
-    """Strict-mode schema: every property required, no additional properties anywhere."""
+def move_schema(kinds: frozenset[str] | None = None) -> dict:
+    """Strict-mode schema: every property required, no additional properties anywhere.
+
+    `kinds` narrows the variants so constrained decoding cannot emit moves a client cannot render.
+    """
     variants = []
     for model in MOVE_MODELS:
+        if kinds is not None and get_args(model.model_fields["type"].annotation)[0] not in kinds:
+            continue
         props = {}
         for name, info in model.model_fields.items():
             props[name] = _field_schema(info.annotation, info.metadata)
@@ -204,8 +209,8 @@ def move_schema() -> dict:
             "required": ["moves"], "additionalProperties": False}
 
 
-def response_format() -> dict:
-    return {"type": "json_schema", "json_schema": {"name": "tutor_turn", "strict": True, "schema": move_schema()}}
+def response_format(kinds: frozenset[str] | None = None) -> dict:
+    return {"type": "json_schema", "json_schema": {"name": "tutor_turn", "strict": True, "schema": move_schema(kinds)}}
 
 
 def write_schema(path: Path = SCHEMA_PATH) -> None:

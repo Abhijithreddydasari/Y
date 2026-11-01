@@ -150,6 +150,8 @@ export class LessonRenderer {
         return this.renderDraw(tag.args);
       case "draw_part":
         return this.renderDrawPart(tag.args);
+      case "card":
+        return this.renderCard(tag.args);
       default:
         return { skeletons: [] };
     }
@@ -491,6 +493,30 @@ export class LessonRenderer {
     }
 
     return result;
+  }
+
+  /**
+   * A predict/check card: a framed question with lettered options, drawn beside the work.
+   * The frame keeps the given id so the answer controls can anchor to it after a refresh.
+   */
+  private renderCard(args: Record<string, string | number>): RenderResult {
+    const id = asStr(args.id);
+    const q = asStr(args.q);
+    if (!id || !q) return { skeletons: [] };
+    const options = asStr(args.options).split("\n").filter(Boolean);
+    const body = [wrapText(`${asStr(args.label, "Check")}: ${q}`, 52),
+      ...options.map((option, i) => wrapText(`${String.fromCharCode(65 + i)}. ${option}`, 52))].join("\n");
+    const lines = body.split("\n").length;
+    const pad = 16;
+    const height = Math.ceil(NARRATION_FONT * NARRATION_LINE_H * lines) + pad * 2;
+    const x = this.narrationX, y = this.narrationY;
+    this.advanceNarration(height + 8);
+    return { skeletons: [
+      { type: "rectangle", id, x, y, width: COL_WIDTH, height, strokeColor: "#6d28d9", backgroundColor: "#f5f3ff",
+        fillStyle: "solid", roundness: { type: 3 } } as ExcalidrawElementSkeleton,
+      { type: "text", id: `${id}-text`, x: x + pad, y: y + pad, text: body, fontSize: NARRATION_FONT, fontFamily: 1,
+        strokeColor: STROKE, width: COL_WIDTH - pad * 2, height: height - pad * 2, autoResize: false } as ExcalidrawElementSkeleton,
+    ] };
   }
 
   private renderLine(args: Record<string, string | number>): RenderResult {

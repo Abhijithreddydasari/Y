@@ -55,15 +55,10 @@ export function boardSession(): Promise<string> {
   return sessionPromise;
 }
 
-export async function streamBoardTeach(session: string, request: ContextRequest, model: string,
-  onEvent: (event: string, value: unknown) => void, signal: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/learning/sessions/${session}/board/teach`, {
-    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...request, model_choice: model }), signal,
-  });
-  if (!response.ok || !response.body) throw new Error("Teaching is unavailable; your board is saved.");
-  const reader = response.body.getReader(), decoder = new TextDecoder();
-  let buffer = "", ended = false;
+/** Read an SSE body frame by frame; a handler may throw to stop reading. */
+export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (event: string, value: unknown) => void): Promise<void> {
+  const reader = body.getReader(), decoder = new TextDecoder();
+  let buffer = "";
   try {
     while (true) {
       const next = await reader.read();
@@ -75,14 +70,25 @@ export async function streamBoardTeach(session: string, request: ContextRequest,
         const frame = buffer.slice(0, boundary); buffer = buffer.slice(boundary + 2);
         const event = frame.split("\n").find(line => line.startsWith("event:"))?.slice(6).trim();
         const data = frame.split("\n").filter(line => line.startsWith("data:")).map(line => line.slice(5).trim()).join("\n");
-        if (event && data) {
-          onEvent(event, JSON.parse(data));
-          if (event === "done") ended = true;
-          if (event === "error") throw new Error((JSON.parse(data) as { message: string }).message);
-        }
+        if (event && data) onEvent(event, JSON.parse(data));
       }
       if (buffer.length > 131072) throw new Error("Teaching output exceeded its limit.");
     }
-    if (!ended) throw new Error("The teaching stream stopped. Completed work remains saved.");
   } finally { await reader.cancel(); }
+}
+
+export async function streamBoardTeach(session: string, request: ContextRequest, model: string,
+  onEvent: (event: string, value: unknown) => void, signal: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/learning/sessions/${session}/board/teach`, {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...request, model_choice: model }), signal,
+  });
+  if (!response.ok || !response.body) throw new Error("Teaching is unavailable; your board is saved.");
+  let ended = false;
+  await readEvents(response.body, (event, value) => {
+    onEvent(event, value);
+    if (event === "done") ended = true;
+    if (event === "error") throw new Error((value as { message: string }).message);
+  });
+  if (!ended) throw new Error("The teaching stream stopped. Completed work remains saved.");
 }

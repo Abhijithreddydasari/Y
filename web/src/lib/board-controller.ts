@@ -200,7 +200,8 @@ export class BoardController {
     if (outline) this.api.scrollToContent(outline, { fitToViewport: true, viewportZoomFactor: .8 });
   }
 
-  async prepare(assistance: Assistance = { self_reported_help: false, solution_revealed: false }, teaching = false): Promise<{ request: ContextRequest; packet: Packet }> {
+  /** Save the board and build a context request with crops. `capture: false` leaves freezing the source to the caller's endpoint. */
+  async prepare(assistance: Assistance = { self_reported_help: false, solution_revealed: false }, teaching = false, capture = true): Promise<{ request: ContextRequest; packet: Packet }> {
     await this.flush();
     const request: ContextRequest = { request_id: crypto.randomUUID(), revision: this.state.revision,
       region_id: this.state.active_region, selection: teaching ? Object.keys(this.api.getAppState().selectedElementIds) : [],
@@ -243,6 +244,7 @@ export class BoardController {
         }
       }
     }
+    if (!capture) return { request, packet: preview };
     const attempt = await boardRequest<{ packet: Packet }>(`sessions/${this.session}/board/attempts`, request);
     return { request, packet: attempt.packet };
   }

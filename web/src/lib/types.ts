@@ -10,7 +10,8 @@ export type PrimitiveName =
   | "arrow"
   | "line"
   | "draw"
-  | "draw_part";
+  | "draw_part"
+  | "card";
 
 export interface PrimitiveTag {
   tag: PrimitiveName;

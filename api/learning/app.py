@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from .router import router
 from .board_router import router as board_router
+from .tutor_router import router as tutor_router
 
 
 @asynccontextmanager
@@ -21,6 +22,7 @@ async def lifespan(app):
 app = FastAPI(title="Y learning capture", version="0.2.0", lifespan=lifespan)
 app.include_router(router)
 app.include_router(board_router)
+app.include_router(tutor_router)
 
 
 @app.get("/health")

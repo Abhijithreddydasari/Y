@@ -22,7 +22,6 @@ build/
 research/
 starvector_test/
 plan.md
-start-all.ps1
 /docs/video_script.md
 /docs/submission_walkthrough.md
 /docs/submission_checklist.md
@@ -78,3 +77,6 @@ Y.md
 Details – Meta Global AI Developer Hackathon – Cerebral Valley.mhtml
 HACKATHON_PLAN.md
 /scratch-pad.md
+
+# Generated dependency inventory (recreate with api/scripts/generate_sbom.py)
+/sbom.spdx.json

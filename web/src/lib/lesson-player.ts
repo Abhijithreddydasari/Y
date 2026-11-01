@@ -2,11 +2,16 @@
 // human pace. The same player powers both the live lesson (primitives
 // arriving from SSE) and the replay button (primitives cached in memory).
 //
-// Narration and writing advance TOGETHER: each [text]/[title] line is written
-// on the board in lockstep with the words being spoken (driven by the audio
-// clip's playback position), and the next primitive does not begin until the
-// current line has finished speaking. Non-spoken primitives (equations,
-// diagrams) hold for a short beat so they don't flash past the narration.
+// Two pacings:
+// - "lockstep" (legacy lessons): each [text]/[title] line is written on the
+//   board in lockstep with the words being spoken, and the next primitive
+//   does not begin until the current line has finished speaking. Non-spoken
+//   primitives (equations, diagrams) hold for a short beat.
+// - "segment" (tutor turns): the board is written at board speed and the
+//   voice is the turn's `say` moves. A segment's narration starts once its
+//   visuals are drawn, the segment is closed and the previous narration has
+//   ended. The board may draw `segmentsAhead` segments ahead of the voice
+//   (default SEGMENTS_AHEAD; 0 is write-then-explain).
 
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import { LessonRenderer, wrapText, type RenderResult } from "./renderer";
@@ -117,6 +122,51 @@ interface PlayerOptions {
   /** Called once a primitive's elements are on the board (timing, anchoring answer controls). */
   onRendered?: (tag: PrimitiveTag, ids: string[]) => void;
   signal?: AbortSignal;
+  pacing?: "lockstep" | "segment";
+  /** Segment pacing: the line now being spoken (or shown, when muted). */
+  onCaption?: (text: string) => void;
+  /** Segment pacing: a line became audible `waitMs` after its visuals were done (first-audio timing). */
+  onAudible?: (value: { text: string; engine: "kokoro" | "browser"; waitMs: number }) => void;
+  /** Segment pacing: how many segments the board may draw ahead of the voice (default SEGMENTS_AHEAD). */
+  segmentsAhead?: number;
+}
+
+/** What one segment says, and what to read aloud if the model gave it no `say`. */
+interface Segment { says: string[]; writes: string[]; question: string }
+
+/**
+ * How long a clause waits for its warmed Kokoro clip before the browser voice takes over. The first clause
+ * of a turn decides the engine; once Kokoro has spoken, later clauses wait longer rather than switch voice.
+ */
+const FIRST_CLIP_WAIT_MS = 3_500;
+const NEXT_CLIP_WAIT_MS = 8_000;
+/**
+ * How many segments the board may draw ahead of the voice. 1 (current choice) fills the board in about
+ * 4-5 s, but the voice trails a segment behind what the learner is reading. 0 is write-then-explain: the
+ * voice always talks about the segment just written, and a two-segment turn takes about 15-18 s to draw.
+ */
+export const SEGMENTS_AHEAD = 1;
+
+/**
+ * Split a spoken line into clauses so Kokoro (about real time on a laptop CPU) can start on a short clip and
+ * synthesize the next while the first plays. Commas split sentences over eight words, never into fragments
+ * under four words.
+ */
+export function clauses(line: string): string[] {
+  const out: string[] = [];
+  const count = (text: string) => text.trim().split(/\s+/).length;
+  for (const sentence of line.trim().split(/(?<=[.!?])\s+/)) {
+    let rest = sentence;
+    while (count(rest) > 8) {
+      const cut = [...rest.matchAll(/[,;:—]\s+/g)].map((m) => m.index! + 1)
+        .find((index) => count(rest.slice(0, index)) >= 4 && count(rest.slice(index)) >= 4);
+      if (!cut) break;
+      out.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    if (rest) out.push(rest);
+  }
+  return out;
 }
 
 export class LessonPlayer {
@@ -130,8 +180,24 @@ export class LessonPlayer {
   private readonly onNarratingChange?: (narrating: boolean) => void;
   private readonly onRendered?: (tag: PrimitiveTag, ids: string[]) => void;
   private readonly signal?: AbortSignal;
+  private readonly segmentPacing: boolean;
+  private readonly onCaption?: (text: string) => void;
+  private readonly onAudible?: PlayerOptions["onAudible"];
+  private readonly segmentsAhead: number;
 
   private readonly renderer: LessonRenderer;
+  // Segment pacing: the open segment, the voice queue and each closed segment's narration.
+  private segment: Segment | null = null;
+  private voiceChain: Promise<void> = Promise.resolve();
+  private readonly narrations: Promise<void>[] = [];
+  private pendingNarrations = 0;
+  private muted = false;
+  private silenced = false;
+  private browserOnly = false;
+  private kokoroSpoke = false;
+  // One synthesis request at a time: the server is serial per voice anyway, and parallel fetches would
+  // take the browser's few connections to this origin away from board saves.
+  private warmChain: Promise<unknown> = Promise.resolve();
   private drawChain: Promise<void> = Promise.resolve();
   private rendered = 0;
   private readonly renderedIds: string[] = [];
@@ -151,12 +217,94 @@ export class LessonPlayer {
     this.onNarratingChange = opts.onNarratingChange;
     this.onRendered = opts.onRendered;
     this.signal = opts.signal;
+    this.segmentPacing = opts.pacing === "segment";
+    this.onCaption = opts.onCaption;
+    this.onAudible = opts.onAudible;
+    this.segmentsAhead = Math.max(0, opts.segmentsAhead ?? SEGMENTS_AHEAD);
     this.renderer = new LessonRenderer(opts.origin);
     opts.signal?.addEventListener("abort", () => this.cancel(), { once: true });
   }
 
+  /** Segment pacing: a new segment starts; the open one closes and may start speaking. */
+  beginSegment(): void {
+    this.closeSegment();
+    this.segment = { says: [], writes: [], question: "" };
+    // This segment draws only after the narration segmentsAhead + 1 segments back has ended.
+    const gate = this.narrations.at(-1 - this.segmentsAhead);
+    if (gate) this.drawChain = this.drawChain.then(() => gate);
+  }
+
+  /** Segment pacing: a spoken line for the open segment, warmed now so it is ready when its turn comes. */
+  say(text: string): void {
+    const clean = text.trim();
+    if (!clean) return;
+    (this.segment ??= { says: [], writes: [], question: "" }).says.push(clean);
+    this.warm(clean);
+  }
+
+  /** Stop speaking now; mid-turn the board keeps drawing and captions continue. Unmuting resumes at the next line. */
+  setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (muted) cancelSpeech();
+  }
+
+  private warm(text: string): void {
+    if (!this.ttsEnabled || this.muted || this.browserOnly) return;
+    for (const clause of clauses(text)) {
+      if (this.warmed.has(clause)) continue;
+      const clip = this.warmChain.then(() => this.silenced || this.browserOnly ? undefined
+        : prepareSpeech(clause, { voiceName: this.voiceName, signal: this.signal })).catch(() => undefined);
+      this.warmChain = clip;
+      this.warmed.set(clause, clip);
+    }
+  }
+
+  private closeSegment(): void {
+    const segment = this.segment;
+    if (!segment) return;
+    this.segment = null;
+    const lines = segment.says.length ? segment.says : [...segment.writes, segment.question].filter(Boolean);
+    if (!segment.says.length) lines.forEach((line) => this.warm(line));
+    const drawn = this.drawChain;
+    this.pendingNarrations += 1;
+    const narration = Promise.all([drawn, this.voiceChain]).then(() => this.speakLines(lines)).catch(() => {}).finally(() => {
+      this.pendingNarrations -= 1;
+      if (!this.pendingNarrations) this.setNarrating(false);
+    });
+    this.voiceChain = narration;
+    this.narrations.push(narration);
+  }
+
+  private async speakLines(lines: string[]): Promise<void> {
+    for (const line of lines) {
+      if (this.signal?.aborted || this.silenced) return;
+      this.onCaption?.(line);
+      if (!this.ttsEnabled || this.muted) continue;
+      this.setNarrating(true);
+      for (const clause of clauses(line)) {
+        if (this.signal?.aborted || this.silenced || this.muted) break;
+        const prepared = this.warmed.get(clause);
+        this.warmed.delete(clause);
+        const started = performance.now();
+        const spoken = await speak(clause, { voiceName: this.voiceName, prepared, browserOnly: this.browserOnly,
+          preparedWaitMs: this.kokoroSpoke ? NEXT_CLIP_WAIT_MS : FIRST_CLIP_WAIT_MS,
+          onAudible: (engine) => this.onAudible?.({ text: clause, engine, waitMs: performance.now() - started }) });
+        // One voice per turn: once Kokoro has failed, the rest of the turn uses the browser voice.
+        if (spoken === "browser") this.browserOnly = true;
+        if (spoken === "kokoro") this.kokoroSpoke = true;
+      }
+    }
+  }
+
   /** Enqueue a primitive. Returns immediately; rendering is sequential. */
   enqueue(tag: PrimitiveTag): void {
+    if (this.segmentPacing) {
+      const segment = (this.segment ??= { says: [], writes: [], question: "" });
+      if (tag.tag === "text") segment.writes.push(narrationTextForTag(tag).replace(/\s+/g, " "));
+      if (tag.tag === "card") segment.question = String(tag.args?.q ?? "");
+      this.drawChain = this.drawChain.then(() => this.playOne(tag));
+      return;
+    }
     // Warm this line's narration audio the moment it streams in. Playback is
     // gated on the previous line finishing, so by the time this line's turn
     // arrives its clip is already synthesized and speech starts instantly --
@@ -176,8 +324,12 @@ export class LessonPlayer {
     this.drawChain = this.drawChain.then(() => this.playOne(tag));
   }
 
-  /** Resolve once every queued primitive has finished playing (and speaking). */
+  /**
+   * Resolve once every queued primitive has finished playing. Lockstep pacing includes speech; segment
+   * pacing closes the last segment and returns with its narration still playing (see finishNarration).
+   */
   async finishDrawing(): Promise<void> {
+    this.closeSegment();
     await this.drawChain;
     this.handle.fitElements(this.renderedIds);
   }
@@ -188,12 +340,14 @@ export class LessonPlayer {
   }
 
   async finishNarration(): Promise<void> {
-    await this.drawChain;
+    this.closeSegment();
+    await Promise.all([this.drawChain, this.voiceChain]);
     this.setNarrating(false);
   }
 
-  /** Stop any in-flight speech immediately. */
+  /** Stop any in-flight speech immediately; nothing queued in this player speaks afterwards. */
   cancel(): void {
+    this.silenced = true;
     cancelSpeech();
     this.setNarrating(false);
   }
@@ -225,8 +379,9 @@ export class LessonPlayer {
       return;
     }
 
-    // TTS disabled: still write progressively so the board doesn't snap in.
-    if (!this.ttsEnabled) {
+    // TTS disabled, or segment pacing (the voice follows the board): still write progressively so the
+    // board doesn't snap in, at board speed.
+    if (!this.ttsEnabled || this.segmentPacing || this.muted) {
       if (mutate) {
         const step = Math.max(1, Math.ceil(clean.length / 30));
         const revealer = new TextRevealer(fullText, mutate, 16, this.signal, step);
@@ -345,7 +500,7 @@ export class LessonPlayer {
         // a beat so it doesn't flash past; equations get a touch longer since
         // they're the substance of a math step and carry no narration.
         const hold =
-          cleanTag.tag === "equation"
+          cleanTag.tag === "equation" && !this.segmentPacing
             ? Math.max(this.visualGapMs, 700)
             : this.visualGapMs;
         await sleep(hold);

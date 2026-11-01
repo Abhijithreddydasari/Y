@@ -4,8 +4,9 @@
 
 - Plan: [ROADMAP](builds/ROADMAP.md) H0–H10 with a dated day plan; decisions and live provider
   measurements in [harness decisions](decisions/2026-11-01-harness.md). License: MIT.
-- Next session: **H0** (baseline checks, commit the inherited dirty tree in its own scope,
-  shared contracts), then **H1** ([brief](builds/H1-meta-tutor-turn.md)).
+- H0 done ([handoff](handoffs/H0.md)): inherited tree committed, shared contracts in
+  `tutor_moves.py`/`tutor_stream.py`/`learner_contracts.py` and their TypeScript mirrors.
+  Next session: **H1** ([brief](builds/H1-meta-tutor-turn.md)).
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -17,8 +18,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 
 | Slice | Status | Commit | Handoff |
 |---|---|---|---|
-| H0 baseline + contracts | next | — | — |
-| H1 Meta tutor turn | planned | — | — |
+| H0 baseline + contracts | done | `66e491d` (inherited work `2039b59`, `5f23282`, `7bb4d5e`) | [H0](handoffs/H0.md) |
+| H1 Meta tutor turn | next | — | — |
 | H2–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
@@ -137,4 +138,4 @@ End-of-day integration chat:
 > the current handoff, and write briefs for tomorrow's slices. Report what is behind the
 > day plan in docs/builds/ROADMAP.md.
 
-Until H0's baseline commit exists, a fresh chat must account for the inherited working tree.
+H0's baseline commits exist; a fresh chat starts from a clean tree.

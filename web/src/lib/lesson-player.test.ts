@@ -47,7 +47,7 @@ describe("clauses", () => {
 });
 
 describe("LessonPlayer segment pacing", () => {
-  it("draws each segment before its narration and runs at most one segment ahead of the voice", async () => {
+  it("writes a segment, explains it, then writes the next: the voice never trails the board", async () => {
     const captions: string[] = [];
     const p = player(captions);
     p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Why scale" } }); p.enqueue({ tag: "text", args: { content: "Sums grow." } });
@@ -62,18 +62,19 @@ describe("LessonPlayer segment pacing", () => {
     await until(() => at("speak:Look how the sums grow.") >= 0);
     expect(at("draw:Why scale")).toBeLessThan(at("speak:Look how the sums grow."));
     expect(at("draw:Sums grow.")).toBeLessThan(at("speak:Look how the sums grow."));
-    // Segment 2 may draw while segment 1 is spoken; segment 3 waits for segment 1's voice.
-    await until(() => at("draw:Divide") >= 0);
+    // Segment 2 waits while segment 1 is being explained.
     await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(at("draw:Check")).toBe(-1);
-    expect(at("speak:So we divide.")).toBe(-1);
+    expect(at("draw:Divide")).toBe(-1);
 
     tts.finish.get("Look how the sums grow.")!();
     await until(() => at("speak:So we divide.") >= 0);
-    await drawn;
-    expect(at("draw:Check")).toBeGreaterThan(at("speak:Look how the sums grow."));
+    expect(at("draw:Divide")).toBeGreaterThan(at("speak:Look how the sums grow."));
+    expect(at("draw:Divide")).toBeLessThan(at("speak:So we divide."));
+    expect(at("draw:Check")).toBe(-1);
     tts.finish.get("So we divide.")!();
     await until(() => at("speak:Your turn.") >= 0);
+    await drawn;
+    expect(at("draw:Check")).toBeGreaterThan(at("speak:So we divide."));
     expect(at("speak:Your turn.")).toBeGreaterThan(at("draw:Check"));
     tts.finish.get("Your turn.")!();
     await p.finishNarration();
@@ -96,9 +97,11 @@ describe("LessonPlayer segment pacing", () => {
     const stopped = player();
     stopped.beginSegment(); stopped.enqueue({ tag: "title", args: { text: "One" } }); stopped.say("First.");
     stopped.beginSegment(); stopped.say("Second.");
-    await stopped.finishDrawing();
+    // Drawing the second segment waits for the first one's voice; Stop releases both.
+    const drawing = stopped.finishDrawing();
     await until(() => at("speak:First.") >= 0);
     stopped.cancel();
+    await drawing;
     await stopped.finishNarration();
     expect(at("speak:Second.")).toBe(-1);
 

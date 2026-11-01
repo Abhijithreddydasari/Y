@@ -12,7 +12,7 @@ vi.mock("@/lib/board-api", async (original) => ({ ...await original<object>(), b
 
 /** A recording that has captured `ms` of audio; stop() hands back a WAV blob. */
 function recording(ms = 2_000) {
-  return { stop: vi.fn().mockResolvedValue(new Blob(["wav"], { type: "audio/wav" })), cancel: vi.fn().mockResolvedValue(undefined), elapsedMs: () => ms };
+  return { stop: vi.fn().mockResolvedValue(new Blob(["wav"], { type: "audio/wav" })), cancel: vi.fn().mockResolvedValue(undefined), elapsedMs: () => ms, level: () => 0.5 };
 }
 
 /** Tap the mic (start), wait for recording, tap again (send). */
@@ -128,6 +128,19 @@ describe("TutorComposer", () => {
     // The notice gives way to captions once the learner moves on by typing; the mic stays blocked.
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByRole("button", { name: /Microphone unavailable/ })).toBeDisabled();
+  });
+
+  it("shows a live level meter on the mic while recording", async () => {
+    voice.start.mockResolvedValue(recording());
+    render(<TutorComposer tutor={tutor()} onStop={vi.fn()} />);
+    expect(screen.queryByTestId("mic-level")).toBeNull();
+    fireEvent.pointerDown(screen.getByRole("button", { name: /ask by voice/ }), { button: 0 });
+    fireEvent.pointerUp(screen.getByRole("button", { name: /Recording|Listening/ }));
+    const meter = await screen.findByTestId("mic-level");
+    const bars = Array.from(meter.children) as HTMLElement[];
+    expect(bars).toHaveLength(5);
+    // The newest level (0.5) enters on the right.
+    await waitFor(() => expect(bars[4].style.transform).toBe("scaleY(0.59)"));
   });
 
   it("does not send a recording that is too short, and shows Stop while the voice is still talking", async () => {

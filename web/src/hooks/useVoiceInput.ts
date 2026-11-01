@@ -18,6 +18,8 @@ export interface VoiceInput {
   cancel: () => void;
   /** Drop the last voice notice (the learner moved on by typing). */
   clearError: () => void;
+  /** Live input loudness, 0 to 1, while recording (read per animation frame, not state). */
+  level: () => number;
 }
 
 export const MAX_RECORDING_MS = 30_000;
@@ -106,6 +108,7 @@ export function useVoiceInput(onText: (text: string) => void, onStart?: () => vo
   useEffect(() => () => { abortRef.current?.abort(); void recordingRef.current?.cancel(); }, []);
 
   const clearError = useCallback(() => setError(""), []);
+  const level = useCallback(() => recordingRef.current?.level() ?? 0, []);
 
-  return { state, seconds, error, blocked, start, stop, cancel, clearError };
+  return { state, seconds, error, blocked, start, stop, cancel, clearError, level };
 }

@@ -3,6 +3,8 @@ export interface WavRecording {
   cancel: () => Promise<void>;
   /** Milliseconds captured so far. */
   elapsedMs: () => number;
+  /** Loudness of the latest chunk, 0 (silence) to 1, for a live meter. */
+  level: () => number;
 }
 
 export interface RecordingOptions {
@@ -103,10 +105,14 @@ export async function startWavRecording(options: RecordingOptions = {}): Promise
   silent.gain.value = 0;
   const buffers: Float32Array[] = [];
   const maxSamples = options.maxMs ? Math.ceil(options.maxMs / 1000 * context.sampleRate) : Infinity;
-  let samples = 0, limited = false;
+  let samples = 0, limited = false, level = 0;
   processor.onaudioprocess = (event) => {
     if (samples >= maxSamples) return;
     const chunk = event.inputBuffer.getChannelData(0);
+    let energy = 0;
+    for (let index = 0; index < chunk.length; index += 1) energy += chunk[index] * chunk[index];
+    // Speech RMS sits around 0.02-0.2; a square root spreads that over the meter's range.
+    level = Math.min(1, Math.sqrt(Math.sqrt(energy / chunk.length) * 6));
     buffers.push(new Float32Array(chunk.subarray(0, Math.min(chunk.length, maxSamples - samples))));
     samples += chunk.length;
     if (samples >= maxSamples && !limited) { limited = true; options.onLimit?.(); }
@@ -134,5 +140,6 @@ export async function startWavRecording(options: RecordingOptions = {}): Promise
     },
     cancel: cleanup,
     elapsedMs: () => Math.min(samples, maxSamples) / context.sampleRate * 1000,
+    level: () => level,
   };
 }

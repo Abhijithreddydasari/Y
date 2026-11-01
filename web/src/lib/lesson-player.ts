@@ -10,7 +10,8 @@
 // - "segment" (tutor turns): the board is written at board speed and the
 //   voice is the turn's `say` moves. A segment's narration starts once its
 //   visuals are drawn, the segment is closed and the previous narration has
-//   ended; drawing runs at most one segment ahead of the voice.
+//   ended. The next segment draws only after that narration, so the voice always
+//   talks about what was just written, as a teacher writes and then explains.
 
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import { LessonRenderer, wrapText, type RenderResult } from "./renderer";
@@ -137,6 +138,12 @@ interface Segment { says: string[]; writes: string[]; question: string }
  */
 const FIRST_CLIP_WAIT_MS = 3_500;
 const NEXT_CLIP_WAIT_MS = 8_000;
+/**
+ * How many segments the board may draw ahead of the voice. 0 is write-then-explain: the voice always talks
+ * about the segment just written (a two-segment turn is fully drawn in about 15-18 s). 1 fills the board in
+ * about 4-5 s, but the voice then trails a segment behind what the learner is reading.
+ */
+const SEGMENTS_AHEAD = 0;
 
 /**
  * Split a spoken line into clauses so Kokoro (about real time on a laptop CPU) can start on a short clip and
@@ -218,8 +225,8 @@ export class LessonPlayer {
   beginSegment(): void {
     this.closeSegment();
     this.segment = { says: [], writes: [], question: "" };
-    // At most one segment ahead: this one draws only after the narration two segments back ended.
-    const gate = this.narrations.at(-2);
+    // Write, then explain: this segment draws only after the narration SEGMENTS_AHEAD + 1 segments back ended.
+    const gate = this.narrations.at(-1 - SEGMENTS_AHEAD);
     if (gate) this.drawChain = this.drawChain.then(() => gate);
   }
 

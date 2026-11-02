@@ -57,7 +57,7 @@ describe("TutorQuestionCard", () => {
     voice.transcribe.mockResolvedValueOnce({ text: "I think it's B.", duration: 1 }).mockResolvedValueOnce({ text: "no idea", duration: 1 });
     render(<TutorQuestionCard question={mcq} busy={false} cardRect={() => null} onAnswer={onAnswer} onListen={onListen} />);
     await speak(/say a letter/);
-    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ choice: "the mean", confidence: null }));
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ choice: "the mean", confidence: null, via: "spoken" }));
     expect(onListen).toHaveBeenCalled();
     await speak(/say a letter/);
     expect(await screen.findByText('Heard "no idea". Tap the option you mean.')).toBeInTheDocument();
@@ -70,7 +70,7 @@ describe("TutorQuestionCard", () => {
     voice.transcribe.mockResolvedValueOnce({ text: "The variance equals d k.", duration: 2 });
     render(<TutorQuestionCard question={{ ...mcq, kind: "free", options: [] }} busy={false} cardRect={() => null} onAnswer={onAnswer} />);
     await speak(/answer by voice/);
-    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ text: "The variance equals d k.", confidence: null }));
+    await waitFor(() => expect(onAnswer).toHaveBeenCalledWith({ text: "The variance equals d k.", confidence: null, via: "spoken" }));
     expect(screen.getByRole("textbox", { name: "Your answer" })).toHaveValue("The variance equals d k.");
   });
 });

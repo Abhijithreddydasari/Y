@@ -9,6 +9,7 @@ export type LearningDimension = typeof LEARNING_DIMENSIONS[number];
 export type Outcome = "correct" | "partial" | "incorrect" | "unanswered";
 export type MissClass = "cue" | "discrimination" | "execution" | "careless" | "structural";
 export type Modality = "tap" | "typed" | "spoken" | "ink";
+export type KeyStatus = "ok" | "suspect" | "wrong";
 
 export interface EvidenceSource { event_id: string; modality: Modality; content_hash: string; element_ids: string[]; author: "learner" }
 export interface Observation {
@@ -17,6 +18,7 @@ export interface Observation {
   misconception: string | null; miss_class: MissClass | null;
   assistance: Assistance & { hint_ids: string[] };
   confidence: number | null; labeler: "deterministic" | "baseten" | "none"; label_confidence: number | null;
+  format_weight: number; key_status: KeyStatus;
   sources: EvidenceSource[]; created_at: string;
 }
 

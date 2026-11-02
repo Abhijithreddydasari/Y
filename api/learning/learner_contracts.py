@@ -18,6 +18,7 @@ LEARNING_DIMENSIONS: tuple[LearningDimension, ...] = ("recall", "understand", "a
 Outcome = Literal["correct", "partial", "incorrect", "unanswered"]
 MissClass = Literal["cue", "discrimination", "execution", "careless", "structural"]
 Modality = Literal["tap", "typed", "spoken", "ink"]
+KeyStatus = Literal["ok", "suspect", "wrong"]
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 # Brief ids are what `because` moves cite: K known, S shaky, M misconception, P preference, N note.
 BriefRef = Annotated[str, Field(pattern=r"^[KSMPN][0-9]{1,3}$")]
@@ -49,6 +50,10 @@ class Observation(Contract):
     confidence: Probability | None = None
     labeler: Literal["deterministic", "baseten", "none"] = "none"
     label_confidence: Probability | None = None
+    # How much this answer format says about the learner (guessable taps and reveals weigh less).
+    format_weight: Probability = 1.0
+    # "wrong": a verifier showed the tutor's key was incorrect; reducers skip or down-weight it.
+    key_status: KeyStatus = "ok"
     sources: tuple[EvidenceSource, ...] = Field(min_length=1, max_length=8)
     created_at: str
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from sqlalchemy import (Column, Float, ForeignKey, Index, Integer, MetaData, String,
-                        Table, Text, create_engine, event, insert, select, update, func)
+                        Table, Text, UniqueConstraint, create_engine, event, insert, select, update, func)
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
 
@@ -46,6 +46,20 @@ evaluations = Table("learning_evaluations", metadata,
     Column("result_json", Text, nullable=False))
 budgets = Table("learning_budgets", metadata,
     Column("bucket", String(100), primary_key=True), Column("used", Integer, nullable=False))
+# One row per answered tutor predict/check (H4). UNIQUE(session_id, qid): a repeat never double-counts.
+observations = Table("learning_observations", metadata,
+    Column("observation_id", String(36), primary_key=True),
+    Column("session_id", ForeignKey("learning_sessions.session_id"), nullable=False),
+    Column("owner_id", ForeignKey("learning_identities.owner_id"), nullable=False),
+    Column("qid", String(80), nullable=False), Column("turn_id", String(36), nullable=False),
+    Column("status", String(16), nullable=False), Column("modality", String(8), nullable=False),
+    # The question snapshot holds the tutor's key; it is labeler context, never a learner source.
+    Column("question_json", Text, nullable=False), Column("answer_text", Text, nullable=False),
+    Column("verifier_json", Text, nullable=False), Column("label_json", Text), Column("observation_json", Text),
+    Column("key_status", String(8), nullable=False, default="ok"), Column("error", String(64)),
+    Column("duplicates", Integer, nullable=False, default=0), Column("label_ms", Float),
+    Column("lease_until", Float, nullable=False, default=0), Column("created_at", Float, nullable=False),
+    UniqueConstraint("session_id", "qid", name="learning_observation_once"))
 
 
 @dataclass

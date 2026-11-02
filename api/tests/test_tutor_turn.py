@@ -13,7 +13,8 @@ from learning.decisions import ProviderFailure
 from learning.router import COOKIE, get_store, router
 from learning.storage import CaptureStore, make_engine
 from learning.tutor_moves import TurnValidator
-from learning.tutor_router import get_tutor, router as tutor_router
+from learning.decisions import EvidenceLabeler
+from learning.tutor_router import get_labeler, get_tutor, router as tutor_router
 from learning.tutor_storage import TutorStore, open_question
 from learning.tutor_turn import (MEMORY_BUDGET, SYSTEM_PREFIX, TurnInput, TurnRun, build_messages, grade,
                                  public_move, session_memory)
@@ -81,6 +82,8 @@ def env(tmp_path):
     app.dependency_overrides[get_store] = lambda: capture
     holder = {}
     app.dependency_overrides[get_tutor] = lambda: holder["tutor"]
+    # Evidence labeling never reaches Baseten from tests; an unconfigured labeler records a failure.
+    app.dependency_overrides[get_labeler] = lambda: holder.get("labeler") or EvidenceLabeler("")
     client = TestClient(app)
     client.cookies.set(COOKIE, token)
     yield client, capture, owner, sid, holder

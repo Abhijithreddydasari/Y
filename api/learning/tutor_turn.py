@@ -18,8 +18,9 @@ from pydantic import Field, model_validator
 
 from .board_contracts import ContextInput, ContextPacket
 from .board_context import model_context
-from .contracts import Contract, canonical
+from .contracts import Contract, Identifier, canonical
 from .decisions import ProviderFailure
+from .observations import audit_key, verify
 from .tutor_moves import MOVES_SCHEMA_VERSION, MoveError, TurnValidator
 from .tutor_stream import MoveStreamParser, MoveSyntaxError
 
@@ -44,6 +45,10 @@ class TurnInput(Contract):
     confidence: int | None = Field(default=None, ge=0, le=100)
     reveal: bool = False
     model: str | None = Field(default=None, max_length=40, pattern=r"^[a-z0-9.\-]+$")
+    # How the learner answered (evidence only); omitted means tap for a choice and typed for text.
+    via: Literal["tap", "typed", "spoken", "ink"] | None = None
+    # Learner ink that holds the answer; the server checks each id is human-authored.
+    element_ids: tuple[Identifier, ...] = Field(default=(), max_length=50)
     board: ContextInput | None = None
 
     @model_validator(mode="after")
@@ -52,6 +57,8 @@ class TurnInput(Contract):
             raise ValueError("a question needs text")
         if self.kind == "answer" and (not self.question_id or not (self.choice or self.text.strip() or self.reveal)):
             raise ValueError("an answer needs a question id and a choice, text or reveal")
+        if self.element_ids and self.via != "ink":
+            raise ValueError("element ids belong to an ink answer")
         return self
 
 
@@ -75,16 +82,19 @@ def public_question(question: dict) -> dict:
 
 
 def grade(question: dict, turn: TurnInput) -> dict:
-    """Deterministic result where one exists; free answers are judged by the tutor in context."""
+    """Deterministic result where a verifier has one; otherwise the tutor judges the answer in context.
+
+    The key audit recomputes a closed numeric question; when the tutor's key is wrong the answer is
+    graded against the recomputed value, so a correct learner is never marked wrong.
+    """
     answer = (turn.choice or turn.text).strip()
-    if turn.reveal:
-        result = "revealed"
-    elif question["kind"] in ("predict", "mcq"):
-        result = "correct" if answer == question["key"] else "incorrect"
-    else:
-        result = "correct" if answer.casefold() == question["key"].strip().casefold() else "unverified"
+    audit = audit_key(question)
+    key = audit["corrected_key"] if audit["status"] == "wrong" and audit["corrected_key"] else question["key"]
+    verdict = {"result": None, "method": None} if turn.reveal else verify(question, answer, key)
+    result = "revealed" if turn.reveal else verdict["result"] or "unverified"
     return {"qid": question["qid"], "concept": question["concept"], "dim": question["dim"], "result": result,
-            "answer": answer, "confidence": turn.confidence}
+            "answer": answer, "confidence": turn.confidence, "verified": verdict["result"], "method": verdict["method"],
+            "key_status": audit["status"], "recomputed": audit["recomputed"], "corrected_key": audit["corrected_key"]}
 
 
 def _learner(turn: dict) -> dict:
@@ -127,8 +137,12 @@ def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None) -> d
         if question:
             value["note"] = f"The open question was not answered: {question['q']}"
         return value
-    return {"kind": "answer", "question": {k: question[k] for k in ("kind", "q", "options", "key")},
-            "learner_answer": outcome["answer"], "confidence": turn.confidence, "result": outcome["result"]}
+    value = {"kind": "answer", "question": {k: question[k] for k in ("kind", "q", "options", "key")},
+             "learner_answer": outcome["answer"], "confidence": turn.confidence, "result": outcome["result"]}
+    if outcome.get("key_status") == "wrong":
+        value["key_audit"] = (f"The stated key looks wrong: the question's expression evaluates to {outcome['recomputed']}. "
+                              "The result above uses that value; say so briefly and do not mark a correct learner wrong.")
+    return value
 
 
 def build_messages(brief: str, memory: dict, board: dict, turn: dict, images: list[tuple[str, bytes]] = ()) -> list[dict]:

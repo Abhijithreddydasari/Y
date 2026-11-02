@@ -20,6 +20,11 @@
   strokes pass through). Muse Image illustrations arrive later. The composer has a model and
   voice picker; Spark Open on Baseten measured fastest (p50 1.84 s, 5 turns). Live artifact
   validity: 26 of 26 turns, 1 move dropped. Next: H4 and H5.
+- H4 done in code ([handoff](handoffs/H4.md)) on `feature/evidence-capture`. Each answered
+  predict/check becomes one `Observation`, deduped on `(session_id, qid)`. Deterministic verifiers
+  (option, number, symbolic) and a key audit run first; Elephant labels outcome, miss class and
+  misconception in the background, and failures show only in `GET …/evidence`. **Live Elephant
+  check blocked**: the Baseten key gets 403 on decision models. Next: H5.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -35,7 +40,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H1 Meta tutor turn | done (branch `feature/meta-tutor-turn`) | `1a6e734`, `8338fad` | [H1](handoffs/H1.md) |
 | H2 Voice in, narration out | done (branch `feature/voice-narration`) | `69085eb`, `d925a86`, `f70e40c` | [H2](handoffs/H2.md) |
 | H3 Board artifacts + model/voice picker | done (branch `feature/board-artifacts`) | `785b9be`, `5133e1d`, `949b597`, `0b6672f`, `bbc2879` | [H3](handoffs/H3.md) |
-| H4–H10 | planned | — | — |
+| H4 Evidence capture | done, live label check blocked (branch `feature/evidence-capture`) | `6ebb8dc`, `7160a6b` | [H4](handoffs/H4.md) |
+| H5–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 

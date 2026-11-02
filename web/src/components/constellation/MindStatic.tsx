@@ -35,7 +35,7 @@ export default function MindStatic({ map, frame, selected, onSelect, palette: p 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" role="group" aria-label="Mind, still view">
       <rect width={W} height={H} fill={p.bg} />
-      <g fill={p.cortex} opacity={p.additive ? 0.55 : 0.4}>{dots.map(([x, y], i) => <rect key={i} x={x} y={y} width={1.4} height={1.4} />)}</g>
+      <g fill={p.cortex} opacity={p.additive ? 0.55 : 0.7}>{dots.map(([x, y], i) => <rect key={i} x={x} y={y} width={1.4} height={1.4} />)}</g>
       {frame.links.map((l) => {
         const a = placed.nodes[l.source], b = placed.nodes[l.target];
         if (!a || !b) return null;

@@ -11,19 +11,19 @@ export interface Palette {
   misconception: string; resolved: string; synapse: string; misfire: string; spike: string; path: string;
   cortex: string; stub: string; selected: string; label: string;
   /** Additive light on the night canvas; plain alpha on paper (additive vanishes on a light background). */
-  additive: boolean; glow: number; cortexGain: number;
+  additive: boolean; glow: number; cortexGain: number; cortexSize: number; cortexAlpha: number;
 }
 
 export const PALETTES: Record<MindTheme, Palette> = {
   dark: {
     theme: "dark", bg: "#0B0E14", shaky: "#F0997B", learning: "#AFA9EC", solid: "#5DCAA5", unseen: "#888780", unseenSoma: "#2C2C2A",
     misconception: "#E24B4A", resolved: "#FAC775", synapse: "#7F77DD", misfire: "#E24B4A", spike: "#EEEDFE", path: "#FAC775",
-    cortex: "#9A9890", stub: "#5F5E5A", selected: "#FFFFFF", label: "#E8E6DF", additive: true, glow: 0.5, cortexGain: 0.62,
+    cortex: "#9A9890", stub: "#5F5E5A", selected: "#FFFFFF", label: "#E8E6DF", additive: true, glow: 0.5, cortexGain: 0.62, cortexSize: 0.03, cortexAlpha: 0.95,
   },
   light: {
     theme: "light", bg: "#F7F1E3", shaky: "#C9542A", learning: "#5B52C0", solid: "#13805F", unseen: "#8C8577", unseenSoma: "#ECE4D2",
     misconception: "#C23634", resolved: "#B07210", synapse: "#6259C8", misfire: "#C23634", spike: "#3C3489", path: "#B07210",
-    cortex: "#7D7360", stub: "#B9AF9A", selected: "#2C2C2A", label: "#2C2C2A", additive: false, glow: 0.26, cortexGain: 0.9,
+    cortex: "#5A4F3C", stub: "#B9AF9A", selected: "#2C2C2A", label: "#2C2C2A", additive: false, glow: 0.26, cortexGain: 1, cortexSize: 0.036, cortexAlpha: 1,
   },
 };
 

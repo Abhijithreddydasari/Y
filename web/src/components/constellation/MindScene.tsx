@@ -395,8 +395,8 @@ function Rig(props: SceneProps) {
     const lod = lodOf(cam.zoom);
     const lv = levelOf(lod);
     if (lv !== level.current) { level.current = lv; live.current.onLevel(lv); }
-    cortexMat.opacity = 0.95 * (1 - 0.7 * lod);
-    cortexMat.size = 0.03 * (1 - 0.2 * lod);
+    cortexMat.opacity = pal.cortexAlpha * (1 - 0.7 * lod);
+    cortexMat.size = pal.cortexSize * (1 - 0.2 * lod);
     detail.opacity = lod;
     synapseMat.opacity = 0.22 + 0.45 * lod;
 

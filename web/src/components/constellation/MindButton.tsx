@@ -39,12 +39,12 @@ export default function MindButton({ variant = "studio" }: { variant?: "studio" 
     <>
       {variant === "mobile" ? (
         <button type="button" aria-label={label} onPointerEnter={preload} onFocus={preload} onTouchStart={preload} onClick={() => setOpen(true)}
-          className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-violet-300/60 bg-[#151824] text-violet-200">
-          {icon}{fresh && <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-amber-300 ring-2 ring-[#151824]" />}
+          className="relative grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-slate-200 bg-white text-slate-700">
+          {icon}{fresh && <span className="absolute right-1.5 top-1.5 h-2.5 w-2.5 rounded-full bg-amber-300 ring-2 ring-white" />}
         </button>
       ) : (
         <button type="button" aria-label={label} onPointerEnter={preload} onFocus={preload} onTouchStart={preload} onClick={() => setOpen(true)}
-          className="pointer-events-auto fixed left-3 top-[68px] z-40 flex h-11 items-center gap-2 rounded-2xl border border-white/15 bg-[rgba(17,20,30,.86)] px-3.5 text-[13px] font-semibold text-violet-100 shadow-[0_14px_40px_rgba(15,23,42,.35)] backdrop-blur-xl transition hover:bg-[rgba(24,28,42,.92)] motion-reduce:transition-none">
+          className="pointer-events-auto fixed left-3 top-[64px] z-40 flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-2.5 text-[12px] font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:bg-slate-50 motion-reduce:transition-none">
           {icon}<span>Mind</span>{fresh && <span className="h-2 w-2 rounded-full bg-amber-300" aria-hidden="true" />}
         </button>
       )}
@@ -53,17 +53,12 @@ export default function MindButton({ variant = "studio" }: { variant?: "studio" 
   );
 }
 
-/** A brain outline holding a small cited network: three neurons, two synapses, one spike. */
+/** A doodled brain: one line-art outline, the midline and four folds, in the text colour. */
 function MindGlyph() {
   return (
-    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" aria-hidden="true">
-      <path d="M8 18.6c-2.9-.3-4.6-2.6-4.1-5-1-1.4-.7-3.6.9-4.4.1-2.5 2.2-4.1 4.5-3.8 1.2-1.3 3.4-1.7 5-.8 2.2-.4 4.4.9 4.9 3.1 1.7.9 2.3 3 1.5 4.6.4 2.2-1 4.2-3.2 4.4-.8 1.5-2.6 2.2-4.2 1.7l-.5 2.1"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity=".9" />
-      <path d="M8.6 12.2 12.3 9.1M12.3 9.1l3.4 4" stroke="#7F77DD" strokeWidth="1.4" strokeLinecap="round" />
-      <circle cx="8.6" cy="12.2" r="1.7" fill="#5DCAA5" />
-      <circle cx="12.3" cy="9.1" r="1.5" fill="#AFA9EC" />
-      <circle cx="15.7" cy="13.1" r="1.9" fill="#F0997B" />
-      <circle cx="14.1" cy="11.2" r=".75" fill="#FAC775" />
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 5.2c-1-1.4-3.3-1.6-4.6-.3-1.6-.2-3 1.1-3 2.7-1.3.6-1.9 2.2-1.2 3.5-.8 1.2-.5 2.9.7 3.6 0 1.7 1.5 3 3.2 2.8 1 1.2 2.9 1.4 4 .4 1.1 1 3 .8 4-.4 1.7.2 3.2-1.1 3.2-2.8 1.2-.7 1.5-2.4.7-3.6.7-1.3.1-2.9-1.2-3.5 0-1.6-1.4-2.9-3-2.7-1.3-1.3-3.6-1.1-4.6.3Z" />
+      <path d="M12 5.2v12.6M8.2 9.2c1 .2 1.6.9 1.6 1.9M7 13.4c1.1-.4 2.2 0 2.8.9M15.8 9.2c-1 .2-1.6.9-1.6 1.9M17 13.4c-1.1-.4-2.2 0-2.8.9" />
     </svg>
   );
 }

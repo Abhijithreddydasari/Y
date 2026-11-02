@@ -29,8 +29,10 @@
   (`gpt-6-luna`) labels evidence, reading learner ink crops: 14/14 live outcomes. End session
   seals one profile revision (Beta per concept × dimension, half-life, misconception ledger,
   Spark Open cited notes). The next session's brief drives a `because` chip, and Memory off is
-  generic: gate met live, 2/2 pairs. Fix the card-mutation fractional-index bug before the demo.
-  Next: H6–H9.
+  generic: gate met live, 2/2 pairs. 2026-11-03 follow-up: probability-weighted beliefs and
+  misconception ledger, reasoning score, close-time grouping of wrong answers into named beliefs,
+  card-mutation guard, and a live self-learning eval (`scripts/eval_learning.py`; a run with the
+  latest fixes is not yet read). Next: H6–H9.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.

@@ -17,7 +17,8 @@ import { pendingImages, watchImage } from "@/lib/board-images";
 import { fetchTutorOptions, KOKORO_VOICES, loadPrefs, resolvePrefs, savePrefs, type TutorOptions, type TutorPrefs,
   type TutorTrace } from "@/lib/tutor-options";
 
-export interface TutorAnswer { choice?: string; text?: string; confidence: number | null; reveal?: boolean }
+/** `via` records how the learner answered, for evidence; omitted means tap for a choice and typed for text. */
+export interface TutorAnswer { choice?: string; text?: string; confidence: number | null; reveal?: boolean; via?: "spoken" }
 export interface TutorTurnState {
   /** null until the server reports whether a tutor key is configured. */
   configured: boolean | null;
@@ -611,7 +612,7 @@ export function useTutorSession(): TutorSession {
     const handle = handleRef.current, label = value.reveal ? "You asked to be told." : `You answered: ${value.choice ?? value.text ?? ""}`
       + (value.confidence === null ? "" : ` (${value.confidence}% sure)`);
     void runTurn({ turn_id: crypto.randomUUID(), kind: "answer", question_id: question.qid, choice: value.choice,
-      text: value.text, confidence: value.confidence, reveal: value.reveal }, () => {
+      text: value.text, confidence: value.confidence, reveal: value.reveal, ...(value.via ? { via: value.via } : {}) }, () => {
       // Record the answer on the card itself; the server keeps the learner's input as the source of truth.
       const frame = handle?.getElements().find((e) => e.id === cardId(question.qid));
       const text = handle?.getElements().find((e) => e.id === `${cardId(question.qid)}-text`);

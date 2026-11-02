@@ -21,6 +21,8 @@ export interface TurnBody {
   choice?: string;
   confidence?: number | null;
   reveal?: boolean;
+  /** How the learner answered, recorded as evidence; the server defaults to tap for a choice and typed for text. */
+  via?: "tap" | "typed" | "spoken" | "ink";
   /** Tutor option id from GET /learning/tutor/options; the server resolves it against its allowlist. */
   model?: string;
   board?: ContextRequest;

@@ -31,9 +31,9 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
   // One recording answers once: free text is submitted as said; options need exactly one clear match.
   const answerByVoice = useCallback((spoken: string) => {
     if (!question || busy) return;
-    if (question.kind === "free") { setText(spoken); onAnswer({ text: spoken, confidence }); return; }
+    if (question.kind === "free") { setText(spoken); onAnswer({ text: spoken, confidence, via: "spoken" }); return; }
     const match = matchOption(spoken, question.options);
-    if (match) { setChoice(match); onAnswer({ choice: match, confidence }); }
+    if (match) { setChoice(match); onAnswer({ choice: match, confidence, via: "spoken" }); }
     else setHeard(spoken);
   }, [busy, confidence, onAnswer, question]);
   const voice = useVoiceInput(answerByVoice, onListen);

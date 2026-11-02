@@ -140,6 +140,7 @@ describe("tutor turn flow", () => {
     await act(async () => { result.current.tutor.answer({ choice: "the mean", confidence: 70 }); });
     await waitFor(() => expect(result.current.tutor.busy).toBe(false));
     expect(mocks.streamTutorTurn.mock.calls[1][1]).toMatchObject({ kind: "answer", question_id: question.qid, choice: "the mean", confidence: 70 });
+    expect(mocks.streamTutorTurn.mock.calls[1][1]).not.toHaveProperty("via"); // a tap: the server records it as tap
     expect(result.current.tutor.question).toBeNull();
     expect(handle.mutateElement).toHaveBeenCalledWith("y-card-t1.2-text", expect.objectContaining({ text: expect.stringContaining("You answered: the mean (70% sure)") }));
   });

@@ -42,6 +42,8 @@ describe("learning proxy boundary", () => {
     const sid = "12345678-1234-1234-1234-123456789abc";
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/images/${"c".repeat(32)}`))).status).toBe(200);
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/images/../x`))).status).toBe(404);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/evidence`))).status).toBe(200);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/evidence/x`))).status).toBe(404);
   });
   it("forwards push-to-talk audio as WAV and serves Kokoro speech", async () => {
     const sid = "12345678-1234-1234-1234-123456789abc";

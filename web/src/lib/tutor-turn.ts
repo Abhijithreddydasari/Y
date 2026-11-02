@@ -8,7 +8,9 @@ import type { PrimitiveTag } from "./types";
 /** A predict or check as the browser sees it: no key until the learner has answered. */
 export interface TutorQuestion { qid: string; kind: "predict" | "mcq" | "free"; q: string; options: string[] }
 export type PublicMove =
-  | Exclude<TutorMove, { type: "predict" | "check" }>
+  | Exclude<TutorMove, { type: "predict" | "check" | "image" }>
+  /** The server adds the id of the illustration job it started for this move. */
+  | { type: "image"; prompt: string; alt: string; image_id?: string }
   | { type: "predict" | "check"; kind: "mcq" | "free"; q: string; options: string[]; qid: string | null };
 
 export interface TurnBody {
@@ -62,6 +64,7 @@ export function moveToPrimitive(move: PublicMove): PrimitiveTag | null {
     case "equation": return { tag: "equation", args: { latex: move.latex } };
     case "diagram": return { tag: "diagram", args: { mermaid: move.mermaid } };
     case "widget": return { tag: "widget", args: { kind: move.kind, spec: move.spec } };
+    case "image": return move.image_id ? { tag: "image", args: { id: move.image_id, alt: move.alt } } : null;
     case "predict":
     case "check":
       if (!move.qid) return null;

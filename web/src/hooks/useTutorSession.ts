@@ -13,6 +13,7 @@ import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningE
 import { boardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
 import { cardId, fetchTutorState, moveToPrimitive, questionOf, streamTutorTurn, tutorErrorMessage,
   type TurnBody, type TutorQuestion, type TutorTimeline } from "@/lib/tutor-turn";
+import { pendingImages, watchImage } from "@/lib/board-images";
 import { fetchTutorOptions, KOKORO_VOICES, loadPrefs, resolvePrefs, savePrefs, type TutorOptions, type TutorPrefs,
   type TutorTrace } from "@/lib/tutor-options";
 
@@ -251,7 +252,12 @@ export function useTutorSession(): TutorSession {
     cancelSpeech();
   }, []);
 
-  const onWhiteboardReady = useCallback((handle: WhiteboardHandle) => { handleRef.current = handle; }, []);
+  const onWhiteboardReady = useCallback((handle: WhiteboardHandle) => {
+    handleRef.current = handle;
+    // Illustrations still painting when the page was closed: pick their jobs up again.
+    const session = handle.board?.session;
+    if (session) for (const id of pendingImages(handle)) void watchImage(handle, session, id);
+  }, []);
 
   const beginTranscript = useCallback((source: "lesson" | "assessment") => {
     const id = `${source}_${crypto.randomUUID()}`;
@@ -557,6 +563,8 @@ export function useTutorSession(): TutorSession {
           asked = questionOf(move) ?? asked;
           const tag = moveToPrimitive(move);
           if (tag) player.enqueue(tag);
+          // Painted in the background; the placeholder is swapped once the image is ready.
+          if (move.type === "image" && move.image_id) void watchImage(handle, board.session, move.image_id);
           setStatus("Explaining…");
         },
         onDone: (value) => { asked = value.question ?? asked; if (value.tutor) setTrace(value.tutor); Object.assign(stages, Object.fromEntries(Object.entries(value.timing ?? {}).map(([k, v]) => [`server_${k}`, v]))); },

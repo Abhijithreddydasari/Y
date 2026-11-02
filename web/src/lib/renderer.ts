@@ -12,6 +12,7 @@ import type { FileId } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
 import { WIDGET_SCHEME, parseWidget, widgetSize } from "@/components/widgets/widget-spec";
 import { renderLatexToImage } from "./katex";
+import { placeholderId } from "./board-images";
 import { diagramLabels, mermaidToBoard } from "./mermaid-board";
 import { parseSvg, rasterSvgToPng, type ParsedSvg } from "./svg";
 import type { PrimitiveTag } from "./types";
@@ -160,6 +161,8 @@ export class LessonRenderer {
         return this.renderDiagram(asStr(tag.args.mermaid));
       case "widget":
         return this.renderWidget(asStr(tag.args.kind), asStr(tag.args.spec));
+      case "image":
+        return this.renderImagePlaceholder(asStr(tag.args.id), asStr(tag.args.alt));
       default:
         return { skeletons: [] };
     }
@@ -554,6 +557,21 @@ export class LessonRenderer {
         customData: { yWidget: widget } } as ExcalidrawElementSkeleton],
       embeddables: [id],
     };
+  }
+
+  /** A dashed frame where the illustration will appear; board-images.ts swaps it for the image. */
+  private renderImagePlaceholder(imageId: string, alt: string): RenderResult {
+    if (!/^[0-9a-f]{32}$/.test(imageId)) return { skeletons: [] };
+    const id = placeholderId(imageId), width = 420, height = 280; // Muse Image is 3:2
+    const x = this.narrationX + (COL_WIDTH - width) / 2, y = this.narrationY;
+    this.advanceNarration(height + 10);
+    return { skeletons: [
+      { type: "rectangle", id, x, y, width, height, strokeColor: "#a78bfa", backgroundColor: "#faf5ff", fillStyle: "solid",
+        strokeStyle: "dashed", roughness: 0, roundness: { type: 3 },
+        customData: { yImage: { image_id: imageId, alt, status: "pending" } } } as ExcalidrawElementSkeleton,
+      { type: "text", id: `${id}-text`, x: x + 24, y: y + height / 2 - 24, width: width - 48, height: 48, text: wrapText(`Painting an illustration… ${alt}`, 40),
+        fontSize: 16, fontFamily: 1, strokeColor: "#6d28d9", textAlign: "center", autoResize: false } as ExcalidrawElementSkeleton,
+    ] };
   }
 
   private renderLine(args: Record<string, string | number>): RenderResult {

@@ -13,7 +13,8 @@ export type PrimitiveName =
   | "draw_part"
   | "card"
   | "diagram"
-  | "widget";
+  | "widget"
+  | "image";
 
 export interface PrimitiveTag {
   tag: PrimitiveName;

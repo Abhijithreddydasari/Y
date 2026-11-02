@@ -68,7 +68,8 @@ export function widgetSize(widget: WidgetSpec): { width: number; height: number 
   switch (widget.kind) {
     case "plot": return { width: 520, height: 300 + 34 * Object.keys(widget.spec.params).length };
     case "attention": return { width: 560, height: 190 + 30 * widget.spec.tokens.length };
-    case "matrix": return { width: 520, height: 300 };
-    case "stepper": return { width: 560, height: 220 };
+    case "matrix": return widget.spec.m.length === 2 && widget.spec.m[0].length === 2 ? { width: 500, height: 250 }
+      : { width: 120 + 60 * widget.spec.m[0].length, height: 110 + 40 * widget.spec.m.length };
+    case "stepper": return { width: 560, height: 210 };
   }
 }

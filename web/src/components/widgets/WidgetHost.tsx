@@ -9,7 +9,9 @@
 import type { ExcalidrawEmbeddableElement, NonDeleted } from "@excalidraw/excalidraw/element/types";
 import type { AppState } from "@excalidraw/excalidraw/types";
 import AttentionWidget from "./AttentionWidget";
+import MatrixWidget from "./MatrixWidget";
 import PlotWidget from "./PlotWidget";
+import StepperWidget from "./StepperWidget";
 import { WIDGET_SCHEME, parseWidget, type WidgetSpec } from "./widget-spec";
 
 /** Our scheme validates; any other link falls through to Excalidraw's own allowlist. */
@@ -27,7 +29,8 @@ export function WidgetBody({ widget }: { widget: WidgetSpec }) {
   switch (widget.kind) {
     case "plot": return <PlotWidget spec={widget.spec} />;
     case "attention": return <AttentionWidget spec={widget.spec} />;
-    default: return <div className="p-4 text-sm text-slate-500">This widget is not available yet.</div>;
+    case "matrix": return <MatrixWidget spec={widget.spec} />;
+    case "stepper": return <StepperWidget spec={widget.spec} />;
   }
 }
 

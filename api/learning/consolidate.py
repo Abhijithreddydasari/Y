@@ -55,8 +55,10 @@ SYSTEM = (
     "it. Several wrong answers from one belief are one entry. Leave out a group whose answers show no clear belief. "
     "In `links`, record connections between two different concepts that the learner's own answers show: "
     "`builds_on` when they used concept `from` to reason about concept `to`, `confused_with` when they mixed the two "
-    "up. Use concept ids exactly as given in the input (`concept` fields or `known_concepts`). `why` is one short "
-    "sentence about what the learner did, and `cites` lists the observation ids that show it. Do not link concepts "
+    "up. One answer is enough: when an answer explains its own concept by reasoning from another concept (one in "
+    "this session or in `known_concepts`), that is `builds_on` from the other concept to the answer's concept, "
+    "citing that answer. Use concept ids exactly as given in the input (`concept` fields or `known_concepts`). "
+    "`why` is one short sentence about what the learner did, and `cites` lists the observation ids that show it. Do not link concepts "
     "only because they are related in the subject; no link is better than a guessed one. "
     "Return {\"notes\": [...], \"misconceptions\": [...], \"links\": [...]}."
 )

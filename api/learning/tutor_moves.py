@@ -38,6 +38,23 @@ def restore_latex(value: str) -> str:
     return _LATEX_CONTROL.sub(lambda m: _LATEX_ESCAPE[m.group()], value)
 
 
+# Diagrams the board converts to native elements; interaction and config directives never render.
+DIAGRAM_TYPES = ("flowchart", "graph", "sequenceDiagram", "classDiagram")
+MAX_DIAGRAM_LINES = 40
+_DIAGRAM_BLOCKED = re.compile(r"^\s*(click|call|href)\b|%%\{|<\s*/?\s*[a-zA-Z]|javascript:", re.MULTILINE | re.IGNORECASE)
+
+
+def diagram_error(source: str) -> str | None:
+    lines = [line for line in source.strip().splitlines() if line.strip() and not line.strip().startswith("%%")]
+    if not lines or lines[0].split()[0] not in DIAGRAM_TYPES:
+        return f"diagram must start with one of: {', '.join(DIAGRAM_TYPES)}"
+    if len(lines) > MAX_DIAGRAM_LINES:
+        return f"diagram exceeds {MAX_DIAGRAM_LINES} lines"
+    if _DIAGRAM_BLOCKED.search(source):
+        return "diagram uses click, links, config directives or HTML"
+    return None
+
+
 class Seg(Contract):
     type: Literal["seg"]
     id: Identifier = Field(max_length=40)
@@ -135,6 +152,10 @@ class Param(Contract):
         return self
 
 
+_NUMBER = re.compile(r"(?<![A-Za-z_])(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?")
+PLOT_NAMES = frozenset({"sin", "cos", "tan", "exp", "log", "ln", "sqrt", "abs", "tanh", "sigmoid", "pi", "e"})
+
+
 class PlotSpec(Contract):
     expr: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_+\-*/^().,\s]+$")
     x: tuple[float, float]
@@ -144,6 +165,12 @@ class PlotSpec(Contract):
     def domain(self):
         if self.x[0] >= self.x[1]:
             raise ValueError("x range must ascend")
+        if "x" in self.params:
+            raise ValueError("x is the plot variable, not a parameter")
+        # Same names the browser's evaluator (web/src/lib/expr.ts) accepts.
+        unknown = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", _NUMBER.sub(" ", self.expr))) - PLOT_NAMES - {"x", *self.params}
+        if unknown:
+            raise ValueError(f"expr uses unknown names: {', '.join(sorted(unknown))}")
         return self
 
 
@@ -294,6 +321,8 @@ class TurnValidator:
                 WIDGET_SPECS[move.kind].model_validate(spec)
             except ValidationError as error:
                 raise MoveError(f"{move.kind} spec {_compact(error)}") from None
+        elif isinstance(move, Diagram) and (error := diagram_error(move.mermaid)):
+            raise MoveError(error)
         elif isinstance(move, Point) and move.crop >= self.crops:
             raise MoveError("point references a crop that was not sent")
         elif isinstance(move, TurnEnd):

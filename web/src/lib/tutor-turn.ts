@@ -2,12 +2,15 @@
 // Moves have passed server validation; questions arrive without their answer key.
 import { BoardError, readEvents, type ContextRequest } from "./board-api";
 import type { TutorMove } from "./tutor-moves";
+import type { TutorTrace } from "./tutor-options";
 import type { PrimitiveTag } from "./types";
 
 /** A predict or check as the browser sees it: no key until the learner has answered. */
 export interface TutorQuestion { qid: string; kind: "predict" | "mcq" | "free"; q: string; options: string[] }
 export type PublicMove =
-  | Exclude<TutorMove, { type: "predict" | "check" }>
+  | Exclude<TutorMove, { type: "predict" | "check" | "image" }>
+  /** The server adds the id of the illustration job it started for this move. */
+  | { type: "image"; prompt: string; alt: string; image_id?: string }
   | { type: "predict" | "check"; kind: "mcq" | "free"; q: string; options: string[]; qid: string | null };
 
 export interface TurnBody {
@@ -18,6 +21,8 @@ export interface TurnBody {
   choice?: string;
   confidence?: number | null;
   reveal?: boolean;
+  /** Tutor option id from GET /learning/tutor/options; the server resolves it against its allowlist. */
+  model?: string;
   board?: ContextRequest;
 }
 
@@ -25,18 +30,21 @@ export interface TutorTimeline { [stage: string]: number }
 export interface TutorTurnEvents {
   onTurn?: (value: { turn_id: string; outcome: { qid: string; result: string } | null }) => void;
   onMove: (move: PublicMove, index: number) => void;
-  onDone: (value: { status: string; question: TutorQuestion | null; timing?: TutorTimeline }) => void;
+  onDone: (value: { status: string; question: TutorQuestion | null; timing?: TutorTimeline; tutor?: TutorTrace }) => void;
 }
 export interface TutorState {
   configured: boolean;
   model: string;
   open: TutorQuestion | null;
-  turns: { turn_id: string; seq: number; kind: string; status: string; learner: string; goals: string[]; said: string[] }[];
+  turns: { turn_id: string; seq: number; kind: string; status: string; learner: string; goals: string[]; said: string[];
+    tutor?: TutorTrace | null }[];
 }
 
 const MESSAGES: Record<string, string> = {
   tutor_not_configured: "The tutor is not configured on the server (MODEL_API_KEY is missing). Your question and board are kept.",
   tutor_question_not_open: "That question is no longer open. Ask a new question instead.",
+  tutor_model_unknown: "That tutor model is not offered here. Pick another in the menu beside Ask.",
+  tutor_model_unavailable: "That tutor model is not configured on this server. Pick another in the menu beside Ask.",
   tutor_turn_in_progress: "The tutor is still answering. Wait for it to finish or press Stop.",
   assessment_budget_exhausted: "The hourly tutor limit is reached. Your question and board are kept; try again later.",
   learning_identity_required: "Your learning session expired. Reload the page to continue.",
@@ -48,12 +56,15 @@ export function tutorErrorMessage(error: unknown): string {
 
 export const cardId = (qid: string) => `y-card-${qid}`;
 
-/** Board primitive for a move, or null for moves that do not draw (say, turn_end). */
+/** Board primitive for a move, or null for moves that do not draw (say, turn_end) or are not rendered yet. */
 export function moveToPrimitive(move: PublicMove): PrimitiveTag | null {
   switch (move.type) {
     case "seg": return { tag: "title", args: { text: move.goal } };
     case "write": return { tag: "text", args: { content: move.text } };
     case "equation": return { tag: "equation", args: { latex: move.latex } };
+    case "diagram": return { tag: "diagram", args: { mermaid: move.mermaid } };
+    case "widget": return { tag: "widget", args: { kind: move.kind, spec: move.spec } };
+    case "image": return move.image_id ? { tag: "image", args: { id: move.image_id, alt: move.alt } } : null;
     case "predict":
     case "check":
       if (!move.qid) return null;

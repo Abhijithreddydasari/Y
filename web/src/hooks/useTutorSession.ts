@@ -13,6 +13,9 @@ import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningE
 import { boardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
 import { cardId, fetchTutorState, moveToPrimitive, questionOf, streamTutorTurn, tutorErrorMessage,
   type TurnBody, type TutorQuestion, type TutorTimeline } from "@/lib/tutor-turn";
+import { pendingImages, watchImage } from "@/lib/board-images";
+import { fetchTutorOptions, KOKORO_VOICES, loadPrefs, resolvePrefs, savePrefs, type TutorOptions, type TutorPrefs,
+  type TutorTrace } from "@/lib/tutor-options";
 
 export interface TutorAnswer { choice?: string; text?: string; confidence: number | null; reveal?: boolean }
 export interface TutorTurnState {
@@ -32,6 +35,8 @@ export interface TutorTurnState {
   cardRect: (qid: string) => DOMRect | null;
   /** Silence the narration only (the learner started talking). */
   hush: () => void;
+  picker: { options: TutorOptions | null; prefs: TutorPrefs; trace: TutorTrace | null; setModel: (id: string) => void;
+    setVoice: (id: string) => void };
 }
 
 interface CachedLesson {
@@ -173,6 +178,10 @@ export function useTutorSession(): TutorSession {
   const [timing, setTiming] = useState<TutorTimeline | null>(null);
   const tutorAbortRef = useRef<AbortController | null>(null);
   const tutorKnownRef = useRef(false);
+  const [tutorOptions, setTutorOptions] = useState<TutorOptions | null>(null);
+  const [prefs, setPrefs] = useState<TutorPrefs>({ model: "spark-1.3", voice: "kokoro_af_heart" });
+  const prefsRef = useRef(prefs);
+  const [trace, setTrace] = useState<TutorTrace | null>(null);
 
   const refreshLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -243,7 +252,12 @@ export function useTutorSession(): TutorSession {
     cancelSpeech();
   }, []);
 
-  const onWhiteboardReady = useCallback((handle: WhiteboardHandle) => { handleRef.current = handle; }, []);
+  const onWhiteboardReady = useCallback((handle: WhiteboardHandle) => {
+    handleRef.current = handle;
+    // Illustrations still painting when the page was closed: pick their jobs up again.
+    const session = handle.board?.session;
+    if (session) for (const id of pendingImages(handle)) void watchImage(handle, session, id);
+  }, []);
 
   const beginTranscript = useCallback((source: "lesson" | "assessment") => {
     const id = `${source}_${crypto.randomUUID()}`;
@@ -528,6 +542,7 @@ export function useTutorSession(): TutorSession {
       const origin = prepared.packet.focused.length ? prepared.packet.response_area : { x: view.x + Math.min(120, view.w * 0.1), y: view.y + 100 };
       // The board is written at board speed; each segment's `say` is spoken once its visuals are drawn.
       const player = new LessonPlayer({ origin, handle, ttsEnabled: true, voiceName: voiceRef.current, onNarratingChange: setNarrating,
+        browserOnly: prefsRef.current.voice === "browser",
         signal: controller.signal, pacing: "segment", visualGapMs: 150, onCaption: setCaption,
         onRendered: () => { stages.first_render_ms ??= performance.now() - started; },
         onAudible: ({ engine, waitMs }) => {
@@ -537,7 +552,8 @@ export function useTutorSession(): TutorSession {
       player.setMuted(!ttsRef.current);
       playerRef.current = player;
       setStatus("Thinking…");
-      await streamTutorTurn(board.session, { ...body, board: prepared.request }, {
+      const model = tutorOptions ? { model: prefsRef.current.model } : {};
+      await streamTutorTurn(board.session, { ...body, ...model, board: prepared.request }, {
         onTurn: () => { accepted = true; if (body.kind === "question") setDraft(""); else setQuestion(null); onAccepted?.(); },
         onMove: (move) => {
           stages.first_move_ms ??= performance.now() - started;
@@ -547,9 +563,11 @@ export function useTutorSession(): TutorSession {
           asked = questionOf(move) ?? asked;
           const tag = moveToPrimitive(move);
           if (tag) player.enqueue(tag);
+          // Painted in the background; the placeholder is swapped once the image is ready.
+          if (move.type === "image" && move.image_id) void watchImage(handle, board.session, move.image_id);
           setStatus("Explaining…");
         },
-        onDone: (value) => { asked = value.question ?? asked; Object.assign(stages, Object.fromEntries(Object.entries(value.timing ?? {}).map(([k, v]) => [`server_${k}`, v]))); },
+        onDone: (value) => { asked = value.question ?? asked; if (value.tutor) setTrace(value.tutor); Object.assign(stages, Object.fromEntries(Object.entries(value.timing ?? {}).map(([k, v]) => [`server_${k}`, v]))); },
       }, controller.signal);
       await player.finishDrawing();
       stages.drawn_ms = performance.now() - started;
@@ -579,7 +597,7 @@ export function useTutorSession(): TutorSession {
       if (tutorAbortRef.current === controller) tutorAbortRef.current = null;
       setTutorBusy(false);
     }
-  }, [busy, question, tutorBusy]);
+  }, [busy, question, tutorBusy, tutorOptions]);
 
   const ask = useCallback((text: string) => {
     const clean = text.trim();
@@ -628,9 +646,43 @@ export function useTutorSession(): TutorSession {
     ttsRef.current = !ttsRef.current;
     setTtsEnabled(ttsRef.current);
     playerRef.current?.setMuted(!ttsRef.current);
+    // Keep the picker truthful: muting is "Off"; unmuting returns to the last Kokoro voice.
+    const voice = ttsRef.current ? (prefsRef.current.voice === "off" ? voiceRef.current : prefsRef.current.voice) : "off";
+    prefsRef.current = { ...prefsRef.current, voice };
+    setPrefs(prefsRef.current);
+    savePrefs(prefsRef.current);
   }, []);
 
   const hush = useCallback(() => { playerRef.current?.cancel(); cancelSpeech(); }, []);
+
+  // Voice choice: a Kokoro voice, the browser voice, or off (the same switch as the Narration toggle).
+  const applyVoice = useCallback((id: string) => {
+    const on = id !== "off";
+    ttsRef.current = on;
+    setTtsEnabled(on);
+    playerRef.current?.setMuted(!on);
+    playerRef.current?.setBrowserOnly(id === "browser");
+    if (KOKORO_VOICES.has(id) && id !== voiceRef.current) { voiceRef.current = id; setVoice(id); playerRef.current?.setVoice(id); }
+  }, []);
+
+  const choose = useCallback((change: Partial<TutorPrefs>) => {
+    const next = { ...prefsRef.current, ...change };
+    prefsRef.current = next;
+    setPrefs(next);
+    savePrefs(next);
+    if (change.voice) applyVoice(change.voice);
+  }, [applyVoice]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchTutorOptions().then((options) => {
+      if (cancelled || !options) return;
+      const next = resolvePrefs(options, loadPrefs());
+      prefsRef.current = next;
+      setTutorOptions(options); setPrefs(next); applyVoice(next.voice);
+    });
+    return () => { cancelled = true; };
+  }, [applyVoice]);
 
   const stop = useCallback(() => {
     const tutorRunning = Boolean(tutorAbortRef.current) || narrating;
@@ -651,6 +703,7 @@ export function useTutorSession(): TutorSession {
     changeModel: setModelChoice, changeVoice, resetLearner: resetLearnerProfile,
     sendChatMessage, cancelChat, clearChat,
     tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing, narrating,
-      setDraft, ask, answer, cardRect, hush },
+      setDraft, ask, answer, cardRect, hush,
+      picker: { options: tutorOptions, prefs, trace, setModel: (model) => choose({ model }), setVoice: (voice) => choose({ voice }) } },
   };
 }

@@ -8,14 +8,16 @@ from uuid import UUID
 
 import anyio
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
+from . import image_jobs
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
 from .contracts import canonical, digest
 from .router import call_store, get_store, private_response, require_owner
+from .tutor_models import OptionUnavailable, resolve, tutor_options, voice_options
 from .tutor_moves import TurnValidator
 from .tutor_provider import MetaTutor
 from .tutor_storage import TutorStore, open_question
@@ -40,6 +42,10 @@ def get_tutor_store(store=Depends(get_store)):
     return TutorStore(store)
 
 
+def get_image_jobs(store=Depends(get_store)):
+    return image_jobs.ImageJobs(store)
+
+
 async def get_tutor(request: Request):
     client = getattr(request.app.state, "board_http", None)
     if client is not None:
@@ -61,6 +67,18 @@ def _replay(turn: dict):
     yield _event("done", {"status": turn["status"], "question": public_question(question) if question else None, "replayed": True})
 
 
+@router.get("/tutor/options")
+async def options(owner=Depends(require_owner)):
+    """Models and voices the picker offers, each with availability and a reason when disabled."""
+    from speech import get_speech_engine  # imported lazily: the voice engine is optional
+
+    try:
+        engine = get_speech_engine()
+    except Exception:  # an engine that cannot even construct is simply unavailable
+        engine = None
+    return {"models": tutor_options(), "voices": voice_options(engine)}
+
+
 @router.get("/sessions/{sid}/tutor")
 async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor_store), tutor=Depends(get_tutor)):
     history = await call_store(store.history, owner, str(sid))
@@ -69,13 +87,27 @@ async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
             "turns": [{"turn_id": t["turn_id"], "seq": t["seq"], "kind": t["kind"], "status": t["status"],
                        "learner": t["input"].get("text") or t["input"].get("choice") or "",
                        "goals": [m["goal"] for m in t["moves"] if m["type"] == "seg"],
-                       "said": [m["text"] for m in t["moves"] if m["type"] == "say"]} for t in history[-20:]]}
+                       "said": [m["text"] for m in t["moves"] if m["type"] == "say"],
+                       "tutor": (t["timing"] or {}).get("tutor")} for t in history[-20:]]}
+
+
+@router.get("/sessions/{sid}/images/{image_id}")
+async def image(sid: UUID, image_id: str = Path(pattern=r"^[0-9a-f]{32}$"), owner=Depends(require_owner),
+                images=Depends(get_image_jobs)):
+    """Status of an illustration started by an `image` move; a ready one names its board asset."""
+    return await call_store(images.get, owner, str(sid), image_id)
 
 
 @router.post("/sessions/{sid}/tutor/turns")
-async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=Depends(get_tutor_store),
-               boards=Depends(get_board_store), tutor=Depends(get_tutor)):
+async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(require_owner), store=Depends(get_tutor_store),
+               boards=Depends(get_board_store), tutor=Depends(get_tutor), illustrations=Depends(get_image_jobs)):
     started = time.perf_counter()
+    try:
+        option = resolve(body.model)
+    except OptionUnavailable as exc:
+        raise HTTPException(422, str(exc)) from None
+    if body.model:
+        tutor.use(option)
     if not tutor.configured:
         raise HTTPException(503, "tutor_not_configured")
     history = await call_store(store.history, owner, str(sid))
@@ -105,12 +137,23 @@ async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=D
         await run_in_threadpool(store.finish, str(body.turn_id), "failed", [], None, outcome, {"error": "context_or_budget"})
         raise
 
+    async def illustrate(move: dict) -> None:
+        # The stored move keeps the job id, so a replay shows the same image without a new paid call.
+        job = await call_store(illustrations.create, owner, str(sid), str(body.turn_id), move["prompt"], move["alt"],
+                               bool(image_jobs.api_key()))
+        move["image_id"] = job["image_id"]
+        if job["status"] == "pending":
+            image_jobs.start(illustrations, boards, getattr(request.app.state, "board_http", None), owner, str(sid),
+                             job["image_id"], move["prompt"])
+
     async def events():
         yield _event("turn", {"turn_id": str(body.turn_id), "kind": body.kind, "outcome": outcome and {
             k: outcome[k] for k in ("qid", "result")}})
         try:
             with anyio.fail_after(TURN_SECONDS):
                 async for index, move in run.events():
+                    if move["type"] == "image":
+                        await illustrate(move)
                     qid = f"{body.turn_id}.{index}" if index == run.question_index else None
                     yield _event("move", {"index": index, "move": public_move(move, qid)})
         except TimeoutError:
@@ -125,7 +168,8 @@ async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=D
             question_value = question_of(run, str(body.turn_id))
             with anyio.CancelScope(shield=True):
                 await run_in_threadpool(store.finish, str(body.turn_id), run.status, run.moves, question_value, outcome,
-                                        {**summary(run), "provider": tutor.timing, "usage": tutor.usage})
+                                        {**summary(run), "provider": tutor.timing, "usage": tutor.usage,
+                                         "tutor": tutor.trace})
             log.info("tutor turn=%s kind=%s status=%s moves=%s dropped=%s repairs=%s timing=%s usage=%s",
                      body.turn_id, body.kind, run.status, len(run.moves), len(run.dropped), run.repairs,
                      {k: round(v) for k, v in {**run.timing, **tutor.timing}.items()}, tutor.usage)
@@ -134,5 +178,6 @@ async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=D
             yield _event("error", {"code": run.error, "message": MESSAGES.get(run.error, FALLBACK), "status": run.status})
         yield _event("done", {"status": run.status, "question": public_question(question_value) if question_value else None,
                               "timing": {k: round(v) for k, v in {**run.timing, **tutor.timing}.items()},
-                              "moves": len(run.moves), "dropped": len(run.dropped), "repairs": run.repairs, "usage": tutor.usage})
+                              "moves": len(run.moves), "dropped": len(run.dropped), "repairs": run.repairs, "usage": tutor.usage,
+                              "tutor": tutor.trace})
     return EventSourceResponse(events(), headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

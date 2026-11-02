@@ -26,7 +26,15 @@ class FakeTutor:
         self.documents, self.repairs, self.chunk, self.fail = list(documents), list(repairs), chunk, fail
         self.calls, self.repair_calls, self.closed = [], [], False
         self.configured, self.model = True, "fake"
-        self.usage, self.timing = {}, {}
+        self.usage, self.timing, self.used = {}, {}, []
+
+    def use(self, option):
+        self.used.append(option)
+        self.model = option.model
+
+    @property
+    def trace(self):
+        return {"option": "fake", "model": self.model, "effort": "minimal"}
 
     async def stream(self, messages):
         self.calls.append(messages)
@@ -167,8 +175,8 @@ def test_invalid_move_is_repaired_once_and_otherwise_dropped(env):
 
 def test_disabled_kinds_and_moves_after_the_question_never_render(env):
     client, capture, owner, sid, holder = env
-    widget = {"type": "widget", "kind": "attention", "spec": json.dumps({"tokens": ["a", "b"], "temp": 1})}
-    holder["tutor"] = FakeTutor([doc(SEG, widget, CHECK, WRITE, WAIT)])
+    point = {"type": "point", "crop": 0, "x": 10, "y": 10, "line": 1, "label": "here"}
+    holder["tutor"] = FakeTutor([doc(SEG, point, CHECK, WRITE, WAIT)])
     _, response = ask(client, sid)
     got = events(response)
     assert [v["move"]["type"] for n, v in got if n == "move"] == ["seg", "check", "turn_end"]

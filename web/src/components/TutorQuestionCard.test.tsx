@@ -77,7 +77,9 @@ describe("TutorQuestionCard", () => {
 
 function tutor(overrides: Partial<TutorTurnState> = {}): TutorTurnState {
   return { configured: true, busy: false, draft: "", question: null, caption: "", error: "", timing: null, narrating: false,
-    setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, hush: vi.fn(), ...overrides };
+    setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, hush: vi.fn(),
+    picker: { options: null, prefs: { model: "spark-1.3", voice: "kokoro_af_heart" }, trace: null, setModel: vi.fn(), setVoice: vi.fn() },
+    ...overrides };
 }
 
 describe("TutorComposer", () => {

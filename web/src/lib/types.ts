@@ -11,7 +11,10 @@ export type PrimitiveName =
   | "line"
   | "draw"
   | "draw_part"
-  | "card";
+  | "card"
+  | "diagram"
+  | "widget"
+  | "image";
 
 export interface PrimitiveTag {
   tag: PrimitiveName;

@@ -26,12 +26,13 @@ from .tutor_stream import MoveStreamParser, MoveSyntaxError
 log = logging.getLogger("y.tutor")
 POLICY_VERSION = "tutor-v1"
 SYSTEM_PREFIX = (Path(__file__).resolve().parents[1] / "prompts" / f"{POLICY_VERSION}.md").read_text(encoding="utf-8")
-# Kinds that render in this slice; diagrams, widgets, images and pointing arrive with H3/H8.
-ENABLED = frozenset({"seg", "write", "equation", "say", "predict", "check", "turn_end"})
+# Kinds the board renders; pointing arrives with H8 and `because` with H5.
+ENABLED = frozenset({"seg", "write", "equation", "diagram", "widget", "image", "say", "predict", "check", "turn_end"})
+ONE_PER_TURN = ("diagram", "widget", "image")
 MEMORY_BUDGET = 12 * 1024
 RECENT_TURNS = 3
 MAX_REPAIRS = 2
-_NO_REPAIR = ("move after turn_end", "turn exceeds", "kind not enabled", "question must be the last move")
+_NO_REPAIR = ("move after turn_end", "turn exceeds", "kind not enabled", "question must be the last move", "only one")
 
 
 class TurnInput(Contract):
@@ -42,6 +43,7 @@ class TurnInput(Contract):
     choice: str | None = Field(default=None, max_length=200)
     confidence: int | None = Field(default=None, ge=0, le=100)
     reveal: bool = False
+    model: str | None = Field(default=None, max_length=40, pattern=r"^[a-z0-9.\-]+$")
     board: ContextInput | None = None
 
     @model_validator(mode="after")
@@ -165,6 +167,8 @@ class TurnRun:
             raise MoveError(f"kind not enabled: {kind}")
         if self.validator.question and kind != "turn_end":
             raise MoveError("question must be the last move")
+        if kind in ONE_PER_TURN and any(m["type"] == kind for m in self.moves):
+            raise MoveError(f"only one {kind} per turn")
 
     async def _accept(self, element) -> dict | None:
         raw, value, error = element.raw, element.value, element.error

@@ -11,6 +11,7 @@ import type {
 } from "@excalidraw/excalidraw/element/types";
 import type { InterfaceMode } from "@/lib/interface-mode";
 import { BoardController } from "@/lib/board-controller";
+import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/WidgetHost";
 import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
 
@@ -268,6 +269,8 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       <Excalidraw
         onPaste={() => { boardRef.current?.markImport(); return true; }}
         viewModeEnabled={!loaded || saveStatus.toLowerCase().includes("conflict")}
+        validateEmbeddable={validateEmbeddable}
+        renderEmbeddable={renderEmbeddable}
         excalidrawAPI={(api) => {
           apiRef.current = api;
           setReady(true);

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   streamTutorTurn: vi.fn(),
   enqueued: [] as { tag: string; args: Record<string, unknown> }[],
   voice: [] as string[],
+  fetchTutorOptions: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({ fetchHealth: vi.fn().mockResolvedValue(null), fetchLearner: vi.fn().mockResolvedValue(null),
@@ -17,9 +18,15 @@ vi.mock("@/lib/tts", () => ({ cancelSpeech: vi.fn() }));
 vi.mock("@/lib/board-api", async (original) => ({ ...await original<object>(), boardSession: vi.fn().mockResolvedValue("sid") }));
 vi.mock("@/lib/tutor-turn", async (original) => ({ ...await original<object>(),
   fetchTutorState: mocks.fetchTutorState, streamTutorTurn: mocks.streamTutorTurn }));
+vi.mock("@/lib/tutor-options", async (original) => ({ ...await original<object>(), fetchTutorOptions: mocks.fetchTutorOptions }));
 vi.mock("@/lib/lesson-player", () => ({
   LessonPlayer: class {
-    constructor(private opts: { onRendered?: () => void; onCaption?: (text: string) => void; pacing?: string }) { mocks.voice.push(`pacing:${opts.pacing}`); }
+    constructor(private opts: { onRendered?: () => void; onCaption?: (text: string) => void; pacing?: string; browserOnly?: boolean }) {
+      mocks.voice.push(`pacing:${opts.pacing}`);
+      if (opts.browserOnly) mocks.voice.push("browser-only");
+    }
+    setBrowserOnly(value: boolean) { mocks.voice.push(`browser-only:${value}`); }
+    setVoice(id: string) { mocks.voice.push(`voice:${id}`); return false; }
     enqueue(tag: { tag: string; args: Record<string, unknown> }) { mocks.enqueued.push(tag); this.opts.onRendered?.(); }
     beginSegment() { mocks.voice.push("segment"); }
     say(text: string) { mocks.voice.push(`say:${text}`); this.opts.onCaption?.(text); }
@@ -58,6 +65,41 @@ describe("tutor turn flow", () => {
     mocks.enqueued.length = 0;
     mocks.voice.length = 0;
     mocks.fetchTutorState.mockResolvedValue({ configured: true, model: "m", open: null, turns: [] });
+    mocks.fetchTutorOptions.mockResolvedValue(null);
+    window.localStorage.clear();
+  });
+
+  it("sends the picked model, applies the picked voice and restores both after a refresh", async () => {
+    const opt = (id: string, extra = {}) => ({ id, label: id, note: "", default: false, available: true, reason: null, ...extra });
+    mocks.fetchTutorOptions.mockResolvedValue({ models: [opt("spark-1.3", { default: true }), opt("spark-1.2")],
+      voices: [opt("kokoro_af_heart", { default: true }), opt("kokoro_am_michael"), opt("browser"), opt("off")] });
+    const { result } = renderHook(() => useTutorSession());
+    act(() => result.current.onWhiteboardReady(board()));
+    await waitFor(() => expect(result.current.tutor.picker.options).not.toBeNull());
+    expect(result.current.tutor.picker.prefs).toEqual({ model: "spark-1.3", voice: "kokoro_af_heart" });
+
+    act(() => { result.current.tutor.picker.setModel("spark-1.2"); result.current.tutor.picker.setVoice("browser"); });
+    const trace = { option: "spark-1.2", model: "muse-spark-1.2", effort: "minimal" };
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => {
+      h.onTurn?.({ turn_id: "t5", outcome: null });
+      h.onMove({ type: "write", text: "Step." }, 0);
+      h.onDone({ status: "done", question: null, tutor: trace });
+    }));
+    await act(async () => { result.current.tutor.ask("Why?"); });
+    await waitFor(() => expect(result.current.tutor.picker.trace).toEqual(trace));
+    expect(mocks.streamTutorTurn.mock.calls[0][1]).toMatchObject({ model: "spark-1.2" });
+    expect(mocks.voice).toContain("browser-only");
+
+    act(() => result.current.tutor.picker.setVoice("off"));
+    expect(result.current.ttsEnabled).toBe(false);
+    act(() => result.current.toggleTts());
+    expect(result.current.tutor.picker.prefs.voice).toBe("kokoro_af_heart");
+    act(() => result.current.tutor.picker.setVoice("kokoro_am_michael"));
+    expect(result.current.voice).toBe("kokoro_am_michael");
+
+    const refreshed = renderHook(() => useTutorSession());
+    await waitFor(() => expect(refreshed.result.current.tutor.picker.prefs).toEqual({ model: "spark-1.2", voice: "kokoro_am_michael" }));
+    expect(refreshed.result.current.voice).toBe("kokoro_am_michael");
   });
 
   it("asks from the composer, draws the turn, waits on the card and resumes on the answer", async () => {

@@ -1,4 +1,4 @@
-# H6 brief: learner map ("Your mind", the brain network)
+# H6 brief: learner map ("Mind", the brain network)
 
 Status: confirmed by the user on 2026-11-03, after prototypes of orbs, an island, depth columns and a
 brain network; the brain network was chosen. Branch `feature/constellation`, cut from `main` at

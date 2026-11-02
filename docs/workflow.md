@@ -15,6 +15,11 @@
   The board draws a turn in about 4 s (24–40 s before), then the voice follows each segment's
   `say`. Kokoro is served by `/learning/speech`. Stop and mute work mid-narration. The equation
   baseline fix is in. Next: H3–H5.
+- H3 done ([handoff](handoffs/H3.md)) on `feature/board-artifacts`. Mermaid diagrams become editable
+  board shapes. Plot, attention, matrix and stepper widgets live in Excalidraw embeddables (pen
+  strokes pass through). Muse Image illustrations arrive later. The composer has a model and
+  voice picker; Spark Open on Baseten measured fastest (p50 1.84 s, 5 turns). Live artifact
+  validity: 26 of 26 turns, 1 move dropped. Next: H4 and H5.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -29,7 +34,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H0 baseline + contracts | done | `66e491d` (inherited work `2039b59`, `5f23282`, `7bb4d5e`) | [H0](handoffs/H0.md) |
 | H1 Meta tutor turn | done (branch `feature/meta-tutor-turn`) | `1a6e734`, `8338fad` | [H1](handoffs/H1.md) |
 | H2 Voice in, narration out | done (branch `feature/voice-narration`) | `69085eb`, `d925a86`, `f70e40c` | [H2](handoffs/H2.md) |
-| H3–H10 | planned | — | — |
+| H3 Board artifacts + model/voice picker | done (branch `feature/board-artifacts`) | `785b9be`, `5133e1d`, `949b597`, `0b6672f`, `bbc2879` | [H3](handoffs/H3.md) |
+| H4–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 

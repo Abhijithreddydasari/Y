@@ -1,5 +1,6 @@
 "use client";
 
+import CanvasList from "@/components/CanvasList";
 import ChatPanel from "@/components/ChatPanel";
 import CheckpointCard from "@/components/CheckpointCard";
 import MindButton from "@/components/constellation/MindButton";
@@ -54,8 +55,10 @@ export default function StudioShell({ session, interfaceMode }: Props) {
         onCancel={session.cancelChat}
       />
       <CheckpointCard checkpoint={session.checkpoint} evidence={session.lastEvidence} />
-      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush} />
+      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
+        hints={session.tutor.hints.given} hintBusy={session.tutor.hints.busy} onHint={session.tutor.hints.next} />
       <MindButton />
+      <CanvasList />
       <TutorComposer tutor={session.tutor} blocked={session.busy && !session.tutor.busy} onStop={session.stop} />
       {session.teacherMode && <EducatorPanel notes={session.educatorNotes} busy={session.educatorBusy} />}
     </div>

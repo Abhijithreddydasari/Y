@@ -6,7 +6,14 @@ import type { TutorTrace } from "./tutor-options";
 import type { PrimitiveTag } from "./types";
 
 /** A predict or check as the browser sees it: no key until the learner has answered. */
-export interface TutorQuestion { qid: string; kind: "predict" | "mcq" | "free"; q: string; options: string[] }
+/** `origin` marks a warm-up review or the exit ticket; `hints` are the ladder rungs already given (restore only). */
+export interface TutorQuestion { qid: string; kind: "predict" | "mcq" | "free"; q: string; options: string[];
+  origin?: "review" | "exit"; hints?: Hint[] }
+export interface Hint { level: number; text: string }
+/** A warm-up item due now: a concept from an earlier session and the check that will be re-asked. */
+export interface ReviewItem { concept: string; reason: "misconception" | "fading" | "shaky"; q: string; retention: number; mean: number }
+/** A saved session (Canvas) to resume. */
+export interface Canvas { session_id: string; title: string; sealed: boolean; created_at: number; turns: number }
 export type PublicMove =
   | Exclude<TutorMove, { type: "predict" | "check" | "image" }>
   /** The server adds the id of the illustration job it started for this move. */
@@ -15,7 +22,10 @@ export type PublicMove =
 
 export interface TurnBody {
   turn_id: string;
-  kind: "question" | "answer";
+  /** review: a warm-up re-asking an earlier check (drawn without a model call); exit: the exit ticket. */
+  kind: "question" | "answer" | "review" | "exit";
+  /** review only: the due concept. */
+  concept?: string;
   text?: string;
   question_id?: string;
   choice?: string;
@@ -58,6 +68,10 @@ const MESSAGES: Record<string, string> = {
   tutor_turn_in_progress: "The tutor is still answering. Wait for it to finish or press Stop.",
   session_closed: "This session has ended. Start a new one to keep learning.",
   session_closing: "This session is being saved. Wait a moment.",
+  hint_leaked: "No hint right now. Try again, or tap Just tell me.",
+  hint_invalid: "No hint right now. Try again, or tap Just tell me.",
+  hint_out_of_order: "That hint is not available yet.",
+  review_not_found: "That review is no longer available.",
   assessment_budget_exhausted: "The hourly tutor limit is reached. Your question and board are kept; try again later.",
   learning_identity_required: "Your learning session expired. Reload the page to continue.",
 };
@@ -141,9 +155,34 @@ export async function setSessionMemory(session: string, memory: boolean): Promis
 }
 
 export async function fetchSessionMemory(session: string): Promise<boolean> {
+  return (await fetchSessionStatus(session)).memory;
+}
+
+/** Memory switch and whether the session is still open (a sealed canvas can be viewed, not asked in). */
+export async function fetchSessionStatus(session: string): Promise<{ memory: boolean; status: string }> {
   const response = await fetch(`/api/learning/sessions/${session}/memory`, { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw await failure(response);
-  return ((await response.json()) as { memory: boolean }).memory;
+  return response.json() as Promise<{ memory: boolean; status: string }>;
+}
+
+export async function fetchReview(session: string): Promise<ReviewItem[]> {
+  const response = await fetch(`/api/learning/sessions/${session}/review`, { credentials: "same-origin", cache: "no-store" });
+  if (!response.ok) throw await failure(response);
+  return ((await response.json()) as { items: ReviewItem[] }).items;
+}
+
+export async function requestHint(session: string, qid: string, level: number): Promise<Hint[]> {
+  const response = await fetch(`/api/learning/sessions/${session}/tutor/hints`, {
+    method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ qid, level }),
+  });
+  if (!response.ok) throw await failure(response);
+  return ((await response.json()) as { hints: Hint[] }).hints;
+}
+
+export async function fetchCanvases(): Promise<Canvas[]> {
+  const response = await fetch("/api/learning/canvases", { credentials: "same-origin", cache: "no-store" });
+  if (!response.ok) throw await failure(response);
+  return ((await response.json()) as { canvases: Canvas[] }).canvases;
 }
 
 export async function streamTutorTurn(session: string, body: TurnBody, handlers: TutorTurnEvents, signal: AbortSignal): Promise<void> {

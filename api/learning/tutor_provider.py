@@ -49,9 +49,9 @@ class MetaTutor:
     def trace(self) -> dict:
         return {"option": self.option.id, "model": self.model, "effort": self.effort}
 
-    def _body(self, messages: list[dict], stream: bool, max_tokens: int) -> dict:
+    def _body(self, messages: list[dict], stream: bool, max_tokens: int, fmt: dict | None = None) -> dict:
         body = {"model": self.model, "messages": messages,
-                "response_format": _FORMAT, "max_tokens": max_tokens, "stream": stream}
+                "response_format": fmt or _FORMAT, "max_tokens": max_tokens, "stream": stream}
         if self.effort:
             body["reasoning_effort"] = self.effort
         if stream:
@@ -111,12 +111,12 @@ class MetaTutor:
         finally:
             self.timing["stream_ms"] = (time.perf_counter() - started) * 1000
 
-    async def complete(self, messages: list[dict], max_tokens: int = 1500) -> str:
-        """One non-streaming call (used for a single-move repair)."""
+    async def complete(self, messages: list[dict], max_tokens: int = 1500, fmt: dict | None = None) -> str:
+        """One non-streaming call (a single-move repair, or a hint with its own `fmt`)."""
         if not self.api_key:
             raise ProviderFailure("provider_not_configured")
         try:
-            response = await self.client.post(f"{self.base}/chat/completions", json=self._body(messages, False, max_tokens),
+            response = await self.client.post(f"{self.base}/chat/completions", json=self._body(messages, False, max_tokens, fmt),
                                               headers={"Authorization": f"Bearer {self.api_key}"},
                                               timeout=httpx.Timeout(12, connect=5))
             if response.status_code != 200:

@@ -12,10 +12,12 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
-from . import image_jobs, observations, profile
+from . import image_jobs, observations, profile, study
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
 from .consolidate import NOTES_MODEL, NotesWriter, bridges, evidence_payload, keep_cited, keep_links, keep_named
+from pydantic import Field
+
 from .contracts import Contract, canonical, digest
 from .decisions import ProviderFailure, evidence_labeler
 from .learner_contracts import LearnerBrief
@@ -26,7 +28,7 @@ from .tutor_moves import TurnValidator
 from .tutor_provider import MetaTutor
 from .tutor_storage import TutorStore, open_question
 from .tutor_turn import (TurnInput, TurnRun, board_focus, build_messages, grade, public_move, public_question,
-                         question_of, session_memory, summary, this_turn)
+                         question_of, question_record, session_memory, summary, this_turn)
 
 router = APIRouter(prefix="/learning", tags=["tutor"], dependencies=[Depends(private_response)])
 log = logging.getLogger("y.tutor")
@@ -63,12 +65,21 @@ def get_profiles(store=Depends(get_store)):
     return profile.ProfileStore(store)
 
 
+def get_study(store=Depends(get_store)):
+    return study.StudyStore(store)
+
+
 def get_notes_writer(request: Request):
     return NotesWriter(getattr(request.app.state, "board_http", None))
 
 
 class MemoryInput(Contract):
     memory: bool
+
+
+class HintInput(Contract):
+    qid: str = Field(min_length=1, max_length=80)
+    level: int = Field(ge=1, le=2)
 
 
 def session_brief(profiles, owner: str, sid: str, topic: str) -> tuple[LearnerBrief | None, bool]:
@@ -104,12 +115,12 @@ def ink_crops(body: TurnInput) -> tuple[str, ...]:
 
 
 async def record_evidence(evidence, labeler, owner: str, sid: str, body: TurnInput, question: dict, outcome: dict,
-                          history: list[dict]) -> None:
+                          history: list[dict], hint_ids: tuple[str, ...] = ()) -> None:
     """Record the answer once and start labeling in the background. Never fails or delays the lesson."""
     try:
         row, created = await call_store(evidence.capture_answer, owner, sid, str(body.turn_id), question, outcome["answer"],
                                         outcome, observations.modality_of(body.via, body.choice), history, body.element_ids,
-                                        ink_crops(body))
+                                        ink_crops(body), hint_ids)
         if created and row["status"] == "pending":
             observations.start(evidence, labeler, owner, row["observation_id"])
     except Exception as exc:  # the trace shows the gap; the learner never does
@@ -137,6 +148,19 @@ def _replay(turn: dict):
     yield _event("done", {"status": turn["status"], "question": public_question(question) if question else None, "replayed": True})
 
 
+async def _review(store, body: TurnInput, question: dict, started: float):
+    """A warm-up drawn from the learner's own earlier check: stored like any turn, so it waits and replays."""
+    moves = study.review_moves(question)
+    qid = f"{body.turn_id}.1"
+    asked = {**question_record(moves[1], qid), "origin": "review"}
+    await run_in_threadpool(store.finish, str(body.turn_id), "waiting", moves, asked, None,
+                            {"review": body.concept, "total_ms": (time.perf_counter() - started) * 1000})
+    yield _event("turn", {"turn_id": str(body.turn_id), "kind": "review", "outcome": None})
+    for index, move in enumerate(moves):
+        yield _event("move", {"index": index, "move": public_move(move, qid if index == 1 else None)})
+    yield _event("done", {"status": "waiting", "question": public_question(asked), "moves": len(moves), "review": True})
+
+
 @router.get("/tutor/options")
 async def options(owner=Depends(require_owner)):
     """Models and voices the picker offers, each with availability and a reason when disabled."""
@@ -150,10 +174,12 @@ async def options(owner=Depends(require_owner)):
 
 
 @router.get("/sessions/{sid}/tutor")
-async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor_store), tutor=Depends(get_tutor)):
+async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor_store), tutor=Depends(get_tutor),
+                studies=Depends(get_study)):
     history = await call_store(store.history, owner, str(sid))
     question = open_question(history)
-    return {"configured": tutor.configured, "model": tutor.model, "open": public_question(question) if question else None,
+    shown = {**public_question(question), "hints": await call_store(studies.hints, str(sid), question["qid"])} if question else None
+    return {"configured": tutor.configured, "model": tutor.model, "open": shown,
             "turns": [{"turn_id": t["turn_id"], "seq": t["seq"], "kind": t["kind"], "status": t["status"],
                        "learner": t["input"].get("text") or t["input"].get("choice") or "",
                        "goals": [m["goal"] for m in t["moves"] if m["type"] == "seg"],
@@ -198,6 +224,56 @@ async def profile_history(owner=Depends(require_owner), profiles=Depends(get_pro
     ids = list(dict.fromkeys(str(i) for r in history for i in r.observation_ids))[-400:]
     events = await call_store(evidence.digest, owner, ids) if ids else []
     return {"revisions": [r.model_dump(mode="json") for r in history], "events": events}
+
+
+@router.get("/sessions/{sid}/review")
+async def review(sid: UUID, owner=Depends(require_owner), profiles=Depends(get_profiles), studies=Depends(get_study)):
+    """Warm-up items due now (no model call): concepts from earlier sessions, each with a stored check to re-ask."""
+    state = await call_store(profiles.memory, owner, str(sid))
+    if state["status"] != "open":
+        return {"items": []}
+    revision, _ = await call_store(profiles.latest, owner)
+    checks = await call_store(studies.latest_checks, owner, str(sid))
+    skip = await call_store(studies.reviewed, owner, str(sid))
+    return {"items": study.review_items(revision, checks, skip)}
+
+
+@router.post("/sessions/{sid}/tutor/hints")
+async def hint(sid: UUID, body: HintInput, owner=Depends(require_owner), store=Depends(get_tutor_store),
+               studies=Depends(get_study), tutor=Depends(get_tutor), profiles=Depends(get_profiles)):
+    """One rung of the hint ladder on the open card. Stored once per level; levels are taken in order."""
+    state = await call_store(profiles.memory, owner, str(sid))
+    if state["status"] != "open":
+        raise HTTPException(409, "session_closed")
+    question = open_question(await call_store(store.history, owner, str(sid)))
+    if question is None or question["qid"] != body.qid:
+        raise HTTPException(409, "tutor_question_not_open")
+    given = await call_store(studies.hints, str(sid), body.qid)
+    if any(h["level"] == body.level for h in given):
+        return {"qid": body.qid, "hints": given, "replayed": True}
+    if len(given) != body.level - 1:
+        raise HTTPException(409, "hint_out_of_order")
+    if not tutor.configured:
+        raise HTTPException(503, "tutor_not_configured")
+    await call_store(store.reserve, owner)
+    started = time.perf_counter()
+    try:
+        content = await tutor.complete(study.hint_messages(question, body.level, given), study.HINT_TOKENS, study.HINT_FORMAT)
+        text = study.parse_hint(content, question)
+    except ProviderFailure as exc:
+        raise HTTPException(502, exc.code) from None
+    except StoreError as exc:
+        raise HTTPException(exc.status, exc.code) from None
+    timing = {"ms": round((time.perf_counter() - started) * 1000), "usage": tutor.usage, "tutor": tutor.trace}
+    log.info("hint session=%s qid=%s level=%s ms=%s", sid, body.qid, body.level, timing["ms"])
+    return {"qid": body.qid, "hints": await call_store(studies.keep_hint, str(sid), body.qid, body.level, text, timing),
+            "ms": timing["ms"], "replayed": False}
+
+
+@router.get("/canvases")
+async def canvases(owner=Depends(require_owner), studies=Depends(get_study)):
+    """Saved sessions to resume, newest first."""
+    return {"canvases": await call_store(studies.canvases, owner)}
 
 
 def _summary(revision, found, left, relabel, notes_trace, started) -> dict:
@@ -289,7 +365,8 @@ async def image(sid: UUID, image_id: str = Path(pattern=r"^[0-9a-f]{32}$"), owne
 @router.post("/sessions/{sid}/tutor/turns")
 async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(require_owner), store=Depends(get_tutor_store),
                boards=Depends(get_board_store), tutor=Depends(get_tutor), illustrations=Depends(get_image_jobs),
-               evidence=Depends(get_evidence), labeler=Depends(get_labeler), profiles=Depends(get_profiles)):
+               evidence=Depends(get_evidence), labeler=Depends(get_labeler), profiles=Depends(get_profiles),
+               studies=Depends(get_study)):
     started = time.perf_counter()
     try:
         option = resolve(body.model)
@@ -297,7 +374,7 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
         raise HTTPException(422, str(exc)) from None
     if body.model:
         tutor.use(option)
-    if not tutor.configured:
+    if not tutor.configured and body.kind != "review":
         raise HTTPException(503, "tutor_not_configured")
     history = await call_store(store.history, owner, str(sid))
     topic = body.text if body.kind == "question" else next((t["input"].get("text", "") for t in history
@@ -308,13 +385,23 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
         raise HTTPException(409, "tutor_question_not_open")
     if body.element_ids:
         await call_store(_human_ink, boards, owner, sid, body.element_ids)
+    reviewed = None
+    if body.kind == "review":
+        reviewed = (await call_store(studies.latest_checks, owner, str(sid))).get(body.concept)
+        if reviewed is None:
+            raise HTTPException(404, "review_not_found")
     value = body.model_dump(mode="json", exclude={"board"})
     replay = await call_store(store.begin, owner, str(sid), str(body.turn_id), body.kind, value, digest(canonical(body)))
     if replay is not None:
         return EventSourceResponse(_replay(replay), headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+    if reviewed is not None:
+        return EventSourceResponse(_review(store, body, reviewed, started),
+                                   headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
     outcome = grade(question, body) if body.kind == "answer" else None
     if outcome is not None:
-        await record_evidence(evidence, labeler, owner, str(sid), body, question, outcome, history)
+        hint_ids = tuple(f"hint:{h['level']}" for h in await call_store(studies.hints, str(sid), question["qid"]))
+        await record_evidence(evidence, labeler, owner, str(sid), body, question, outcome, history, hint_ids)
+    concept = await call_store(studies.session_concept, str(sid)) if body.kind == "exit" else None
     run = None
     try:
         packet, images = None, []
@@ -326,7 +413,7 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
                     images.append((asset["mime"], asset["content"]))
         await call_store(store.reserve, owner)
         messages = build_messages(profile.render_brief(brief), session_memory(history), board_focus(packet),
-                                  this_turn(body, question, outcome), images)
+                                  this_turn(body, question, outcome, concept), images)
         run = TurnRun(tutor, messages, TurnValidator(brief.refs if brief else frozenset(), len(images)),
                       reserve=lambda: call_store(store.reserve, owner), started=started)
         run.timing["context_ms"] = (time.perf_counter() - started) * 1000
@@ -366,7 +453,7 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
             raise
         finally:
             run.timing["total_ms"] = (time.perf_counter() - started) * 1000
-            question_value = question_of(run, str(body.turn_id))
+            question_value = question_of(run, str(body.turn_id), "exit" if body.kind == "exit" else None)
             with anyio.CancelScope(shield=True):
                 await run_in_threadpool(store.finish, str(body.turn_id), run.status, run.moves, question_value, outcome,
                                         {**summary(run), "provider": tutor.timing, "usage": tutor.usage,
@@ -374,7 +461,7 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
             log.info("tutor turn=%s kind=%s status=%s moves=%s dropped=%s repairs=%s timing=%s usage=%s",
                      body.turn_id, body.kind, run.status, len(run.moves), len(run.dropped), run.repairs,
                      {k: round(v) for k, v in {**run.timing, **tutor.timing}.items()}, tutor.usage)
-        question_value = question_of(run, str(body.turn_id))
+        question_value = question_of(run, str(body.turn_id), "exit" if body.kind == "exit" else None)
         if run.error and run.status in ("failed", "incomplete"):
             yield _event("error", {"code": run.error, "message": MESSAGES.get(run.error, FALLBACK), "status": run.status})
         yield _event("done", {"status": run.status, "question": public_question(question_value) if question_value else None,

@@ -40,7 +40,8 @@ _NO_REPAIR = ("move after turn_end", "turn exceeds", "kind not enabled", "questi
 
 class TurnInput(Contract):
     turn_id: UUID
-    kind: Literal["question", "answer"]
+    # review: a warm-up re-asking an earlier check (no model call); exit: the exit ticket before close.
+    kind: Literal["question", "answer", "review", "exit"]
     text: str = Field(default="", max_length=2000)
     question_id: str | None = Field(default=None, max_length=80)
     choice: str | None = Field(default=None, max_length=200)
@@ -51,6 +52,7 @@ class TurnInput(Contract):
     via: Literal["tap", "typed", "spoken", "ink"] | None = None
     # Learner ink that holds the answer; the server checks each id is human-authored.
     element_ids: tuple[Identifier, ...] = Field(default=(), max_length=50)
+    concept: Identifier | None = None  # review only: the due concept to re-ask
     board: ContextInput | None = None
 
     @model_validator(mode="after")
@@ -59,6 +61,8 @@ class TurnInput(Contract):
             raise ValueError("a question needs text")
         if self.kind == "answer" and (not self.question_id or not (self.choice or self.text.strip() or self.reveal)):
             raise ValueError("an answer needs a question id and a choice, text or reveal")
+        if self.kind == "review" and not self.concept:
+            raise ValueError("a review names its concept")
         if self.element_ids and self.via != "ink":
             raise ValueError("element ids belong to an ink answer")
         return self
@@ -80,7 +84,10 @@ def public_move(move: dict, qid: str | None = None) -> dict:
 
 
 def public_question(question: dict) -> dict:
-    return {key: question[key] for key in ("qid", "kind", "q", "options")}
+    value = {key: question[key] for key in ("qid", "kind", "q", "options")}
+    if question.get("origin"):
+        value["origin"] = question["origin"]
+    return value
 
 
 def grade(question: dict, turn: TurnInput) -> dict:
@@ -103,6 +110,10 @@ def _learner(turn: dict) -> dict:
     value = turn["input"]
     if turn["kind"] == "question":
         return {"asked": value["text"]}
+    if turn["kind"] == "review":
+        return {"warm_up_review": value.get("concept")}
+    if turn["kind"] == "exit":
+        return {"exit_ticket_requested": True}
     return {"answered": value.get("choice") or value.get("text") or "", "result": (turn["outcome"] or {}).get("result"),
             "confidence": value.get("confidence")}
 
@@ -133,7 +144,21 @@ def board_focus(packet: ContextPacket | None) -> dict:
     return value
 
 
-def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None) -> dict:
+FOLLOW_UP = {
+    "review": "This was a warm-up review from an earlier session. Give feedback in one short segment and end the "
+              "turn without a new predict or check, so the learner can ask their own question.",
+    "exit": "This was the exit ticket. Give one or two lines of feedback and end the turn with no new predict or "
+            "check; the session closes next.",
+}
+
+
+def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None, concept: str | None = None) -> dict:
+    if turn.kind == "exit":
+        return {"kind": "exit_ticket", "concept": concept,
+                "instruction": "The learner is ending the session. Write ONE short segment (a seg and at most one "
+                               "write) and then ONE short check on the concept above (or, if it is null, on the "
+                               "session's main idea from SESSION MEMORY), answerable in under a minute. "
+                               "Reuse that concept id. No teaching beyond one sentence."}
     if turn.kind == "question":
         value = {"kind": "question", "text": turn.text.strip()}
         if question:
@@ -141,6 +166,9 @@ def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None) -> d
         return value
     value = {"kind": "answer", "question": {k: question[k] for k in ("kind", "q", "options", "key")},
              "learner_answer": outcome["answer"], "confidence": turn.confidence, "result": outcome["result"]}
+    if question.get("origin") in FOLLOW_UP:
+        value["origin"] = question["origin"]
+        value["note"] = FOLLOW_UP[question["origin"]]
     if outcome.get("key_status") == "wrong":
         value["key_audit"] = (f"The stated key looks wrong: the question's expression evaluates to {outcome['recomputed']}. "
                               "The result above uses that value; say so briefly and do not mark a correct learner wrong.")
@@ -267,10 +295,11 @@ class TurnRun:
         return "done"
 
 
-def question_of(run: TurnRun, turn_id: str) -> dict | None:
+def question_of(run: TurnRun, turn_id: str, origin: str | None = None) -> dict | None:
     if run.question_index is None:
         return None
-    return question_record(run.moves[run.question_index], f"{turn_id}.{run.question_index}")
+    question = question_record(run.moves[run.question_index], f"{turn_id}.{run.question_index}")
+    return {**question, "origin": origin} if origin else question
 
 
 def summary(run: TurnRun) -> dict:

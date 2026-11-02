@@ -39,6 +39,12 @@
   `GET /learning/profile/revisions`. Spark Open's close call now writes cited reasoning links.
   Drag p5 140–161 fps, and 0 frames at rest. Live End session → replay 1 → 2, then 2 → 3 (FFN
   misconception resolved, gold ring). Live links: 1 cited `builds_on` in 3 closes (the two single-concept sessions gave none). Next: H7–H9.
+- H7 done ([handoff](handoffs/H7.md)) on `feature/study-loop`:
+  - A warm-up re-asks due checks from earlier sessions without a model call (0.29 s).
+  - End session offers an exit ticket that flows into the close.
+  - A hint ladder (nudge, step, then reveal) is recorded as assistance; hints are p50 2.6–2.8 s live.
+  - A Canvases list reopens saved sessions; sealed ones open to view only.
+  - The gate path ran in the browser. Voice teach-back was cut. Next: H8, H9.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -57,7 +63,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H4 Evidence capture | done, live label check blocked (branch `feature/evidence-capture`) | `6ebb8dc`, `7160a6b` | [H4](handoffs/H4.md) |
 | H5 Learner model + visible adaptation | done (branch `feature/learner-model`) | `3edc208`, `ecc147a` | [H5](handoffs/H5.md) |
 | H6 Learner map ("Your mind") | done (branch `feature/constellation`) | `f25dfb3`, `216db47` | [H6](handoffs/H6.md) |
-| H7–H10 | planned | — | — |
+| H7 Study loop extras | done, teach-back cut (branch `feature/study-loop`) | `59f7547`, `e634a3c` | [H7](handoffs/H7.md) |
+| H8–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 

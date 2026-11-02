@@ -48,7 +48,7 @@ class Observation(Contract):
     assistance: Assistance = Field(default_factory=Assistance)
     # Learner-reported confidence from the check card; None when not asked.
     confidence: Probability | None = None
-    labeler: Literal["deterministic", "baseten", "none"] = "none"
+    labeler: Literal["deterministic", "baseten", "openai", "none"] = "none"
     label_confidence: Probability | None = None
     # How much this answer format says about the learner (guessable taps and reveals weigh less).
     format_weight: Probability = 1.0

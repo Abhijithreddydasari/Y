@@ -102,9 +102,11 @@ class FakeLabeler:
     def __init__(self, picks=None, fail=None, delay=0.0, p=0.9):
         self.picks, self.fail, self.delay, self.p = picks or {}, fail, delay, p
         self.calls, self.timeout, self.configured, self.model = [], 8.0, True, "decision-models/baseten-elephant-9b-latest"
+        self.provider_name, self.images = "baseten", ()
 
-    async def label(self, state, asked):
+    async def label(self, state, asked, images=()):
         self.calls.append((state, asked))
+        self.images = images
         await asyncio.sleep(self.delay)
         if self.fail:
             raise ProviderFailure(self.fail)
@@ -318,7 +320,8 @@ def test_question_turns_never_create_evidence(env):
     holder["labeler"] = labeler = FakeLabeler()
     holder["tutor"] = FakeTutor([doc(SEG, WRITE, DONE)])
     events(ask(client, sid, "The answer is 42, right?")[1])
-    assert trace(client, sid) == {"observations": [], "profile_updated": False} and labeler.calls == []
+    assert trace(client, sid) == {"observations": [], "profile_updated": False, "profile_revision": None}
+    assert labeler.calls == []
 
 
 def _scene(capture, owner, sid, actor, element_id):
@@ -397,7 +400,7 @@ def test_labels_run_at_most_two_at_a_time(env):
     active, peak = [0], [0]
 
     class Slow(FakeLabeler):
-        async def label(self, state, asked):
+        async def label(self, state, asked, images=()):
             active[0] += 1
             peak[0] = max(peak[0], active[0])
             await asyncio.sleep(0.05)

@@ -39,7 +39,8 @@ describe("TutorPicker", () => {
   it("shows the current choice, disables unavailable options with their reason and picks", () => {
     const onModel = vi.fn(), onVoice = vi.fn();
     render(<TutorPicker options={options} prefs={{ model: "spark-1.3", voice: "kokoro_af_heart" }} trace={null} onModel={onModel} onVoice={onVoice} />);
-    const pill = screen.getByRole("button", { name: /Spark 1\.3 · Heart/ });
+    const pill = screen.getByRole("button", { name: "Tutor Muse Spark 1.3, voice Heart" });
+    expect(pill.textContent).toBe("Spark 1.3 · Heart");
     fireEvent.click(pill);
     expect(screen.getByRole("menu", { name: "Tutor and voice" })).toBeTruthy();
     const open = screen.getByRole("menuitemradio", { name: /Muse Spark Open/ });
@@ -57,10 +58,16 @@ describe("TutorPicker", () => {
   it("closes on Escape and names the model that answered last when it differs", () => {
     render(<TutorPicker options={options} prefs={{ model: "spark-1.2", voice: "off" }}
       trace={{ option: "spark-1.3", model: "muse-spark-1.3", effort: "minimal" }} onModel={vi.fn()} onVoice={vi.fn()} />);
-    fireEvent.click(screen.getByRole("button", { name: /Spark 1\.2 · Off/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Tutor Muse Spark 1.2, voice Off" }));
     expect(screen.getByText(/Last answer came from Muse Spark 1\.3/)).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("shows an icon-only trigger on narrow composers", () => {
+    render(<TutorPicker compact options={options} prefs={{ model: "spark-1.3", voice: "off" }} trace={null} onModel={vi.fn()} onVoice={vi.fn()} />);
+    const trigger = screen.getByRole("button", { name: "Tutor Muse Spark 1.3, voice Off" });
+    expect(trigger.textContent).toBe("");
   });
 
   it("renders nothing until the server lists options", () => {

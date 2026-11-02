@@ -10,6 +10,8 @@ interface Props {
   trace: TutorTrace | null;
   onModel: (id: string) => void;
   onVoice: (id: string) => void;
+  /** Icon-only trigger for narrow composers; the menu still names both choices. */
+  compact?: boolean;
 }
 
 const short = (label: string) => label.replace(/^Muse /, "").replace(" · think more", " +");
@@ -36,8 +38,9 @@ function Group({ title, items, value, onPick }: { title: string; items: TutorOpt
   );
 }
 
-/** Compact model and voice switcher inside the composer, like a chat app's model menu. */
-export default function TutorPicker({ options, prefs, trace, onModel, onVoice }: Props) {
+/** Model and voice switcher inside the composer, like a chat app's model menu.
+ *  The menu anchors to the nearest positioned ancestor (the composer form), so it never leaves the screen. */
+export default function TutorPicker({ options, prefs, trace, onModel, onVoice, compact = false }: Props) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const menuId = useId();
@@ -56,18 +59,24 @@ export default function TutorPicker({ options, prefs, trace, onModel, onVoice }:
   const answered = trace && trace.option !== prefs.model ? optionLabel(options, "models", trace.option) : null;
 
   return (
-    <div ref={root} className="relative shrink-0">
+    <div ref={root} className="shrink-0">
       <button type="button" aria-haspopup="menu" aria-expanded={open} aria-controls={menuId} onClick={() => setOpen((v) => !v)}
-        title={`Tutor: ${model} · Voice: ${voice}`}
+        title={`Tutor: ${model} · Voice: ${voice}`} aria-label={`Tutor ${model}, voice ${voice}`}
         className="flex min-h-10 max-w-[11rem] items-center gap-1 rounded-xl px-2 text-[12px] font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800">
-        <span className="truncate">{short(model)} · {voice}</span>
+        {compact ? (
+          <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0">
+            <path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+            <circle cx="10.5" cy="4.5" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+            <circle cx="5.5" cy="11.5" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+          </svg>
+        ) : <span className="truncate">{short(model)} · {voice}</span>}
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" className={`shrink-0 transition-transform ${open ? "rotate-180" : ""}`}>
           <path d="M2 6.5 5 3.5l3 3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
         </svg>
       </button>
       {open && (
         <div id={menuId} role="menu" aria-label="Tutor and voice"
-          className="absolute bottom-full right-0 z-50 mb-2 w-72 rounded-2xl border border-slate-200 bg-white/95 p-1 shadow-[0_18px_50px_rgba(15,23,42,.18)] backdrop-blur-xl">
+          className="absolute bottom-full right-0 z-50 mb-2 w-[min(18rem,100%)] rounded-2xl border border-slate-200 bg-white/95 p-1 shadow-[0_18px_50px_rgba(15,23,42,.18)] backdrop-blur-xl">
           <Group title="Tutor" items={options.models} value={prefs.model} onPick={(id) => { onModel(id); setOpen(false); }} />
           <div className="mx-3 border-t border-slate-100" />
           <Group title="Voice" items={options.voices} value={prefs.voice} onPick={(id) => { onVoice(id); setOpen(false); }} />

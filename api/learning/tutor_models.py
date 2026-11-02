@@ -26,13 +26,14 @@ class TutorOption:
 # Labels follow measurements in docs/decisions/2026-11-01-harness.md and docs/handoffs/H3.md.
 OPTIONS: tuple[TutorOption, ...] = (
     TutorOption("spark-1.3", "Muse Spark 1.3", "Balanced: fast and reliable", "meta", "muse-spark-1.3", "minimal"),
-    TutorOption("spark-1.3-low", "Muse Spark 1.3 · think more", "Careful: about 2-3 s slower to start", "meta",
+    TutorOption("spark-1.3-low", "Muse Spark 1.3 · think more", "Thinks longer: about 3 s slower to start", "meta",
                 "muse-spark-1.3", "low"),
-    TutorOption("spark-1.2", "Muse Spark 1.2", "Quicker, less reliable on structured moves", "meta", "muse-spark-1.2",
-                "minimal"),
+    # 55 moves dropped over 5 live H3 turns (repeated widgets, moves after the question).
+    TutorOption("spark-1.2", "Muse Spark 1.2", "Older: often breaks board rules, some steps go missing", "meta",
+                "muse-spark-1.2", "minimal"),
     # Without an effort cap it spent all 3,000 output tokens reasoning in 4 of 5 live turns.
-    TutorOption("spark-open", "Muse Spark Open", "Open weights on Baseten", "baseten", "meta-models/muse-spark-open-1026",
-                "low"),
+    TutorOption("spark-open", "Muse Spark Open", "Open weights on Baseten, quick to start", "baseten",
+                "meta-models/muse-spark-open-1026", "low"),
 )
 DEFAULT_OPTION = OPTIONS[0]
 _BY_ID = {option.id: option for option in OPTIONS}

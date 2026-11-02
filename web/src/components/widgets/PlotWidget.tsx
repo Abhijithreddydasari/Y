@@ -59,7 +59,7 @@ export default function PlotWidget({ spec }: { spec: PlotSpec }) {
         return (
           <label key={name} className="flex items-center gap-3 text-sm">
             <span className="w-16 font-mono">{name} = {+values[name].toPrecision(3)}</span>
-            <input type="range" className="flex-1 accent-violet-700" min={p.min} max={p.max} step={(p.max - p.min) / 200}
+            <input type="range" className="flex-1 accent-violet-700" min={p.min} max={p.max} step="any"
               value={values[name]} aria-label={`Parameter ${name}`}
               onChange={(e) => { const v = Number(e.target.value); setValues((old) => ({ ...old, [name]: v })); }} />
           </label>

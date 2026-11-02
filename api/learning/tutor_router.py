@@ -8,10 +8,11 @@ from uuid import UUID
 
 import anyio
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
+from . import image_jobs
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
 from .contracts import canonical, digest
@@ -39,6 +40,10 @@ FALLBACK = "The tutor is unavailable right now. Your question and board are kept
 
 def get_tutor_store(store=Depends(get_store)):
     return TutorStore(store)
+
+
+def get_image_jobs(store=Depends(get_store)):
+    return image_jobs.ImageJobs(store)
 
 
 async def get_tutor(request: Request):
@@ -86,9 +91,16 @@ async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
                        "tutor": (t["timing"] or {}).get("tutor")} for t in history[-20:]]}
 
 
+@router.get("/sessions/{sid}/images/{image_id}")
+async def image(sid: UUID, image_id: str = Path(pattern=r"^[0-9a-f]{32}$"), owner=Depends(require_owner),
+                images=Depends(get_image_jobs)):
+    """Status of an illustration started by an `image` move; a ready one names its board asset."""
+    return await call_store(images.get, owner, str(sid), image_id)
+
+
 @router.post("/sessions/{sid}/tutor/turns")
-async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=Depends(get_tutor_store),
-               boards=Depends(get_board_store), tutor=Depends(get_tutor)):
+async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(require_owner), store=Depends(get_tutor_store),
+               boards=Depends(get_board_store), tutor=Depends(get_tutor), illustrations=Depends(get_image_jobs)):
     started = time.perf_counter()
     try:
         option = resolve(body.model)
@@ -125,12 +137,23 @@ async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=D
         await run_in_threadpool(store.finish, str(body.turn_id), "failed", [], None, outcome, {"error": "context_or_budget"})
         raise
 
+    async def illustrate(move: dict) -> None:
+        # The stored move keeps the job id, so a replay shows the same image without a new paid call.
+        job = await call_store(illustrations.create, owner, str(sid), str(body.turn_id), move["prompt"], move["alt"],
+                               bool(image_jobs.api_key()))
+        move["image_id"] = job["image_id"]
+        if job["status"] == "pending":
+            image_jobs.start(illustrations, boards, getattr(request.app.state, "board_http", None), owner, str(sid),
+                             job["image_id"], move["prompt"])
+
     async def events():
         yield _event("turn", {"turn_id": str(body.turn_id), "kind": body.kind, "outcome": outcome and {
             k: outcome[k] for k in ("qid", "result")}})
         try:
             with anyio.fail_after(TURN_SECONDS):
                 async for index, move in run.events():
+                    if move["type"] == "image":
+                        await illustrate(move)
                     qid = f"{body.turn_id}.{index}" if index == run.question_index else None
                     yield _event("move", {"index": index, "move": public_move(move, qid)})
         except TimeoutError:

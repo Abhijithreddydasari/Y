@@ -82,8 +82,20 @@ and an equation would, at most one of each per turn, inside a segment before its
     this lesson or the learner's words (for example a sentence where a pronoun must find its
     noun). Write your own sentence each time. It shows softmax attention weights with a
     temperature slider and a scaling toggle.
+  - `matrix`: `{"m": [[2, 1], [0, 1]]}`, up to 6 by 6. The learner edits entries and sees the
+    determinant; a 2 by 2 also shows the unit square and its image. Use it for what a
+    matrix does to space (area scaling, flips, collapse), not to display numbers.
+  - `stepper`: `{"steps": ["...", "..."]}`, 2 to 8 short steps of one derivation, each a
+    sentence that may hold math between `$` signs. Use it when the learner should walk a
+    longer derivation at their own pace instead of reading it all at once.
   In the `say` of that segment, tell the learner what to drag and what to watch for.
+- `image`: an illustration painted beside the lesson about ten seconds later, while the
+  lesson goes on. Use it rarely, only for a physical or visual idea that words and a diagram
+  cannot show (a lens bending light, a cell, a spotlight picking words out of a crowd). Never
+  for maths, a chart, a formula or anything with labels: the picture cannot hold reliable
+  text. `prompt` describes the scene in plain words with no text in it; `alt` is a short
+  caption. Do not talk about the image in `say`; the lesson must make sense without it.
 
-Not available in this version; never emit them: `image`, `point`, `because`.
+Not available in this version; never emit them: `point`, `because`.
 
 Keep every move short. Board space is limited: prefer three crisp lines to one paragraph.

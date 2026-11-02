@@ -32,10 +32,16 @@ MAX_NAMED, NAME_CHARS = 3, 200
 FLAG_AT = 0.3  # misconception mass (listed or not) × p(miss) an answer needs before it is grouped and named
 _CITED = {"type": "object", "additionalProperties": False, "required": ["text", "cites"],
           "properties": {"text": {"type": "string"}, "cites": {"type": "array", "items": {"type": "string"}}}}
+MAX_LINKS, WHY_CHARS = 6, 200
+_LINK = {"type": "object", "additionalProperties": False, "required": ["from", "to", "kind", "why", "cites"],
+         "properties": {"from": {"type": "string"}, "to": {"type": "string"},
+                        "kind": {"type": "string", "enum": ["builds_on", "confused_with"]},
+                        "why": {"type": "string"}, "cites": {"type": "array", "items": {"type": "string"}}}}
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "teaching_notes", "strict": True, "schema": {
-    "type": "object", "additionalProperties": False, "required": ["notes", "misconceptions"],
+    "type": "object", "additionalProperties": False, "required": ["notes", "misconceptions", "links"],
     "properties": {"notes": {"type": "array", "maxItems": MAX_NOTES, "items": _CITED},
-                   "misconceptions": {"type": "array", "maxItems": MAX_NAMED, "items": _CITED}}}}}
+                   "misconceptions": {"type": "array", "maxItems": MAX_NAMED, "items": _CITED},
+                   "links": {"type": "array", "maxItems": MAX_LINKS, "items": _LINK}}}}}
 SYSTEM = (
     "You write teaching notes for a tutor who will teach this learner again in a later session. Each note is one "
     "actionable sentence about how to teach THIS learner next time (what to build on, what to re-check, which wrong "
@@ -47,7 +53,12 @@ SYSTEM = (
     "short clause starting with a verb that states the belief itself, not the chosen option (e.g. \"adds the "
     "probabilities of independent events instead of multiplying them\"), citing every flagged observation that shows "
     "it. Several wrong answers from one belief are one entry. Leave out a group whose answers show no clear belief. "
-    "Return {\"notes\": [...], \"misconceptions\": [...]}."
+    "In `links`, record connections between two different concepts that the learner's own answers show: "
+    "`builds_on` when they used concept `from` to reason about concept `to`, `confused_with` when they mixed the two "
+    "up. Use concept ids exactly as given in the input (`concept` fields or `known_concepts`). `why` is one short "
+    "sentence about what the learner did, and `cites` lists the observation ids that show it. Do not link concepts "
+    "only because they are related in the subject; no link is better than a guessed one. "
+    "Return {\"notes\": [...], \"misconceptions\": [...], \"links\": [...]}."
 )
 
 
@@ -62,9 +73,10 @@ def flagged(observations: list[Observation]) -> dict[str, tuple[str, float]]:
     return out
 
 
-def evidence_payload(observations: list[Observation], answers: dict[str, dict], beliefs: list[dict]) -> dict:
+def evidence_payload(observations: list[Observation], answers: dict[str, dict], beliefs: list[dict],
+                     known: tuple[str, ...] = ()) -> dict:
     marked = flagged(observations)
-    return {"observations": [{
+    return {"known_concepts": sorted(set(known))[:60], "observations": [{
         "id": str(o.observation_id), "concept": o.concept, "dimension": o.dimension, "outcome": o.outcome,
         "misconception": o.misconception, "miss_class": o.miss_class, "answered_by": o.sources[0].modality,
         "solution_revealed": o.assistance.solution_revealed, "key_status": o.key_status,
@@ -106,6 +118,41 @@ def keep_cited(raw: object, allowed: set[str]) -> tuple[list[TeachingNote], int]
             continue
         kept.append(TeachingNote(text=text[:400], cites=tuple(cites[:16])))
     return kept, dropped
+
+
+def keep_links(raw: object, observations: list[Observation], known: set[str]) -> tuple[list[dict], int]:
+    """(links for the reducer, links dropped). Both ends must be known concepts, and every cite must be one of this
+    session's answers on either end; an uncited or self link is dropped."""
+    concept_of = {str(o.observation_id): o.concept for o in observations}
+    known = known | set(concept_of.values())
+    kept, dropped = [], 0
+    for item in (raw or {}).get("links", []) if isinstance(raw, dict) else []:
+        source, target, kind = item.get("from"), item.get("to"), item.get("kind")
+        why = re.sub(r"\s+", " ", item.get("why") or "").strip() if isinstance(item.get("why"), str) else ""
+        cites = [c for c in dict.fromkeys(item.get("cites") or []) if isinstance(c, str)]
+        if (kind not in ("builds_on", "confused_with") or source not in known or target not in known or source == target
+                or not why or not cites or any(concept_of.get(c) not in (source, target) for c in cites)
+                or len(kept) >= MAX_LINKS):
+            dropped += 1
+            continue
+        kept.append({"source": source, "target": target, "kind": kind, "why": why[:WHY_CHARS],
+                     "evidence": cites[:16], "provenance": "model"})
+    return kept, dropped
+
+
+def bridges(named: list[dict], observations: list[Observation]) -> list[dict]:
+    """System `confused_with` links: one named wrong belief whose cited answers sit on more than one concept."""
+    concept_of = {str(o.observation_id): o.concept for o in observations}
+    out = []
+    for item in named:
+        others = dict.fromkeys(concept_of[e] for e in item["evidence"] if concept_of.get(e) not in (None, item["concept"]))
+        for other in others:
+            cites = [e for e in item["evidence"] if concept_of.get(e) in (other, item["concept"])]
+            belief = item["description"].split(": ", 1)[-1]
+            out.append({"source": item["concept"], "target": other, "kind": "confused_with",
+                        "why": f"The same wrong belief showed up in both: {belief}"[:WHY_CHARS],
+                        "evidence": cites[:16], "provenance": "system"})
+    return out
 
 
 class NotesWriter:

@@ -564,6 +564,23 @@ class ObservationStore:
                                        observations.c.question_json).where(observations.c.session_id == sid))
             return {r[0]: {"answer": r[1], "q": json.loads(r[2])["q"]} for r in rows}
 
+    def digest(self, owner: str, ids: list[str], chars: int = 160) -> list[dict]:
+        """The learner map's cited events: what was asked and answered, owner-scoped, text cut to `chars`."""
+        out = []
+        with self.engine.connect() as conn:
+            for start in range(0, len(ids), 200):
+                rows = conn.execute(select(observations.c.observation_id, observations.c.answer_text,
+                                           observations.c.question_json, observations.c.observation_json).where(
+                    observations.c.owner_id == owner, observations.c.observation_id.in_(ids[start:start + 200]),
+                    observations.c.observation_json.is_not(None)))
+                for oid, answer, question_json, observation_json in rows:
+                    o = json.loads(observation_json)
+                    out.append({"id": oid, "concept": o["concept"], "dimension": o["dimension"], "outcome": o["outcome"],
+                                "modality": o["sources"][0]["modality"] if o.get("sources") else None,
+                                "created_at": o["created_at"], "question": (json.loads(question_json).get("q") or "")[:chars],
+                                "answer": (answer or "")[:chars]})
+        return sorted(out, key=lambda e: (e["created_at"], e["id"]))
+
     def crop_images(self, owner: str, row: dict) -> tuple[tuple[str, bytes], ...]:
         """The learner's own ink crops recorded with the answer; a missing asset is skipped."""
         from .board_storage import BoardStore

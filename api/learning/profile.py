@@ -20,8 +20,8 @@ from sqlalchemy import (Column, Float, ForeignKey, Integer, String, Table, Text,
 from sqlalchemy.exc import IntegrityError
 
 from .contracts import canonical, now_iso
-from .learner_contracts import (BRIEF_MAX_CHARS, Belief, BriefItem, LearnerBrief, MisconceptionEntry, Observation,
-                                ProfileRevision, TeachingNote)
+from .learner_contracts import (BRIEF_MAX_CHARS, Belief, BriefItem, ConceptLink, LearnerBrief, MisconceptionEntry,
+                                Observation, ProfileRevision, TeachingNote)
 from .storage import CaptureStore, StoreError, metadata, sessions
 
 PRIOR = 1.0
@@ -113,7 +113,8 @@ def describe(misconception: str) -> str:
 
 def reduce(previous: ProfileRevision | None, index: dict, observations: list[Observation], session_id: str,
            notes: list[TeachingNote] = (), consolidator: str | None = None, at: str | None = None,
-           descriptions: dict[str, str] | None = None, named: list[dict] = ()) -> tuple[ProfileRevision, dict]:
+           descriptions: dict[str, str] | None = None, named: list[dict] = (),
+           links: list[dict] = ()) -> tuple[ProfileRevision, dict]:
     """(new revision, new evidence index). Pure: the same inputs always give the same revision.
 
     `named` holds beliefs the notes model named for flagged answers: {id, concept, description, mass,
@@ -183,12 +184,36 @@ def reduce(previous: ProfileRevision | None, index: dict, observations: list[Obs
                 and clean_credit.get(entry["concept"], 0.0) >= RESOLVE_AFTER:
             entry["status"] = "resolved"
     number = (previous.revision + 1) if previous else 1
+    threads = carry_links(previous, links, {str(o.observation_id): weight(o) for o in observations}, number)
     revision = ProfileRevision(
         revision=number, parent_revision=previous.revision if previous else None, session_id=session_id,
         observation_ids=tuple(used), beliefs=tuple(Belief(**b) for _, b in sorted(beliefs.items())),
         misconceptions=tuple(MisconceptionEntry(**m) for _, m in sorted(ledger.items())), notes=tuple(notes),
-        consolidator=consolidator, created_at=at)
+        links=threads, consolidator=consolidator, created_at=at)
     return revision, index
+
+
+def carry_links(previous: ProfileRevision | None, links: list[dict], weights: dict[str, float],
+                number: int) -> tuple[ConceptLink, ...]:
+    """Earlier links plus this session's, merged on (source, target, kind); strength adds the cited answers' weight.
+    Links are explanatory only (the map's synapses): they never touch beliefs, the ledger or the brief."""
+    merged = {(k.source, k.target, k.kind): k.model_dump() for k in (previous.links if previous else ())}
+    for item in sorted(links, key=lambda x: (x["kind"], x["source"], x["target"], x["why"])):
+        source, target = item["source"], item["target"]
+        if item["kind"] == "confused_with" and source > target:
+            source, target = target, source
+        cites = [e for e in item["evidence"] if e in weights]
+        if not cites or source == target:
+            continue
+        key = (source, target, item["kind"])
+        entry = merged.get(key) or {"source": source, "target": target, "kind": item["kind"], "strength": 0.0,
+                                    "evidence": [], "provenance": item["provenance"], "first_revision": number}
+        fresh = [UUID(e) for e in cites if UUID(e) not in entry["evidence"]]
+        entry.update(why=item["why"][:240], strength=round(entry["strength"] + sum(weights[str(e)] for e in fresh), 6),
+                     evidence=[*entry["evidence"], *fresh][-16:],
+                     provenance="model" if "model" in (entry["provenance"], item["provenance"]) else "system")
+        merged[key] = entry
+    return tuple(ConceptLink(**v) for _, v in sorted(merged.items()))
 
 
 # ---------------------------------------------------------------------------------------------
@@ -281,6 +306,13 @@ class ProfileStore:
         if row is None:
             return None, {}
         return ProfileRevision.model_validate_json(row["revision_json"]), json.loads(row["index_json"])
+
+    def history(self, owner: str, limit: int = 20) -> list[ProfileRevision]:
+        """The owner's latest `limit` revisions in ascending order (the learner map's scrubber and replay)."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(revisions.c.revision_json).where(revisions.c.owner_id == owner)
+                                .order_by(revisions.c.revision.desc()).limit(limit)).all()
+        return [ProfileRevision.model_validate_json(r[0]) for r in reversed(rows)]
 
     def for_session(self, owner: str, sid: str) -> dict | None:
         with self.engine.connect() as conn:

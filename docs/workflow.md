@@ -38,7 +38,7 @@
   halos and cited synapses carrying spikes. Revision replay and a scrubber come from the new
   `GET /learning/profile/revisions`. Spark Open's close call now writes cited reasoning links.
   Drag p5 140–161 fps, and 0 frames at rest. Live End session → replay 1 → 2, then 2 → 3 (FFN
-  misconception resolved, gold ring). Live links: 0 in two closes (single-concept sessions). Next: H7–H9.
+  misconception resolved, gold ring). Live links: 1 cited `builds_on` in 3 closes (the two single-concept sessions gave none). Next: H7–H9.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.

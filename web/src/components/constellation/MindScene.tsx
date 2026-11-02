@@ -7,19 +7,18 @@ import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
 import * as THREE from "three";
 import { bend, bezier, cortex, layout, type Vec3 } from "./layout";
 import { EARLY_BELOW, type MindFrame, type MindLink, type MindMap, type MindNode } from "./map-model";
-import { stateColor, valueColor } from "./palette";
+import { stateColor, valueColor, type Palette } from "./palette";
 
 export type Level = "brain" | "region" | "neurons";
 export interface MindControl { zoom(by: number): void; flyTo(region: string): void; overview(): void; frame(ids: string[]): void }
 export interface SceneProps {
-  map: MindMap; frame: MindFrame; replay: { path: string[]; u: number } | null; selected: string | null;
+  map: MindMap; frame: MindFrame; replay: { path: string[]; u: number } | null; selected: string | null; palette: Palette;
   onSelect(id: string): void; onLevel(level: Level): void;
   labels: RefObject<Record<string, HTMLElement | null>>; regionLabels: RefObject<Record<string, HTMLElement | null>>;
   control: RefObject<MindControl | null>;
 }
 
 const AWAKE_MS = 6000; // spikes keep firing this long after the last interaction, then rendering stops
-const BG = "#0B0E14";
 const DIST = 3.4;
 const levelOf = (lod: number): Level => (lod < 0.35 ? "brain" : lod < 0.85 ? "region" : "neurons");
 const lodOf = (zoom: number) => Math.min(1, Math.max(0, (zoom - 1.15) / 0.9));
@@ -64,48 +63,48 @@ function ring(radius: number, width: number, color: THREE.Color, dashes = 0) {
 }
 
 /** Five dendrites clockwise from the top (recall, understand, apply, analyze, transfer); length = mean. */
-function dendrites(n: MindNode, r: number) {
+function dendrites(n: MindNode, r: number, p: Palette) {
   const segs: [number, number, number, number, number, THREE.Color][] = [];
-  const grey = new THREE.Color("#5F5E5A");
+  const grey = new THREE.Color(p.stub);
   n.dims.forEach((v, i) => {
     const a = Math.PI / 2 - (i * Math.PI * 2) / 5, cx = Math.cos(a), cy = Math.sin(a);
     if (v == null) {
       for (let j = 0; j < 2; j++) segs.push([cx * (r + 0.004 + j * 0.008), cy * (r + 0.004 + j * 0.008), cx * (r + 0.008 + j * 0.008), cy * (r + 0.008 + j * 0.008), 0.0025, grey]);
       return;
     }
-    const len = 0.024 + 0.085 * v, color = new THREE.Color(valueColor(v));
+    const len = 0.024 + 0.085 * v, color = new THREE.Color(valueColor(v, p));
     const ex = cx * (r + len), ey = cy * (r + len);
     segs.push([cx * r, cy * r, ex, ey, 0.005, color]);
     for (const o of [-0.5, 0.5]) segs.push([ex, ey, ex + Math.cos(a + o) * len * 0.32, ey + Math.sin(a + o) * len * 0.32, 0.0026, color]);
   });
-  if (n.mean != null && n.weight < EARLY_BELOW) segs.push(...ring(r * 1.35, 0.0022, new THREE.Color(stateColor(n.state)), 20));
+  if (n.mean != null && n.weight < EARLY_BELOW) segs.push(...ring(r * 1.35, 0.0022, new THREE.Color(stateColor(n.state, p)), 20));
   if (n.mean == null) segs.push(...ring(r, 0.0024, grey));
   return quads(segs);
 }
 
-function haloOf(n: MindNode, r: number) {
+function haloOf(n: MindNode, r: number, p: Palette) {
   const m = [...n.misconceptions].sort((a, b) => (a.status === "active" ? -1 : 1) - (b.status === "active" ? -1 : 1))[0];
   if (!m) return null;
   const radius = r * 1.7 + 0.006 + Math.min(m.strength, 2) * 0.006;
-  if (m.status === "resolved") return { geometry: quads(ring(radius, 0.004, new THREE.Color("#FAC775"))), pulse: false };
-  return { geometry: quads(ring(radius, m.status === "active" ? 0.005 : 0.003, new THREE.Color("#E24B4A"), m.status === "suspected" ? 28 : 0)), pulse: m.status === "active" };
+  if (m.status === "resolved") return { geometry: quads(ring(radius, 0.004, new THREE.Color(p.resolved))), pulse: false };
+  return { geometry: quads(ring(radius, m.status === "active" ? 0.005 : 0.003, new THREE.Color(p.misconception), m.status === "suspected" ? 28 : 0)), pulse: m.status === "active" };
 }
 
 interface Sim { rest: Record<string, THREE.Vector3>; q: Record<string, THREE.Vector3>; v: Record<string, THREE.Vector3>; flash: Record<string, number> }
 
 interface NeuronParts { root: THREE.Group; face: THREE.Group; glow: THREE.Sprite; halo: THREE.Mesh | null; pulse: boolean }
 
-function Neuron({ node, selected, sim, register, detail, glow }: {
+function Neuron({ node, selected, sim, register, detail, glow, palette: p }: {
   node: MindNode; selected: boolean; sim: Sim; register(id: string, parts: NeuronParts | null): void;
-  detail: THREE.MeshBasicMaterial; glow: THREE.Texture;
+  detail: THREE.MeshBasicMaterial; glow: THREE.Texture; palette: Palette;
 }) {
   const root = useRef<THREE.Group>(null), face = useRef<THREE.Group>(null), sprite = useRef<THREE.Sprite>(null), halo = useRef<THREE.Mesh>(null);
   const r = somaRadius(node);
-  const key = `${node.dims.map((d) => (d == null ? "-" : d.toFixed(3))).join(",")}|${node.weight.toFixed(2)}|${node.state}`;
-  const dend = useMemo(() => dendrites(node, r), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const key = `${node.dims.map((d) => (d == null ? "-" : d.toFixed(3))).join(",")}|${node.weight.toFixed(2)}|${node.state}|${p.theme}`;
+  const dend = useMemo(() => dendrites(node, r, p), [key]); // eslint-disable-line react-hooks/exhaustive-deps
   const haloKey = node.misconceptions.map((m) => `${m.status}:${m.strength.toFixed(2)}`).join(",");
-  const ringGeo = useMemo(() => haloOf(node, r), [haloKey, r]); // eslint-disable-line react-hooks/exhaustive-deps
-  const select = useMemo(() => quads(ring(r * 2.4 + 0.05, 0.0025, new THREE.Color("#FFFFFF"))), [r]);
+  const ringGeo = useMemo(() => haloOf(node, r, p), [haloKey, r, p]); // eslint-disable-line react-hooks/exhaustive-deps
+  const select = useMemo(() => quads(ring(r * 2.4 + 0.05, 0.0025, new THREE.Color(p.selected))), [r, p]);
   useEffect(() => () => { dend.dispose(); }, [dend]);
   useEffect(() => () => { ringGeo?.geometry.dispose(); }, [ringGeo]);
   useEffect(() => () => { select.dispose(); }, [select]);
@@ -117,11 +116,11 @@ function Neuron({ node, selected, sim, register, detail, glow }: {
     }
     return () => register(node.id, null);
   });
-  const color = node.mean == null ? "#2C2C2A" : stateColor(node.state);
+  const color = node.mean == null ? p.unseenSoma : stateColor(node.state, p);
   return (
     <group ref={root}>
       <sprite ref={sprite} scale={[r * 5.5, r * 5.5, 1]}>
-        <spriteMaterial map={glow} color={node.mean == null ? "#888780" : stateColor(node.state)} transparent opacity={node.mean == null ? 0.18 : 0.55} depthWrite={false} blending={THREE.AdditiveBlending} />
+        <spriteMaterial map={glow} color={node.mean == null ? p.unseen : stateColor(node.state, p)} transparent opacity={node.mean == null ? 0.18 : p.glow} depthWrite={false} blending={p.additive ? THREE.AdditiveBlending : THREE.NormalBlending} />
       </sprite>
       <mesh><sphereGeometry args={[r, 18, 14]} /><meshBasicMaterial color={color} /></mesh>
       <group ref={face}>
@@ -160,12 +159,14 @@ function Rig(props: SceneProps) {
   }, []);
   const glow = useMemo(glowTexture, []);
   const detail = useMemo(() => new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide }), []);
-  const cortexMat = useMemo(() => new THREE.PointsMaterial({ size: 0.03, map: glow, vertexColors: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }), [glow]);
-  const synapseMat = useMemo(() => new THREE.MeshBasicMaterial({ color: "#7F77DD", transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }), []);
-  const misfireMat = useMemo(() => new THREE.MeshBasicMaterial({ color: "#E24B4A", transparent: true, opacity: 0.7, depthWrite: false }), []);
-  const spikeMat = useMemo(() => new THREE.SpriteMaterial({ map: glow, color: "#EEEDFE", transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), [glow]);
-  const pathMat = useMemo(() => new THREE.LineBasicMaterial({ color: "#FAC775", transparent: true, opacity: 0.8 }), []);
-  const headMat = useMemo(() => new THREE.SpriteMaterial({ map: glow, color: "#FAC775", transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), [glow]);
+  const pal = props.palette;
+  const blending = pal.additive ? THREE.AdditiveBlending : THREE.NormalBlending;
+  const cortexMat = useMemo(() => new THREE.PointsMaterial({ size: 0.03, map: glow, vertexColors: true, transparent: true, depthWrite: false, blending, sizeAttenuation: true }), [glow, blending]);
+  const synapseMat = useMemo(() => new THREE.MeshBasicMaterial({ color: pal.synapse, transparent: true, opacity: 0.6, depthWrite: false, blending }), [pal, blending]);
+  const misfireMat = useMemo(() => new THREE.MeshBasicMaterial({ color: pal.misfire, transparent: true, opacity: 0.7, depthWrite: false }), [pal]);
+  const spikeMat = useMemo(() => new THREE.SpriteMaterial({ map: glow, color: pal.spike, transparent: true, depthWrite: false, blending }), [glow, pal, blending]);
+  const pathMat = useMemo(() => new THREE.LineBasicMaterial({ color: pal.path, transparent: true, opacity: 0.85 }), [pal]);
+  const headMat = useMemo(() => new THREE.SpriteMaterial({ map: glow, color: pal.path, transparent: true, depthWrite: false, blending }), [glow, pal, blending]);
   useEffect(() => () => {
     for (const d of [cortexGeo, glow, detail, cortexMat, synapseMat, misfireMat, spikeMat, pathMat, headMat]) d.dispose();
   }, [cortexGeo, glow, detail, cortexMat, synapseMat, misfireMat, spikeMat, pathMat, headMat]);
@@ -189,9 +190,9 @@ function Rig(props: SceneProps) {
     const regions = props.map.regions.map((r) => {
       const means = r.nodes.map((id) => props.frame.nodes[id]?.mean).filter((m): m is number => m != null);
       const mean = means.length ? means.reduce((a, b) => a + b, 0) / means.length : null;
-      return { at: new THREE.Vector3(...placed.regions[r.id]), color: mean == null ? null : new THREE.Color(valueColor(mean)) };
+      return { at: new THREE.Vector3(...placed.regions[r.id]), color: mean == null ? null : new THREE.Color(valueColor(mean, pal)) };
     });
-    const base = new THREE.Color("#9A9890"), p = new THREE.Vector3(), c = new THREE.Color();
+    const base = new THREE.Color(pal.cortex), p = new THREE.Vector3(), c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       p.fromBufferAttribute(pos, i);
       let best = 0, tint: THREE.Color | null = null;
@@ -200,13 +201,13 @@ function Rig(props: SceneProps) {
         const w = 1 - p.distanceTo(r.at) / 0.45;
         if (w > best) { best = w; tint = r.color; }
       }
-      c.copy(base).multiplyScalar(0.62);
-      if (tint) c.lerp(tint, Math.min(1, best * 2)).multiplyScalar(0.7 + best * 1.3);
+      c.copy(base).multiplyScalar(pal.cortexGain);
+      if (tint) c.lerp(tint, Math.min(1, best * 2)).multiplyScalar(pal.additive ? 0.7 + best * 1.3 : 1);
       col.setXYZ(i, c.r, c.g, c.b);
     }
     col.needsUpdate = true;
     invalidate();
-  }, [props.frame, props.map, placed, cortexGeo, invalidate]);
+  }, [props.frame, props.map, placed, cortexGeo, invalidate, pal]);
 
   // Links: tubes rebuilt only when an end moves.
   const linkMeshes = useRef<Record<string, { mesh: THREE.Mesh; curve: THREE.Curve<THREE.Vector3>; ends: string }>>({}).current;
@@ -422,7 +423,7 @@ function Rig(props: SceneProps) {
       g.face.quaternion.copy(camera.quaternion);
       const n = frame.nodes[id];
       const flash = (sim.flash[id] = Math.max(0, (sim.flash[id] ?? 0) - dt * 2.2));
-      (g.glow.material as THREE.SpriteMaterial).opacity = (n?.mean == null ? 0.18 : 0.5) + 0.5 * flash;
+      (g.glow.material as THREE.SpriteMaterial).opacity = (n?.mean == null ? 0.18 : pal.glow) + (pal.additive ? 0.5 : 0.3) * flash;
       const r = n ? somaRadius(n) : 0.02;
       g.glow.scale.setScalar(r * (5.5 + 5 * flash));
       if (g.halo && g.pulse) g.halo.scale.setScalar(1 + 0.12 * Math.sin(state.clock.elapsedTime * 4));
@@ -496,14 +497,14 @@ function Rig(props: SceneProps) {
 
   return (
     <>
-      <color attach="background" args={[BG]} />
+      <color attach="background" args={[pal.bg]} />
       <points geometry={cortexGeo} material={cortexMat} />
       <group ref={linkGroup} />
       <group ref={spikeGroup} />
       <primitive object={pathLine} />
       <sprite ref={head} material={headMat} visible={false} />
       {Object.values(props.frame.nodes).map((n) => (
-        <Neuron key={n.id} node={n} selected={props.selected === n.id} sim={sim} register={register} detail={detail} glow={glow} />
+        <Neuron key={n.id} node={n} selected={props.selected === n.id} sim={sim} register={register} detail={detail} glow={glow} palette={pal} />
       ))}
     </>
   );

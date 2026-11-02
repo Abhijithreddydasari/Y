@@ -5,7 +5,7 @@
 import { useMemo } from "react";
 import { bend, cortex, layout, type Vec3 } from "./layout";
 import { EARLY_BELOW, type MindFrame, type MindMap } from "./map-model";
-import { MISCONCEPTION, RESOLVED, UNSEEN, stateColor, valueColor } from "./palette";
+import { PALETTES, stateColor, valueColor, type Palette } from "./palette";
 
 const W = 900, H = 560, YAW = -0.5, PITCH = 0.2;
 
@@ -17,8 +17,8 @@ function project(p: Vec3): [number, number, number] {
   return [W / 2 + x * s * k, H / 2 - y * s * k, s];
 }
 
-export default function MindStatic({ map, frame, selected, onSelect }: {
-  map: MindMap; frame: MindFrame; selected: string | null; onSelect(id: string): void;
+export default function MindStatic({ map, frame, selected, onSelect, palette: p = PALETTES.dark }: {
+  map: MindMap; frame: MindFrame; selected: string | null; onSelect(id: string): void; palette?: Palette;
 }) {
   const placed = useMemo(() => layout(map), [map]);
   const dots = useMemo(() => {
@@ -33,15 +33,15 @@ export default function MindStatic({ map, frame, selected, onSelect }: {
   const nodes = Object.values(frame.nodes).filter((n) => placed.nodes[n.id])
     .map((n) => ({ n, p: project(placed.nodes[n.id]) })).sort((a, b) => a.p[2] - b.p[2]);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" role="group" aria-label="Your mind, still view">
-      <rect width={W} height={H} fill="#0B0E14" />
-      <g fill="#6B6A64" opacity={0.55}>{dots.map(([x, y], i) => <rect key={i} x={x} y={y} width={1.4} height={1.4} />)}</g>
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" role="group" aria-label="Mind, still view">
+      <rect width={W} height={H} fill={p.bg} />
+      <g fill={p.cortex} opacity={p.additive ? 0.55 : 0.4}>{dots.map(([x, y], i) => <rect key={i} x={x} y={y} width={1.4} height={1.4} />)}</g>
       {frame.links.map((l) => {
         const a = placed.nodes[l.source], b = placed.nodes[l.target];
         if (!a || !b) return null;
         const [ax, ay] = project(a), [bx, by] = project(b), [cx, cy] = project(bend(a, b));
         return <path key={`${l.kind}${l.source}${l.target}`} d={`M${ax},${ay} Q${cx},${cy} ${bx},${by}`} fill="none"
-          stroke={l.kind === "builds_on" ? "#7F77DD" : MISCONCEPTION} strokeWidth={l.kind === "builds_on" ? 1 + Math.min(l.strength, 3) * 0.6 : 1.4}
+          stroke={l.kind === "builds_on" ? p.synapse : p.misfire} strokeWidth={l.kind === "builds_on" ? 1 + Math.min(l.strength, 3) * 0.6 : 1.4}
           strokeDasharray={l.kind === "confused_with" ? "3 3" : undefined} opacity={0.75} />;
       })}
       {nodes.map(({ n, p: [x, y, s] }) => {
@@ -54,14 +54,14 @@ export default function MindStatic({ map, frame, selected, onSelect }: {
             {n.dims.map((v, i) => {
               const a = Math.PI / 2 - (i * Math.PI * 2) / 5, len = v == null ? 4 : (7 + 26 * v) * s;
               return <line key={i} x1={x + Math.cos(a) * r} y1={y - Math.sin(a) * r} x2={x + Math.cos(a) * (r + len)} y2={y - Math.sin(a) * (r + len)}
-                stroke={v == null ? UNSEEN : valueColor(v)} strokeWidth={v == null ? 1 : 2.2} strokeDasharray={v == null ? "2 2" : undefined} strokeLinecap="round" />;
+                stroke={v == null ? p.unseen : valueColor(v, p)} strokeWidth={v == null ? 1 : 2.2} strokeDasharray={v == null ? "2 2" : undefined} strokeLinecap="round" />;
             })}
-            <circle cx={x} cy={y} r={r} fill={n.mean == null ? "#1F1F1D" : stateColor(n.state)} stroke={n.mean == null ? UNSEEN : stateColor(n.state)}
+            <circle cx={x} cy={y} r={r} fill={n.mean == null ? p.unseenSoma : stateColor(n.state, p)} stroke={n.mean == null ? p.unseen : stateColor(n.state, p)}
               strokeDasharray={n.mean != null && n.weight < EARLY_BELOW ? "2 2" : undefined} />
-            {halo && <circle cx={x} cy={y} r={r + 6 + Math.min(halo.strength, 2) * 3} fill="none" stroke={halo.status === "resolved" ? RESOLVED : MISCONCEPTION}
+            {halo && <circle cx={x} cy={y} r={r + 6 + Math.min(halo.strength, 2) * 3} fill="none" stroke={halo.status === "resolved" ? p.resolved : p.misconception}
               strokeWidth={halo.status === "active" ? 2 : 1.2} strokeDasharray={halo.status === "suspected" ? "3 3" : undefined} />}
-            <circle className="focus" cx={x} cy={y} r={r + 16} fill="none" stroke="#FFFFFF" strokeWidth={1.2} opacity={selected === n.id ? 0.7 : 0} />
-            <text x={x} y={y + r + 40 * s} textAnchor="middle" fontSize={12} fill={n.mean == null ? UNSEEN : "#E8E6DF"}>{n.label}</text>
+            <circle className="focus" cx={x} cy={y} r={r + 16} fill="none" stroke={p.selected} strokeWidth={1.2} opacity={selected === n.id ? 0.7 : 0} />
+            <text x={x} y={y + r + 40 * s} textAnchor="middle" fontSize={12} fill={n.mean == null ? p.unseen : p.label}>{n.label}</text>
           </g>
         );
       })}

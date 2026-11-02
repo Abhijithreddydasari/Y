@@ -34,7 +34,7 @@ describe("MindOverlay", () => {
     serve(HISTORY);
     render(<MindOverlay onClose={() => {}} />);
     const neuron = await screen.findByRole("button", { name: "Softmax" });
-    expect(screen.getByRole("group", { name: "Your mind, still view" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Mind, still view" })).toBeInTheDocument();
     expect(screen.queryByTestId("scene")).toBeNull();
     expect(document.querySelector("canvas")).toBeNull();
     expect(screen.queryByText(/Replay session/)).toBeNull();
@@ -67,6 +67,20 @@ describe("MindOverlay", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
     await waitFor(() => expect(failing).toHaveBeenCalledTimes(2));
     expect(screen.queryByText("Sample")).toBeNull();
+  });
+
+  it("switches between the night and paper themes and remembers the choice", async () => {
+    stillMotion(true);
+    serve(HISTORY);
+    render(<MindOverlay onClose={() => {}} />);
+    await screen.findByRole("button", { name: "Softmax" });
+    const dialog = screen.getByRole("dialog", { name: "Mind" });
+    expect(dialog).toHaveAttribute("data-theme", "dark");
+    fireEvent.click(screen.getByRole("button", { name: "Switch to light (paper) theme" }));
+    expect(dialog).toHaveAttribute("data-theme", "light");
+    expect(dialog.style.getPropertyValue("--mind-bg")).toBe("#F7F1E3");
+    expect(screen.getByRole("group", { name: "Mind, still view" }).querySelector("rect")).toHaveAttribute("fill", "#F7F1E3");
+    expect(localStorage.getItem("y_mind_theme")).toBe("light");
   });
 
   it("closes on Escape", async () => {

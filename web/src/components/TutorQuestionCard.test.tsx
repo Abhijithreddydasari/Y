@@ -79,8 +79,27 @@ function tutor(overrides: Partial<TutorTurnState> = {}): TutorTurnState {
   return { configured: true, busy: false, draft: "", question: null, caption: "", error: "", timing: null, narrating: false,
     setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, hush: vi.fn(),
     picker: { options: null, prefs: { model: "spark-1.3", voice: "kokoro_af_heart" }, trace: null, setModel: vi.fn(), setVoice: vi.fn() },
+    memory: { on: true, set: vi.fn(), turn: null }, endSession: vi.fn(), ending: false,
     ...overrides };
 }
+
+describe("Memory and End session", () => {
+  it("toggles memory, shows what the brief contributed and ends the session", () => {
+    const state = tutor({ memory: { on: true, set: vi.fn(), turn: { on: true, revision: 1,
+      items: [{ id: "M1", kind: "misconception", text: "On attention.scaling: believes the mean" }] } } });
+    const { rerender } = render(<TutorComposer tutor={state} onStop={vi.fn()} />);
+    expect(screen.getByTestId("memory-used")).toHaveTextContent("Using 1 item from earlier sessions");
+    fireEvent.click(screen.getByRole("switch", { name: "Memory" }));
+    expect(state.memory.set).toHaveBeenCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "End session" }));
+    expect(state.endSession).toHaveBeenCalled();
+    rerender(<TutorComposer tutor={tutor({ memory: { on: false, set: vi.fn(), turn: { on: false, revision: null, items: [] } } })} onStop={vi.fn()} />);
+    expect(screen.queryByTestId("memory-used")).toBeNull();
+    expect(screen.getByText("Memory off")).toBeInTheDocument();
+    rerender(<TutorComposer tutor={tutor({ busy: true })} onStop={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "End session" })).toBeDisabled();
+  });
+});
 
 describe("TutorComposer", () => {
   it("asks on Enter, shows Stop while busy and reports missing configuration", () => {

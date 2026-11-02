@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
-import { GET, POST } from "./route";
+import { GET, POST, PUT } from "./route";
 
 afterEach(() => vi.unstubAllGlobals());
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split("/") }) });
@@ -102,5 +102,19 @@ describe("learning proxy boundary", () => {
     const failed = await GET(new NextRequest("https://y.test/api/learning/catalog"), context("catalog"));
     expect(failed.status).toBe(503);
     expect(await failed.text()).not.toContain("internal host secret");
+  });
+  it("forwards session close, the memory switch and the profile with a bounded topic", async () => {
+    const sid = "12345678-1234-1234-1234-123456789abc";
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}")));
+    vi.stubGlobal("fetch", fetcher);
+    expect((await POST(new NextRequest("https://y.test/api/learning/x", { method: "POST" }), context(`sessions/${sid}/close`))).status).toBe(200);
+    expect(fetcher.mock.calls[0][0]).toContain(`/learning/sessions/${sid}/close`);
+    const put = await PUT(new NextRequest("https://y.test/api/learning/x", { method: "PUT", body: '{"memory":false}' }), context(`sessions/${sid}/memory`));
+    expect(put.status).toBe(200);
+    expect(fetcher.mock.calls[1][1].method).toBe("PUT");
+    expect(new TextDecoder().decode(fetcher.mock.calls[1][1].body as Uint8Array)).toBe('{"memory":false}');
+    await GET(new NextRequest(`https://y.test/api/learning/profile?q=${"a".repeat(300)}&x=1`), context("profile"));
+    expect(fetcher.mock.calls[2][0]).toMatch(/\/learning\/profile\?q=a{200}$/);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/close/x`))).status).toBe(404);
   });
 });

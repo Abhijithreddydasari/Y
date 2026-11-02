@@ -17,7 +17,7 @@ export interface Observation {
   concept: string; dimension: LearningDimension; outcome: Outcome;
   misconception: string | null; miss_class: MissClass | null;
   assistance: Assistance & { hint_ids: string[] };
-  confidence: number | null; labeler: "deterministic" | "baseten" | "none"; label_confidence: number | null;
+  confidence: number | null; labeler: "deterministic" | "baseten" | "openai" | "none"; label_confidence: number | null;
   format_weight: number; key_status: KeyStatus;
   sources: EvidenceSource[]; created_at: string;
 }

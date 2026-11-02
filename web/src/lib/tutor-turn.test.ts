@@ -24,6 +24,8 @@ describe("tutor move mapping", () => {
     expect(moveToPrimitive({ type: "widget", kind: "attention", spec: '{"tokens":["a","b"],"temp":1}' }))
       .toEqual({ tag: "widget", args: { kind: "attention", spec: '{"tokens":["a","b"],"temp":1}' } });
     expect(moveToPrimitive({ type: "say", text: "aside" })).toBeNull();
+    expect(moveToPrimitive({ type: "because", refs: ["M1"], text: "You mixed these up last time" }))
+      .toEqual({ tag: "chip", args: { text: "You mixed these up last time" } });
     expect(moveToPrimitive({ type: "turn_end", reason: "wait" })).toBeNull();
     expect(questionOf(check)).toEqual({ qid: "t.2", kind: "mcq", q: "What grows?", options: ["variance", "mean"] });
     expect(questionOf({ type: "predict", kind: "mcq", q: "Guess", options: ["a", "b"], qid: "t.0" })?.kind).toBe("predict");

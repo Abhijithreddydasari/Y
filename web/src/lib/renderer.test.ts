@@ -13,3 +13,16 @@ describe("LessonRenderer card", () => {
     expect((await renderer.render({ tag: "card", args: { id: "", q: "x" } })).skeletons).toEqual([]);
   });
 });
+
+describe("LessonRenderer chip", () => {
+  it("draws a because chip in the narration column and moves the next line below it", async () => {
+    const renderer = new LessonRenderer({ x: 100, y: 200 });
+    const { skeletons } = await renderer.render({ tag: "chip", args: { text: "You mixed up the mean last time" } });
+    const [chip] = skeletons as unknown as Record<string, unknown>[];
+    expect(chip).toMatchObject({ type: "rectangle", x: 100, y: 200, height: 30 });
+    expect((chip.label as { text: string }).text).toBe("\u21ba You mixed up the mean last time");
+    const next = (await renderer.render({ tag: "text", args: { content: "Next" } })).skeletons[0] as unknown as { y: number };
+    expect(next.y).toBeGreaterThanOrEqual(230);
+    expect((await renderer.render({ tag: "chip", args: { text: "" } })).skeletons).toEqual([]);
+  });
+});

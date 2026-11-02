@@ -10,9 +10,10 @@ import { LessonPlayer } from "@/lib/lesson-player";
 import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
-import { boardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
-import { cardId, fetchTutorState, moveToPrimitive, questionOf, streamTutorTurn, tutorErrorMessage,
-  type TurnBody, type TutorQuestion, type TutorTimeline } from "@/lib/tutor-turn";
+import { boardSession, startNextBoardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
+import { cardId, closeSession, fetchSessionMemory, fetchTutorState, moveToPrimitive, questionOf, setSessionMemory,
+  streamTutorTurn, tutorErrorMessage, type CloseSummary, type TurnBody, type TurnMemory, type TutorQuestion,
+  type TutorTimeline } from "@/lib/tutor-turn";
 import { pendingImages, watchImage } from "@/lib/board-images";
 import { fetchTutorOptions, KOKORO_VOICES, loadPrefs, resolvePrefs, savePrefs, type TutorOptions, type TutorPrefs,
   type TutorTrace } from "@/lib/tutor-options";
@@ -38,6 +39,21 @@ export interface TutorTurnState {
   hush: () => void;
   picker: { options: TutorOptions | null; prefs: TutorPrefs; trace: TutorTrace | null; setModel: (id: string) => void;
     setVoice: (id: string) => void };
+  /** Memory on: turns read the brief compiled from earlier sessions. Off: the generic tutor (for comparison). */
+  memory: { on: boolean; set: (on: boolean) => void; turn: TurnMemory | null };
+  /** Seal this session's evidence into the learner profile, then start a fresh session. */
+  endSession: () => void;
+  ending: boolean;
+}
+
+const LAST_CLOSE = "y_last_close";
+
+export function closeMessage(summary: CloseSummary): string {
+  if (!summary.profile_updated) return "Session ended. No answered checks to learn from, so your profile is unchanged.";
+  const parts = [`${summary.sealed} answer${summary.sealed === 1 ? "" : "s"} sealed`];
+  if (summary.misconceptions?.length) parts.push(`${summary.misconceptions.length} misconception${summary.misconceptions.length === 1 ? "" : "s"} noted`);
+  if (summary.notes?.length) parts.push(`${summary.notes.length} teaching note${summary.notes.length === 1 ? "" : "s"}`);
+  return `Session saved to your profile (revision ${summary.revision}): ${parts.join(", ")}. This is a new session.`;
 }
 
 interface CachedLesson {
@@ -183,6 +199,9 @@ export function useTutorSession(): TutorSession {
   const [prefs, setPrefs] = useState<TutorPrefs>({ model: "spark-1.3", voice: "kokoro_af_heart" });
   const prefsRef = useRef(prefs);
   const [trace, setTrace] = useState<TutorTrace | null>(null);
+  const [memoryOn, setMemoryOn] = useState(true);
+  const [turnMemory, setTurnMemory] = useState<TurnMemory | null>(null);
+  const [ending, setEnding] = useState(false);
 
   const refreshLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -239,9 +258,13 @@ export function useTutorSession(): TutorSession {
       setQuestion(state.open);
       const said = state.turns.at(-1)?.said.at(-1);
       if (said) setCaption(said);
+      let closed: string | null = null;
+      try { closed = sessionStorage.getItem(LAST_CLOSE); sessionStorage.removeItem(LAST_CLOSE); } catch { /* storage blocked */ }
       if (!state.configured) setStatus("The tutor is not configured on the server (MODEL_API_KEY is missing).");
+      else if (closed) setStatus(closed);
       else setStatus(state.open ? "Your turn: answer the card on the board." : "Ready. Ask a question about anything on the board.");
     }).catch((error) => { if (!cancelled) setTutorError(tutorErrorMessage(error)); });
+    void boardSession().then(fetchSessionMemory).then((on) => { if (!cancelled) setMemoryOn(on); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -568,7 +591,7 @@ export function useTutorSession(): TutorSession {
           if (move.type === "image" && move.image_id) void watchImage(handle, board.session, move.image_id);
           setStatus("Explaining…");
         },
-        onDone: (value) => { asked = value.question ?? asked; if (value.tutor) setTrace(value.tutor); Object.assign(stages, Object.fromEntries(Object.entries(value.timing ?? {}).map(([k, v]) => [`server_${k}`, v]))); },
+        onDone: (value) => { asked = value.question ?? asked; if (value.tutor) setTrace(value.tutor); if (value.memory) setTurnMemory(value.memory); Object.assign(stages, Object.fromEntries(Object.entries(value.timing ?? {}).map(([k, v]) => [`server_${k}`, v]))); },
       }, controller.signal);
       await player.finishDrawing();
       stages.drawn_ms = performance.now() - started;
@@ -622,6 +645,28 @@ export function useTutorSession(): TutorSession {
       handle.mutateElement(frame.id, { height: frame.height + extra });
     });
   }, [question, runTurn]);
+
+  const setMemory = useCallback((on: boolean) => {
+    setMemoryOn(on);
+    void boardSession().then((session) => setSessionMemory(session, on)).then(setMemoryOn).catch((error) => {
+      setMemoryOn(!on); setTutorError(tutorErrorMessage(error));
+    });
+  }, []);
+
+  const endSession = useCallback(() => {
+    if (ending || tutorBusy) return;
+    setEnding(true); setTutorError("");
+    setStatus("Saving this session to your learner profile…");
+    void boardSession().then(closeSession).then((summary) => {
+      const message = closeMessage(summary);
+      try { sessionStorage.setItem(LAST_CLOSE, message); } catch { /* the status is shown once anyway */ }
+      startNextBoardSession();
+      window.location.reload();
+    }).catch((error) => {
+      const message = tutorErrorMessage(error);
+      setTutorError(message); setStatus(message); setEnding(false);
+    });
+  }, [ending, tutorBusy]);
 
   const cardRect = useCallback((qid: string) => handleRef.current?.getElementScreenRect(cardId(qid)) ?? null, []);
 
@@ -705,6 +750,7 @@ export function useTutorSession(): TutorSession {
     sendChatMessage, cancelChat, clearChat,
     tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing, narrating,
       setDraft, ask, answer, cardRect, hush,
-      picker: { options: tutorOptions, prefs, trace, setModel: (model) => choose({ model }), setVoice: (voice) => choose({ voice }) } },
+      picker: { options: tutorOptions, prefs, trace, setModel: (model) => choose({ model }), setVoice: (voice) => choose({ voice }) },
+      memory: { on: memoryOn, set: setMemory, turn: turnMemory }, endSession, ending },
   };
 }

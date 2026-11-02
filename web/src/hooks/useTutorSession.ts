@@ -641,8 +641,14 @@ export function useTutorSession(): TutorSession {
       const text = handle?.getElements().find((e) => e.id === `${cardId(question.qid)}-text`);
       if (!handle || !frame || !text || text.type !== "text") return;
       const extra = 46, next = `${text.text}\n\n${label}`;
-      handle.mutateElement(text.id, { text: next, originalText: next, height: text.height + extra });
-      handle.mutateElement(frame.id, { height: frame.height + extra });
+      // Cosmetic only: Excalidraw's dev build throws on some older boards' fractional indices, which
+      // must never abort the feedback turn (the answer is already recorded).
+      try {
+        handle.mutateElement(text.id, { text: next, originalText: next, height: text.height + extra });
+        handle.mutateElement(frame.id, { height: frame.height + extra });
+      } catch (error) {
+        console.warn("could not mark the answered card", error);
+      }
     });
   }, [question, runTurn]);
 

@@ -18,6 +18,8 @@ export interface Observation {
   misconception: string | null; miss_class: MissClass | null;
   assistance: Assistance & { hint_ids: string[] };
   confidence: number | null; labeler: "deterministic" | "baseten" | "openai" | "none"; label_confidence: number | null;
+  outcome_p?: Partial<Record<Outcome, number>> | null; misconception_p?: Record<string, number>;
+  other_misconception_p?: number | null; reasoning?: number | null; reasoning_shown?: number | null;
   format_weight: number; key_status: KeyStatus;
   sources: EvidenceSource[]; created_at: string;
 }
@@ -27,7 +29,7 @@ export interface BriefItem { id: string; kind: "known" | "shaky" | "misconceptio
 export interface LearnerBrief { schema_version: 1; brief_id: string; topic: string; profile_revision: number; items: BriefItem[] }
 
 export interface Belief { concept: string; dimension: LearningDimension; alpha: number; beta: number; half_life_hours: number | null; last_evidence_at: string | null }
-export interface MisconceptionEntry { id: string; concept: string; description: string; status: "active" | "resolved"; evidence: string[] }
+export interface MisconceptionEntry { id: string; concept: string; description: string; status: "active" | "suspected" | "resolved"; strength?: number; evidence: string[] }
 export interface TeachingNote { text: string; cites: string[] }
 export interface ProfileRevision {
   schema_version: 1; revision: number; parent_revision: number | null; session_id: string;

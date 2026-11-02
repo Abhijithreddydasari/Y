@@ -29,10 +29,18 @@ export interface TurnBody {
 }
 
 export interface TutorTimeline { [stage: string]: number }
+/** What the learner model contributed to a turn: the brief items the tutor read (none with Memory off). */
+export interface TurnMemory { on: boolean; revision: number | null; items: { id: string; kind: string; text: string }[] }
+/** Result of sealing a session at "End session". */
+export interface CloseSummary {
+  revision: number | null; sealed: number; profile_updated: boolean; replayed: boolean;
+  misconceptions?: string[]; notes?: string[]; beliefs?: { concept: string; dimension: string; mean: number }[];
+}
 export interface TutorTurnEvents {
   onTurn?: (value: { turn_id: string; outcome: { qid: string; result: string } | null }) => void;
   onMove: (move: PublicMove, index: number) => void;
-  onDone: (value: { status: string; question: TutorQuestion | null; timing?: TutorTimeline; tutor?: TutorTrace }) => void;
+  onDone: (value: { status: string; question: TutorQuestion | null; timing?: TutorTimeline; tutor?: TutorTrace;
+    memory?: TurnMemory }) => void;
 }
 export interface TutorState {
   configured: boolean;
@@ -48,6 +56,8 @@ const MESSAGES: Record<string, string> = {
   tutor_model_unknown: "That tutor model is not offered here. Pick another in the menu beside Ask.",
   tutor_model_unavailable: "That tutor model is not configured on this server. Pick another in the menu beside Ask.",
   tutor_turn_in_progress: "The tutor is still answering. Wait for it to finish or press Stop.",
+  session_closed: "This session has ended. Start a new one to keep learning.",
+  session_closing: "This session is being saved. Wait a moment.",
   assessment_budget_exhausted: "The hourly tutor limit is reached. Your question and board are kept; try again later.",
   learning_identity_required: "Your learning session expired. Reload the page to continue.",
 };
@@ -66,6 +76,7 @@ export function moveToPrimitive(move: PublicMove): PrimitiveTag | null {
     case "equation": return { tag: "equation", args: { latex: move.latex } };
     case "diagram": return { tag: "diagram", args: { mermaid: move.mermaid } };
     case "widget": return { tag: "widget", args: { kind: move.kind, spec: move.spec } };
+    case "because": return { tag: "chip", args: { text: move.text } };
     case "image": return move.image_id ? { tag: "image", args: { id: move.image_id, alt: move.alt } } : null;
     case "predict":
     case "check":
@@ -90,6 +101,26 @@ export async function fetchTutorState(session: string): Promise<TutorState> {
   const response = await fetch(`/api/learning/sessions/${session}/tutor`, { credentials: "same-origin", cache: "no-store" });
   if (!response.ok) throw await failure(response);
   return response.json() as Promise<TutorState>;
+}
+
+export async function closeSession(session: string): Promise<CloseSummary> {
+  const response = await fetch(`/api/learning/sessions/${session}/close`, { method: "POST", credentials: "same-origin" });
+  if (!response.ok) throw await failure(response);
+  return response.json() as Promise<CloseSummary>;
+}
+
+export async function setSessionMemory(session: string, memory: boolean): Promise<boolean> {
+  const response = await fetch(`/api/learning/sessions/${session}/memory`, {
+    method: "PUT", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory }),
+  });
+  if (!response.ok) throw await failure(response);
+  return ((await response.json()) as { memory: boolean }).memory;
+}
+
+export async function fetchSessionMemory(session: string): Promise<boolean> {
+  const response = await fetch(`/api/learning/sessions/${session}/memory`, { credentials: "same-origin", cache: "no-store" });
+  if (!response.ok) throw await failure(response);
+  return ((await response.json()) as { memory: boolean }).memory;
 }
 
 export async function streamTutorTurn(session: string, body: TurnBody, handlers: TutorTurnEvents, signal: AbortSignal): Promise<void> {

@@ -12,6 +12,7 @@ export type PrimitiveName =
   | "draw"
   | "draw_part"
   | "card"
+  | "chip"
   | "diagram"
   | "widget"
   | "image";

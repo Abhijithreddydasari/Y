@@ -1,7 +1,9 @@
-"""Live check of H4 evidence labeling against the configured Baseten decision model (paid calls).
+"""Live check of evidence labeling against the configured decision model (EVIDENCE_LABEL_PROVIDER; paid calls).
 
 Runs 12 synthetic answered checks through the real capture store and background labeler on a
 throwaway SQLite file, then prints each label next to a hand label, and the label latency.
+Two ink cases carry the answer only in a rendered image crop (a font, not real stylus strokes),
+so they show whether the provider reads learner images; System One ignores images.
 Usage (from api): .venv\\Scripts\\python.exe scripts\\live_evidence.py [count]
 """
 from __future__ import annotations
@@ -11,15 +13,18 @@ import statistics
 import sys
 import tempfile
 import time
+from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
 from learning import observations  # noqa: E402
+from learning.board_storage import BoardStore  # noqa: E402
 from learning.decisions import evidence_labeler  # noqa: E402
 from learning.storage import CaptureStore, make_engine  # noqa: E402
 from learning.tutor_turn import TurnInput, grade  # noqa: E402
@@ -50,14 +55,30 @@ CASES = [
     (check("free", "What is \\sqrt{64}?", "6", concept="arith.roots", dim="apply"), "8", "typed", ("correct", None)),
     (check("free", "For A = [[2, 0], [0, 3]] and u = (1, 0), what is Au?", "(3, 3)", concept="linalg.matvec", dim="apply"),
      "(2, 0)", "typed", ("correct", None)),
+    # Ink: the typed text is only a placeholder; the answer is in the learner's crop.
+    (check("free", "What is \sqrt{81}?", "9", concept="arith.roots", dim="apply"), "ink:9", "ink", ("correct", None)),
+    (check("free", "What is 7 \times 8?", "56", concept="arith.times", dim="apply"), "ink:54", "ink", ("incorrect", "careless")),
 ]
+INK_PLACEHOLDER = "(answered in ink on the board)"
+
+
+def ink_png(text: str) -> bytes:
+    image = Image.new("RGB", (360, 160), "white")
+    try:
+        font = ImageFont.truetype("segoepr.ttf", 72)  # Segoe Print: handwriting-like, ships with Windows
+    except OSError:
+        font = ImageFont.load_default(size=72)
+    ImageDraw.Draw(image).text((40, 30), text, fill="#1e3a8a", font=font)
+    out = BytesIO()
+    image.save(out, format="PNG")
+    return out.getvalue()
 
 
 async def main(count: int) -> None:
     labeler = evidence_labeler()
-    print(f"labeler {labeler.model} configured={labeler.configured} (LIVE, paid calls)")
+    print(f"labeler {labeler.provider_name}:{labeler.model} configured={labeler.configured} (LIVE, paid calls)")
     if not labeler.configured:
-        raise SystemExit("BASETEN_API_KEY is not set")
+        raise SystemExit("the selected provider's key is not set (OPENAI_API_KEY or BASETEN_API_KEY)")
     with tempfile.TemporaryDirectory() as folder:
         capture = CaptureStore(make_engine(f"sqlite:///{Path(folder, 'live.db').as_posix()}"))
         capture.initialize()
@@ -68,11 +89,15 @@ async def main(count: int) -> None:
         rows, capture_ms = [], []
         for index, (question, answer, via, hand) in enumerate(CASES[:count]):
             question = {**question, "qid": f"live.{index}"}
+            crops = ()
+            if answer.startswith("ink:"):
+                crops = (BoardStore(capture).put_asset(owner, str(sid), ink_png(answer[4:]))["hash"],)
+                answer = INK_PLACEHOLDER
             body = TurnInput(turn_id=uuid4(), kind="answer", question_id=question["qid"],
                              **({"choice": answer} if question["options"] else {"text": answer}))
             started = time.perf_counter()
             graded = grade(question, body)
-            row, _ = store.capture_answer(owner, str(sid), str(body.turn_id), question, answer, graded, via, [])
+            row, _ = store.capture_answer(owner, str(sid), str(body.turn_id), question, answer, graded, via, [], (), crops)
             capture_ms.append((time.perf_counter() - started) * 1000)
             rows.append((row, hand))
         await asyncio.gather(*(observations.label(store, labeler, owner, row["observation_id"])

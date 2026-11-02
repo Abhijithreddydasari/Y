@@ -32,6 +32,23 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           {notice || `Y: ${tutor.caption}`}
         </p>
       )}
+      <div className="mb-1.5 flex items-center justify-end gap-2 text-xs">
+        {tutor.memory.on && tutor.memory.turn?.items.length ? (
+          <span className="truncate rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700 ring-1 ring-indigo-200" data-testid="memory-used"
+            title={tutor.memory.turn.items.map((item) => `${item.id}: ${item.text}`).join("\n")}>
+            Using {tutor.memory.turn.items.length} item{tutor.memory.turn.items.length === 1 ? "" : "s"} from earlier sessions
+          </span>
+        ) : null}
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-slate-600 shadow-sm ring-1 ring-slate-200">
+          <input type="checkbox" role="switch" aria-label="Memory" checked={tutor.memory.on} disabled={tutor.busy}
+            onChange={(event) => tutor.memory.set(event.target.checked)} className="accent-indigo-600" />
+          Memory {tutor.memory.on ? "on" : "off"}
+        </label>
+        <button type="button" onClick={tutor.endSession} disabled={tutor.busy || tutor.ending || unavailable}
+          className="rounded-full bg-white/95 px-2.5 py-1 font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 disabled:opacity-40">
+          {tutor.ending ? "Saving…" : "End session"}
+        </button>
+      </div>
       <form className="relative flex items-end gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-[0_14px_45px_rgba(15,23,42,.14)] backdrop-blur-xl"
         onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <textarea

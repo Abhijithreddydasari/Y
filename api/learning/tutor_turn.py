@@ -27,13 +27,15 @@ from .tutor_stream import MoveStreamParser, MoveSyntaxError
 log = logging.getLogger("y.tutor")
 POLICY_VERSION = "tutor-v1"
 SYSTEM_PREFIX = (Path(__file__).resolve().parents[1] / "prompts" / f"{POLICY_VERSION}.md").read_text(encoding="utf-8")
-# Kinds the board renders; pointing arrives with H8 and `because` with H5.
-ENABLED = frozenset({"seg", "write", "equation", "diagram", "widget", "image", "say", "predict", "check", "turn_end"})
+# Kinds the board renders; pointing arrives with H8. `because` must cite the session's brief.
+ENABLED = frozenset({"seg", "write", "equation", "diagram", "widget", "image", "say", "predict", "check",
+                     "because", "turn_end"})
 ONE_PER_TURN = ("diagram", "widget", "image")
 MEMORY_BUDGET = 12 * 1024
 RECENT_TURNS = 3
 MAX_REPAIRS = 2
-_NO_REPAIR = ("move after turn_end", "turn exceeds", "kind not enabled", "question must be the last move", "only one")
+_NO_REPAIR = ("move after turn_end", "turn exceeds", "kind not enabled", "question must be the last move", "only one",
+              "because cites")
 
 
 class TurnInput(Contract):

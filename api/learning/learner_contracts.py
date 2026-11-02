@@ -48,8 +48,16 @@ class Observation(Contract):
     assistance: Assistance = Field(default_factory=Assistance)
     # Learner-reported confidence from the check card; None when not asked.
     confidence: Probability | None = None
-    labeler: Literal["deterministic", "baseten", "none"] = "none"
+    labeler: Literal["deterministic", "baseten", "openai", "none"] = "none"
     label_confidence: Probability | None = None
+    # The decision model's full distributions (H5 soft update). `outcome_p` is None when a verifier decided.
+    outcome_p: dict[Outcome, Probability] | None = None
+    # Named misconception candidates the model saw (p >= 0.05), and p of one not on the list.
+    misconception_p: dict[Identifier, Probability] = Field(default_factory=dict, max_length=8)
+    other_misconception_p: Probability | None = None
+    # Quality of the reasoning shown (0 flawed .. 1 insightful) and p that any reasoning was visible.
+    reasoning: Probability | None = None
+    reasoning_shown: Probability | None = None
     # How much this answer format says about the learner (guessable taps and reveals weigh less).
     format_weight: Probability = 1.0
     # "wrong": a verifier showed the tutor's key was incorrect; reducers skip or down-weight it.
@@ -113,7 +121,10 @@ class MisconceptionEntry(Contract):
     id: Identifier
     concept: Identifier
     description: str = Field(min_length=1, max_length=400)
-    status: Literal["active", "resolved"]
+    # "suspected": probability mass below the active threshold so far.
+    status: Literal["active", "suspected", "resolved"]
+    # Accumulated probability that answers showed it; legacy entries count as one certain sighting.
+    strength: float = Field(default=1.0, ge=0, le=1000)
     evidence: tuple[UUID, ...] = Field(min_length=1, max_length=32)
 
 

@@ -25,6 +25,14 @@
   (option, number, symbolic) and a key audit run first; Elephant labels outcome, miss class and
   misconception in the background, and failures show only in `GET …/evidence`. **Live Elephant
   check blocked**: the Baseten key gets 403 on decision models. Next: H5.
+- H5 done ([handoff](handoffs/H5.md)) on `feature/learner-model`. OpenAI Decisions
+  (`gpt-6-luna`) labels evidence, reading learner ink crops: 14/14 live outcomes. End session
+  seals one profile revision (Beta per concept × dimension, half-life, misconception ledger,
+  Spark Open cited notes). The next session's brief drives a `because` chip, and Memory off is
+  generic: gate met live, 2/2 pairs. 2026-11-03 follow-up: probability-weighted beliefs and
+  misconception ledger, reasoning score, close-time grouping of wrong answers into named beliefs,
+  card-mutation guard, and a live self-learning eval (`scripts/eval_learning.py`; a run with the
+  latest fixes is not yet read). Next: H6–H9.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -41,7 +49,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H2 Voice in, narration out | done (branch `feature/voice-narration`) | `69085eb`, `d925a86`, `f70e40c` | [H2](handoffs/H2.md) |
 | H3 Board artifacts + model/voice picker | done (branch `feature/board-artifacts`) | `785b9be`, `5133e1d`, `949b597`, `0b6672f`, `bbc2879` | [H3](handoffs/H3.md) |
 | H4 Evidence capture | done, live label check blocked (branch `feature/evidence-capture`) | `6ebb8dc`, `7160a6b` | [H4](handoffs/H4.md) |
-| H5–H10 | planned | — | — |
+| H5 Learner model + visible adaptation | done (branch `feature/learner-model`) | `3edc208`, `ecc147a` | [H5](handoffs/H5.md) |
+| H6–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 

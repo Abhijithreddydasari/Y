@@ -63,6 +63,10 @@ const GRAPH_GAP_X = 60;
 const GRAPH_GAP_Y = 80;
 const GRAPH_COLS = 3;
 const STROKE = "#111111";
+const CHIP_FONT = 14;
+const CHIP_H = 30;
+const CHIP_STROKE = "#4338ca";
+const CHIP_FILL = "#eef2ff";
 
 interface Origin {
   x: number;
@@ -157,6 +161,8 @@ export class LessonRenderer {
         return this.renderDrawPart(tag.args);
       case "card":
         return this.renderCard(tag.args);
+      case "chip":
+        return this.renderChip(asStr(tag.args.text));
       case "diagram":
         return this.renderDiagram(asStr(tag.args.mermaid));
       case "widget":
@@ -266,6 +272,28 @@ export class LessonRenderer {
       this.graphRow += 1;
     }
     return { x, y };
+  }
+
+  /** A small label saying why the tutor chose a step (a `because` move citing the learner brief). */
+  private renderChip(text: string): RenderResult {
+    if (!text) return { skeletons: [] };
+    const label = `↺ ${text.length > 80 ? `${text.slice(0, 79)}…` : text}`;
+    const width = Math.min(COL_WIDTH, Math.ceil(label.length * CHIP_FONT * 0.6) + 28);
+    const skel: ExcalidrawElementSkeleton = {
+      type: "rectangle",
+      id: makeRevealId(),
+      x: this.narrationX,
+      y: this.narrationY,
+      width,
+      height: CHIP_H,
+      strokeColor: CHIP_STROKE,
+      backgroundColor: CHIP_FILL,
+      fillStyle: "solid",
+      roundness: { type: 3 },
+      label: { text: label, fontSize: CHIP_FONT, strokeColor: CHIP_STROKE },
+    } as ExcalidrawElementSkeleton;
+    this.advanceNarration(CHIP_H);
+    return { skeletons: [skel] };
   }
 
   private renderBox(args: Record<string, string | number>): RenderResult {

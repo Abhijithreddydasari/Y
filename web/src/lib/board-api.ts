@@ -55,6 +55,12 @@ export function boardSession(): Promise<string> {
   return sessionPromise;
 }
 
+/** After "End session": the next load starts a fresh board session; the sealed one stays saved on the server. */
+export function startNextBoardSession(): void {
+  localStorage.setItem("y_board_session_v1", crypto.randomUUID());
+  sessionPromise = null;
+}
+
 /** Read an SSE body frame by frame; a handler may throw to stop reading. */
 export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (event: string, value: unknown) => void): Promise<void> {
   const reader = body.getReader(), decoder = new TextDecoder();

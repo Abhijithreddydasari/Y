@@ -4,13 +4,15 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-const ALLOWED = /^(identity|catalog|sessions|speech|tutor\/options|sessions\/[a-f0-9-]{36}(?:\/attempts)?|attempts\/[a-f0-9-]{36}(?:\/assess)?)$/;
-const BOARD = /^(sessions\/[a-f0-9-]{36}\/tutor(?:\/turns)?|sessions\/[a-f0-9-]{36}\/evidence|sessions\/[a-f0-9-]{36}\/images\/[a-f0-9]{32}|sessions\/[a-f0-9-]{36}\/transcribe(?:\/warm)?|sessions\/[a-f0-9-]{36}\/board(?:\/(?:edits|regions|attempts|context|teach|assets(?:\/[a-f0-9]{64})?))?|board-attempts\/[a-f0-9-]{36}(?:\/(?:assess|corrections))?)$/;
+const ALLOWED = /^(identity|catalog|sessions|speech|profile|tutor\/options|sessions\/[a-f0-9-]{36}(?:\/attempts)?|attempts\/[a-f0-9-]{36}(?:\/assess)?)$/;
+const BOARD = /^(sessions\/[a-f0-9-]{36}\/tutor(?:\/turns)?|sessions\/[a-f0-9-]{36}\/(?:evidence|close|memory)|sessions\/[a-f0-9-]{36}\/images\/[a-f0-9]{32}|sessions\/[a-f0-9-]{36}\/transcribe(?:\/warm)?|sessions\/[a-f0-9-]{36}\/board(?:\/(?:edits|regions|attempts|context|teach|assets(?:\/[a-f0-9]{64})?))?|board-attempts\/[a-f0-9-]{36}(?:\/(?:assess|corrections))?)$/;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   const path = (await context.params).path.join("/");
   if (!ALLOWED.test(path) && !BOARD.test(path)) return Response.json({ detail: "Unknown learning endpoint" }, { status: 404 });
   const streaming = path.endsWith("/teach") || path.endsWith("/tutor/turns");
+  // Closing re-labels open answers (up to 20 s) and writes teaching notes (up to 30 s).
+  const closing = path.endsWith("/close");
   const audio = path.endsWith("/transcribe");
   const limit = path.endsWith("/assets") ? 2 * 1024 * 1024 : path.endsWith("/edits") ? 1024 * 1024 : audio ? 1_100_000 : 40_000;
   const origin = request.headers.get("origin");
@@ -24,7 +26,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     headers.set("Cookie", `y_learning_identity=${identity}`);
   }
   let body: Uint8Array | undefined;
-  if (request.method === "POST" && request.body) {
+  if ((request.method === "POST" || request.method === "PUT") && request.body) {
     const reader = request.body.getReader();
     const parts: Uint8Array[] = [];
     let length = 0;
@@ -45,11 +47,13 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   try {
     const revision = request.nextUrl.searchParams.get("revision");
     if (revision !== null && !/^\d{1,9}$/.test(revision)) return Response.json({ detail: "Invalid revision" }, { status: 400 });
-    const upstream = await fetch(`${base}/learning/${path}${revision === null ? "" : `?revision=${revision}`}`, {
+    const topic = path === "profile" ? request.nextUrl.searchParams.get("q") : null;
+    const query = revision !== null ? `?revision=${revision}` : topic ? `?q=${encodeURIComponent(topic.slice(0, 200))}` : "";
+    const upstream = await fetch(`${base}/learning/${path}${query}`, {
       method: request.method, headers, body: body as BodyInit | undefined,
       cache: "no-store", redirect: "error",
       // Kokoro's first synthesis loads the voice, so speech gets the longer board timeout.
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(streaming ? 150_000 : BOARD.test(path) || path === "speech" ? 35_000 : 20_000)]),
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(streaming ? 150_000 : closing ? 90_000 : BOARD.test(path) || path === "speech" ? 35_000 : 20_000)]),
     });
     const contentType = upstream.headers.get("Content-Type") || "application/json";
     const responseHeaders = new Headers({ "Content-Type": contentType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
@@ -68,4 +72,4 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   }
 }
 
-export { proxy as GET, proxy as POST };
+export { proxy as GET, proxy as POST, proxy as PUT };

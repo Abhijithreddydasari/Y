@@ -13,10 +13,10 @@ from collections.abc import AsyncIterator
 import httpx
 
 from .decisions import ProviderFailure
+from .tutor_models import PROVIDERS, TutorOption, api_key, default_option
 from .tutor_moves import response_format
 from .tutor_turn import ENABLED
 
-META_BASE = "https://api.meta.ai/v1"
 MAX_OUTPUT_TOKENS = 3000  # minimal effort reasons for ~450 tokens; a turn is ~600-1,000 output tokens
 MAX_CONTENT_CHARS = 40_000
 _FORMAT = response_format(ENABLED)  # constrained decoding cannot emit kinds this slice cannot render
@@ -28,8 +28,10 @@ class MetaTutor:
     def __init__(self, client: httpx.AsyncClient, api_key: str | None = None, model: str | None = None):
         self.client = client
         self.api_key = (os.environ.get("MODEL_API_KEY", "") if api_key is None else api_key).strip()
-        self.model = model or os.environ.get("META_TUTOR_MODEL", "muse-spark-1.3")
-        self.effort = "minimal"
+        self.option = default_option()
+        self.model = model or self.option.model
+        self.effort = self.option.effort
+        self.base = PROVIDERS["meta"][0]
         self.usage: dict[str, int] = {}
         self.timing: dict[str, float] = {}
 
@@ -37,9 +39,21 @@ class MetaTutor:
     def configured(self) -> bool:
         return bool(self.api_key)
 
+    def use(self, option: TutorOption) -> None:
+        """Switch to an allowlisted option (resolved by `tutor_models.resolve`, never a browser string)."""
+        self.option, self.model, self.effort = option, option.model, option.effort
+        self.base = PROVIDERS[option.provider][0]
+        self.api_key = api_key(option)
+
+    @property
+    def trace(self) -> dict:
+        return {"option": self.option.id, "model": self.model, "effort": self.effort}
+
     def _body(self, messages: list[dict], stream: bool, max_tokens: int) -> dict:
-        body = {"model": self.model, "reasoning_effort": self.effort, "messages": messages,
+        body = {"model": self.model, "messages": messages,
                 "response_format": _FORMAT, "max_tokens": max_tokens, "stream": stream}
+        if self.effort:
+            body["reasoning_effort"] = self.effort
         if stream:
             body["stream_options"] = {"include_usage": True}
         return body
@@ -59,7 +73,7 @@ class MetaTutor:
             raise ProviderFailure("provider_not_configured")
         started, chars = time.perf_counter(), 0
         try:
-            async with self.client.stream("POST", f"{META_BASE}/chat/completions",
+            async with self.client.stream("POST", f"{self.base}/chat/completions",
                                           json=self._body(messages, True, MAX_OUTPUT_TOKENS),
                                           headers={"Authorization": f"Bearer {self.api_key}"},
                                           timeout=httpx.Timeout(20, connect=5)) as response:
@@ -102,7 +116,7 @@ class MetaTutor:
         if not self.api_key:
             raise ProviderFailure("provider_not_configured")
         try:
-            response = await self.client.post(f"{META_BASE}/chat/completions", json=self._body(messages, False, max_tokens),
+            response = await self.client.post(f"{self.base}/chat/completions", json=self._body(messages, False, max_tokens),
                                               headers={"Authorization": f"Bearer {self.api_key}"},
                                               timeout=httpx.Timeout(12, connect=5))
             if response.status_code != 200:

@@ -16,6 +16,7 @@ from .board_contracts import ContextPacket
 from .board_router import get_board_store
 from .contracts import canonical, digest
 from .router import call_store, get_store, private_response, require_owner
+from .tutor_models import OptionUnavailable, resolve, tutor_options, voice_options
 from .tutor_moves import TurnValidator
 from .tutor_provider import MetaTutor
 from .tutor_storage import TutorStore, open_question
@@ -61,6 +62,18 @@ def _replay(turn: dict):
     yield _event("done", {"status": turn["status"], "question": public_question(question) if question else None, "replayed": True})
 
 
+@router.get("/tutor/options")
+async def options(owner=Depends(require_owner)):
+    """Models and voices the picker offers, each with availability and a reason when disabled."""
+    from speech import get_speech_engine  # imported lazily: the voice engine is optional
+
+    try:
+        engine = get_speech_engine()
+    except Exception:  # an engine that cannot even construct is simply unavailable
+        engine = None
+    return {"models": tutor_options(), "voices": voice_options(engine)}
+
+
 @router.get("/sessions/{sid}/tutor")
 async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor_store), tutor=Depends(get_tutor)):
     history = await call_store(store.history, owner, str(sid))
@@ -69,13 +82,20 @@ async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
             "turns": [{"turn_id": t["turn_id"], "seq": t["seq"], "kind": t["kind"], "status": t["status"],
                        "learner": t["input"].get("text") or t["input"].get("choice") or "",
                        "goals": [m["goal"] for m in t["moves"] if m["type"] == "seg"],
-                       "said": [m["text"] for m in t["moves"] if m["type"] == "say"]} for t in history[-20:]]}
+                       "said": [m["text"] for m in t["moves"] if m["type"] == "say"],
+                       "tutor": (t["timing"] or {}).get("tutor")} for t in history[-20:]]}
 
 
 @router.post("/sessions/{sid}/tutor/turns")
 async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=Depends(get_tutor_store),
                boards=Depends(get_board_store), tutor=Depends(get_tutor)):
     started = time.perf_counter()
+    try:
+        option = resolve(body.model)
+    except OptionUnavailable as exc:
+        raise HTTPException(422, str(exc)) from None
+    if body.model:
+        tutor.use(option)
     if not tutor.configured:
         raise HTTPException(503, "tutor_not_configured")
     history = await call_store(store.history, owner, str(sid))
@@ -125,7 +145,8 @@ async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=D
             question_value = question_of(run, str(body.turn_id))
             with anyio.CancelScope(shield=True):
                 await run_in_threadpool(store.finish, str(body.turn_id), run.status, run.moves, question_value, outcome,
-                                        {**summary(run), "provider": tutor.timing, "usage": tutor.usage})
+                                        {**summary(run), "provider": tutor.timing, "usage": tutor.usage,
+                                         "tutor": tutor.trace})
             log.info("tutor turn=%s kind=%s status=%s moves=%s dropped=%s repairs=%s timing=%s usage=%s",
                      body.turn_id, body.kind, run.status, len(run.moves), len(run.dropped), run.repairs,
                      {k: round(v) for k, v in {**run.timing, **tutor.timing}.items()}, tutor.usage)
@@ -134,5 +155,6 @@ async def turn(sid: UUID, body: TurnInput, owner=Depends(require_owner), store=D
             yield _event("error", {"code": run.error, "message": MESSAGES.get(run.error, FALLBACK), "status": run.status})
         yield _event("done", {"status": run.status, "question": public_question(question_value) if question_value else None,
                               "timing": {k: round(v) for k, v in {**run.timing, **tutor.timing}.items()},
-                              "moves": len(run.moves), "dropped": len(run.dropped), "repairs": run.repairs, "usage": tutor.usage})
+                              "moves": len(run.moves), "dropped": len(run.dropped), "repairs": run.repairs, "usage": tutor.usage,
+                              "tutor": tutor.trace})
     return EventSourceResponse(events(), headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})

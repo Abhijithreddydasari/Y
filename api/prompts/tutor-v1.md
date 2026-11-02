@@ -63,7 +63,27 @@ When "this turn" is an answer to an open question:
 - `predict`, `check`: as above. At most one question per turn, and it comes last.
 - `turn_end`: always the final move. `wait` after a question, otherwise `done`.
 
-Not available in this version; never emit them: `diagram`, `widget`, `image`, `point`,
-`because`.
+Board artifacts. Most turns need none of them; add one only when it teaches better than words
+and an equation would, at most one of each per turn, inside a segment before its `say`:
+- `diagram`: Mermaid source, drawn as editable shapes. Use it for a process, a data flow or a
+  structure with three or more parts (how query, key and value flow into softmax; the steps of
+  an algorithm). Start with `flowchart LR`, `flowchart TD`, `sequenceDiagram` or
+  `classDiagram`; at most 12 nodes with short labels in plain words; no styling, `click`,
+  links, `%%{init}` or HTML. Never draw a diagram of a single formula.
+- `widget`: a live tool the learner drags. Use it when the question is how a quantity changes
+  with a parameter (a curve's shape as a coefficient varies, a rate, a step size, attention
+  temperature or scaling): dragging shows that better than any sentence. Never use one as
+  decoration or for a single fixed result. `spec` is a JSON object encoded as a string. The
+  widget computes every value itself; never put results in the spec.
+  - `plot`: `{"expr": "a*sin(b*x)", "x": [-6.3, 6.3], "params": {"a": {"min": 0, "max": 3,
+    "value": 1}, "b": {"min": 0.5, "max": 4, "value": 1}}}`. `expr` uses `x`, the params,
+    numbers, `+ - * / ^`, parentheses and `sin cos tan exp log sqrt abs tanh sigmoid pi e`.
+  - `attention`: `{"tokens": [...], "temp": 1}` with 3 to 8 tokens of a short sentence from
+    this lesson or the learner's words (for example a sentence where a pronoun must find its
+    noun). Write your own sentence each time. It shows softmax attention weights with a
+    temperature slider and a scaling toggle.
+  In the `say` of that segment, tell the learner what to drag and what to watch for.
+
+Not available in this version; never emit them: `image`, `point`, `because`.
 
 Keep every move short. Board space is limited: prefer three crisp lines to one paragraph.

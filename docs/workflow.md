@@ -40,7 +40,7 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H1 Meta tutor turn | done (branch `feature/meta-tutor-turn`) | `1a6e734`, `8338fad` | [H1](handoffs/H1.md) |
 | H2 Voice in, narration out | done (branch `feature/voice-narration`) | `69085eb`, `d925a86`, `f70e40c` | [H2](handoffs/H2.md) |
 | H3 Board artifacts + model/voice picker | done (branch `feature/board-artifacts`) | `785b9be`, `5133e1d`, `949b597`, `0b6672f`, `bbc2879` | [H3](handoffs/H3.md) |
-| H4 Evidence capture | done, live label check blocked (branch `feature/evidence-capture`) | see handoff | [H4](handoffs/H4.md) |
+| H4 Evidence capture | done, live label check blocked (branch `feature/evidence-capture`) | `6ebb8dc`, `7160a6b` | [H4](handoffs/H4.md) |
 | H5–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01

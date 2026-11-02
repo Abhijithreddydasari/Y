@@ -145,6 +145,31 @@ describe("tutor turn flow", () => {
     expect(handle.mutateElement).toHaveBeenCalledWith("y-card-t1.2-text", expect.objectContaining({ text: expect.stringContaining("You answered: the mean (70% sure)") }));
   });
 
+  it("sends an answer typed in the composer to the open card as typed evidence; a question stays a question", async () => {
+    const { result } = renderHook(() => useTutorSession());
+    act(() => result.current.onWhiteboardReady(board()));
+    await waitFor(() => expect(result.current.tutor.configured).toBe(true));
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => {
+      h.onTurn?.({ turn_id: "t1", outcome: null });
+      h.onMove({ type: "check", kind: "mcq", q: question.q, options: question.options, qid: question.qid }, 0);
+      h.onDone({ status: "waiting", question });
+    }));
+    await act(async () => { result.current.tutor.ask("Why divide by root d_k?"); });
+    await waitFor(() => expect(result.current.tutor.question).toEqual(question));
+
+    mocks.streamTutorTurn.mockImplementation(scripted((h) => { h.onTurn?.({ turn_id: "t", outcome: null }); h.onDone({ status: "waiting", question }); }));
+    await act(async () => { result.current.tutor.ask("Why is it the variance?"); });
+    await waitFor(() => expect(result.current.tutor.busy).toBe(false));
+    expect(mocks.streamTutorTurn.mock.calls[1][1]).toMatchObject({ kind: "question", text: "Why is it the variance?" });
+
+    act(() => result.current.tutor.setDraft("A, the sums spread out"));
+    await act(async () => { result.current.tutor.ask("A, the sums spread out"); });
+    await waitFor(() => expect(result.current.tutor.busy).toBe(false));
+    expect(mocks.streamTutorTurn.mock.calls[2][1]).toMatchObject({ kind: "answer", question_id: question.qid, choice: "variance",
+      text: "A, the sums spread out", via: "typed" });
+    expect(result.current.tutor.draft).toBe("");
+  });
+
   it("keeps the question and board on a configuration error", async () => {
     const { BoardError } = await import("@/lib/board-api");
     const { result } = renderHook(() => useTutorSession());

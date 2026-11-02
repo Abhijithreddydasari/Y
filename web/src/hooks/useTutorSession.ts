@@ -13,13 +13,13 @@ import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningE
 import { boardSession, startNextBoardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
 import { cardId, closeSession, fetchSessionMemory, fetchTutorState, moveToPrimitive, questionOf, setSessionMemory,
   streamTutorTurn, tutorErrorMessage, type CloseSummary, type TurnBody, type TurnMemory, type TutorQuestion,
-  type TutorTimeline } from "@/lib/tutor-turn";
+  type TutorTimeline, composerAnswer } from "@/lib/tutor-turn";
 import { pendingImages, watchImage } from "@/lib/board-images";
 import { fetchTutorOptions, KOKORO_VOICES, loadPrefs, resolvePrefs, savePrefs, type TutorOptions, type TutorPrefs,
   type TutorTrace } from "@/lib/tutor-options";
 
 /** `via` records how the learner answered, for evidence; omitted means tap for a choice and typed for text. */
-export interface TutorAnswer { choice?: string; text?: string; confidence: number | null; reveal?: boolean; via?: "spoken" }
+export interface TutorAnswer { choice?: string; text?: string; confidence: number | null; reveal?: boolean; via?: "spoken" | "typed" }
 export interface TutorTurnState {
   /** null until the server reports whether a tutor key is configured. */
   configured: boolean | null;
@@ -623,13 +623,6 @@ export function useTutorSession(): TutorSession {
     }
   }, [busy, question, tutorBusy, tutorOptions]);
 
-  const ask = useCallback((text: string) => {
-    const clean = text.trim();
-    if (!clean) return;
-    setDraft(clean);
-    void runTurn({ turn_id: crypto.randomUUID(), kind: "question", text: clean });
-  }, [runTurn]);
-
   const answer = useCallback((value: TutorAnswer) => {
     if (!question) return;
     const handle = handleRef.current, label = value.reveal ? "You asked to be told." : `You answered: ${value.choice ?? value.text ?? ""}`
@@ -651,6 +644,16 @@ export function useTutorSession(): TutorSession {
       }
     });
   }, [question, runTurn]);
+
+  const ask = useCallback((text: string) => {
+    const clean = text.trim();
+    if (!clean) return;
+    // An answer typed into the composer while a card waits is evidence for that card, not a new question.
+    const typed = question && composerAnswer(question, clean);
+    if (typed) { setDraft(""); answer({ ...typed, confidence: null, via: "typed" }); return; }
+    setDraft(clean);
+    void runTurn({ turn_id: crypto.randomUUID(), kind: "question", text: clean });
+  }, [answer, question, runTurn]);
 
   const setMemory = useCallback((on: boolean) => {
     setMemoryOn(on);

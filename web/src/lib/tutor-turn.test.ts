@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BoardError } from "./board-api";
-import { moveToPrimitive, questionOf, streamTutorTurn, tutorErrorMessage, type PublicMove } from "./tutor-turn";
+import { composerAnswer, moveToPrimitive, questionOf, streamTutorTurn, tutorErrorMessage, type PublicMove,
+  type TutorQuestion } from "./tutor-turn";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -29,6 +30,32 @@ describe("tutor move mapping", () => {
     expect(moveToPrimitive({ type: "turn_end", reason: "wait" })).toBeNull();
     expect(questionOf(check)).toEqual({ qid: "t.2", kind: "mcq", q: "What grows?", options: ["variance", "mean"] });
     expect(questionOf({ type: "predict", kind: "mcq", q: "Guess", options: ["a", "b"], qid: "t.0" })?.kind).toBe("predict");
+  });
+});
+
+describe("composerAnswer", () => {
+  const mcq: TutorQuestion = { qid: "t.3", kind: "mcq", q: "Softmax weights?", options: ["[0.09, 0.24, 0.67]", "all equal", "a one-hot vector"] };
+
+  it("reads a leading option letter as that option, keeping the typed reasoning", () => {
+    expect(composerAnswer(mcq, "A, [0.09, 0.24, 0.67] because exp grows fast"))
+      .toEqual({ choice: "[0.09, 0.24, 0.67]", text: "A, [0.09, 0.24, 0.67] because exp grows fast" });
+    expect(composerAnswer(mcq, "b")?.choice).toBe("all equal");
+    expect(composerAnswer(mcq, "(c) the largest wins")?.choice).toBe("a one-hot vector");
+    expect(composerAnswer(mcq, "B because they normalise")?.choice).toBe("all equal");
+  });
+
+  it("matches exactly one option's text and otherwise leaves it a question", () => {
+    expect(composerAnswer(mcq, "I'd say all equal")?.choice).toBe("all equal");
+    expect(composerAnswer(mcq, "a softmax makes them sum to one")).toBeNull();
+    expect(composerAnswer(mcq, "Why does exp make the big one bigger?")).toBeNull();
+    expect(composerAnswer(mcq, "D")).toBeNull();
+    expect(composerAnswer(mcq, "explain softmax again")).toBeNull();
+  });
+
+  it("takes any statement as a free answer but never a question", () => {
+    const free: TutorQuestion = { qid: "t.4", kind: "free", q: "Why scale?", options: [] };
+    expect(composerAnswer(free, "  the variance grows with d_k ")).toEqual({ text: "the variance grows with d_k" });
+    expect(composerAnswer(free, "can you show me?")).toBeNull();
   });
 });
 

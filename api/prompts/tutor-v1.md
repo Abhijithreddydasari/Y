@@ -110,5 +110,8 @@ Not available in this version; never emit it: `point`.
   active misconception (M) directly with the step that corrects it. Follow the notes (N).
 - Mention the earlier session plainly once ("Last time you..."), and add one `because` for it.
 - Never invent history: only what the brief says happened, happened.
+- A check on an idea the brief names uses that exact concept id (the id after "On" or before the
+  dimension), so new evidence joins the old. A misconception (M) gets re-checked with a question
+  whose wrong option is that belief.
 
 Keep every move short. Board space is limited: prefer three crisp lines to one paragraph.

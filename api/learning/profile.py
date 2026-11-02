@@ -1,7 +1,9 @@
 """Session-wise learner model (H5): seal a session's observations into one profile revision, then brief.
 
 The reducer is pure and deterministic: Beta(alpha, beta) per concept × dimension, a recall
-half-life, and a misconception ledger. A revision is written once per session at close
+half-life, and a misconception ledger. It updates on the decision model's probabilities, not on
+its top choice: a belief moves by expected credit, and a misconception accumulates the probability
+mass the answers gave it (suspected below ACTIVE_AT, active above). A revision is written once per session at close
 (UNIQUE(session_id)), so replaying a close never counts evidence twice. The brief for the next
 session is compiled from the latest revision without any model call.
 """
@@ -11,7 +13,7 @@ import json
 import re
 import time
 from datetime import datetime, timezone
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import (Column, Float, ForeignKey, Integer, String, Table, Text, UniqueConstraint, insert, select,
                         update)
@@ -28,6 +30,13 @@ HINT_FACTOR, SUSPECT_FACTOR = 0.7, 0.5
 KNOWN, SHAKY = 0.7, 0.35
 RESOLVE_AFTER = 2  # later correct answers on a concept, with no recurrence, resolve its misconception
 EVIDENCE_KEPT = 8
+CREDIT = {"correct": 1.0, "partial": 0.5, "incorrect": 0.0, "unanswered": 0.0}
+SIGHTING = 0.15  # misconception mass one answer needs to enter the ledger
+ACTIVE_AT = 0.5  # accumulated mass that makes a misconception active (one confident wrong check)
+RECUR_AT = 0.25  # mass in a session that counts as a recurrence and blocks resolving it
+CLEAN = 0.2  # a correct answer counts toward resolving only if its own misconception mass is below this
+REASONING_SEEN = 0.6  # visible-reasoning mass a concept needs before the brief mentions it
+LEVELS = ((0.3, "mostly flawed"), (0.6, "mostly surface-level"), (0.9, "sound"), (1.01, "insightful"))
 CLOSE_STALE_SECONDS = 120
 
 revisions = Table("learning_profile_revisions", metadata,
@@ -69,9 +78,32 @@ def weight(observation: Observation) -> float:
         w *= SUSPECT_FACTOR
     if observation.assistance.hint_ids or observation.assistance.self_reported_help:
         w *= HINT_FACTOR
-    if observation.label_confidence is not None:
+    # A soft label carries its uncertainty in `outcome_p`; older hard labels scale by their confidence.
+    if observation.label_confidence is not None and observation.outcome_p is None:
         w *= observation.label_confidence
     return round(w, 6)
+
+
+def credit(observation: Observation) -> float:
+    """Expected credit in [0, 1]: p(correct) + ½ p(partial) from the label distribution, else the outcome's own."""
+    dist = observation.outcome_p
+    if dist and sum(dist.values()) > 0:
+        return sum(CREDIT[k] * p for k, p in dist.items()) / sum(dist.values())
+    return CREDIT[observation.outcome]
+
+
+def sightings(observation: Observation, w: float) -> dict[str, float]:
+    """Misconception id -> mass this answer gives it: p(misconception) × p(miss) × the answer's weight."""
+    if observation.misconception_p or observation.other_misconception_p is not None:
+        base = dict(observation.misconception_p)
+    else:  # an older hard label
+        base = {observation.misconception: 1.0} if observation.misconception else {}
+    miss = 1 - credit(observation)
+    return {mid: round(p * miss * w, 6) for mid, p in base.items()}
+
+
+def level(score: float) -> str:
+    return next(word for top, word in LEVELS if score < top)
 
 
 def describe(misconception: str) -> str:
@@ -81,18 +113,35 @@ def describe(misconception: str) -> str:
 
 def reduce(previous: ProfileRevision | None, index: dict, observations: list[Observation], session_id: str,
            notes: list[TeachingNote] = (), consolidator: str | None = None, at: str | None = None,
-           descriptions: dict[str, str] | None = None) -> tuple[ProfileRevision, dict]:
-    """(new revision, new evidence index). Pure: the same inputs always give the same revision."""
+           descriptions: dict[str, str] | None = None, named: list[dict] = ()) -> tuple[ProfileRevision, dict]:
+    """(new revision, new evidence index). Pure: the same inputs always give the same revision.
+
+    `named` holds beliefs the notes model named for flagged answers: {id, concept, description, mass,
+    evidence: [observation ids]}. A named answer's mass goes to its belief, not to its option-shaped ids.
+    """
     at = at or now_iso()
     beliefs = {(b.concept, b.dimension): b.model_dump() for b in (previous.beliefs if previous else ())}
     index = {key: {**value, "evidence": list(value["evidence"])} for key, value in index.items()}
     ledger = {m.id: m.model_dump() for m in (previous.misconceptions if previous else ())}
-    seen_now: set[str] = set()
-    correct_after: dict[str, int] = {}
+    seen_now: dict[str, float] = {}
+    clean_credit: dict[str, float] = {}
     used = []
+    absorbed = {str(e) for item in named for e in item["evidence"]}
+
+    def sight(mid, concept, mass, evidence, description=None):
+        if mass < SIGHTING and mid not in ledger:
+            return
+        entry = ledger.get(mid) or {"id": mid, "concept": concept, "status": "suspected", "strength": 0.0, "evidence": [],
+                                    "description": description or (descriptions or {}).get(mid) or describe(mid)}
+        strength = round(entry.get("strength", 1.0) + mass, 6)
+        status = "active" if strength >= ACTIVE_AT or entry["status"] == "active" else "suspected"
+        entry.update(status=status, strength=strength, evidence=[*entry["evidence"], *evidence][-32:])
+        ledger[mid] = entry
+        seen_now[mid] = seen_now.get(mid, 0.0) + mass
+
     for o in sorted(observations, key=lambda o: (o.created_at, str(o.observation_id))):
         used.append(o.observation_id)
-        w = weight(o)
+        w, c = weight(o), credit(o)
         if w > 0:
             key = (o.concept, o.dimension)
             b = beliefs.get(key) or {"concept": o.concept, "dimension": o.dimension, "alpha": PRIOR, "beta": PRIOR,
@@ -103,35 +152,35 @@ def reduce(previous: ProfileRevision | None, index: dict, observations: list[Obs
                 keep = 2 ** (-gap / half_life)
                 b["alpha"] = PRIOR + (b["alpha"] - PRIOR) * keep
                 b["beta"] = PRIOR + (b["beta"] - PRIOR) * keep
-            if o.outcome == "correct":
-                b["alpha"] += w
-                if o.dimension in ("recall", "understand") and b["last_evidence_at"] and gap >= half_life / 2:
-                    half_life = min(MAX_HALF_LIFE, half_life * 2)
-            elif o.outcome == "partial":
-                b["alpha"] += w / 2
-                b["beta"] += w / 2
-            else:
-                b["beta"] += w
-                if o.outcome == "incorrect":
-                    half_life = max(MIN_HALF_LIFE, half_life / 2)
+            b["alpha"] += w * c
+            b["beta"] += w * (1 - c)
+            if c >= 0.7 and o.dimension in ("recall", "understand") and b["last_evidence_at"] and gap >= half_life / 2:
+                half_life = min(MAX_HALF_LIFE, half_life * 2)
+            elif c <= 0.3 and o.outcome != "unanswered":
+                half_life = max(MIN_HALF_LIFE, half_life / 2)
             b.update(alpha=round(b["alpha"], 6), beta=round(b["beta"], 6), half_life_hours=round(half_life, 4),
                      last_evidence_at=o.created_at)
             beliefs[key] = b
             slot = index.setdefault(f"{o.concept}|{o.dimension}", {"evidence": [], "right": 0, "total": 0})
             slot["evidence"] = (slot["evidence"] + [str(o.observation_id)])[-EVIDENCE_KEPT:]
             slot["total"] += 1
-            slot["right"] += o.outcome == "correct"
-        if o.misconception:
-            seen_now.add(o.misconception)
-            entry = ledger.get(o.misconception) or {"id": o.misconception, "concept": o.concept,
-                                                    "description": (descriptions or {}).get(o.misconception) or describe(o.misconception),
-                                                    "evidence": []}
-            entry.update(status="active", evidence=[*entry["evidence"], o.observation_id][-32:])
-            ledger[o.misconception] = entry
-        elif o.outcome == "correct" and w > 0:
-            correct_after[o.concept] = correct_after.get(o.concept, 0) + 1
+            slot["right"] = round(slot["right"] + c, 4)
+        found = sightings(o, w)
+        for mid, mass in found.items():
+            if str(o.observation_id) not in absorbed:
+                sight(mid, o.concept, mass, [o.observation_id])
+        if w > 0 and sum(found.values()) < CLEAN:
+            clean_credit[o.concept] = clean_credit.get(o.concept, 0.0) + c
+        if o.reasoning is not None and o.reasoning_shown:
+            slot = index.setdefault(f"reasoning|{o.concept}", {"evidence": [], "score": 0.0, "seen": 0.0})
+            slot["evidence"] = (slot["evidence"] + [str(o.observation_id)])[-EVIDENCE_KEPT:]
+            slot["score"] = round(slot["score"] + o.reasoning * o.reasoning_shown, 4)
+            slot["seen"] = round(slot["seen"] + o.reasoning_shown, 4)
+    for item in sorted(named, key=lambda n: n["id"]):
+        sight(item["id"], item["concept"], item["mass"], [UUID(str(e)) for e in item["evidence"]], item["description"])
     for mid, entry in ledger.items():
-        if entry["status"] == "active" and mid not in seen_now and correct_after.get(entry["concept"], 0) >= RESOLVE_AFTER:
+        if entry["status"] != "resolved" and seen_now.get(mid, 0.0) < RECUR_AT \
+                and clean_credit.get(entry["concept"], 0.0) >= RESOLVE_AFTER:
             entry["status"] = "resolved"
     number = (previous.revision + 1) if previous else 1
     revision = ProfileRevision(
@@ -158,13 +207,17 @@ def compile_brief(revision: ProfileRevision | None, index: dict, topic: str, now
     asked = _words(topic)
     candidates = []  # (rank, kind, concept, text, evidence)
     for m in revision.misconceptions:
-        if m.status == "active":
-            candidates.append((0, "misconception", m.concept, m.description, [str(e) for e in m.evidence[-EVIDENCE_KEPT:]]))
+        if m.status != "resolved":
+            text = m.description if m.status == "active" else f"Possibly (not yet confirmed): {m.description}"
+            candidates.append((0 if m.status == "active" else 1, "misconception", m.concept, text,
+                               [str(e) for e in m.evidence[-EVIDENCE_KEPT:]]))
     for b in revision.beliefs:
         slot = index.get(f"{b.concept}|{b.dimension}")
         if not slot or not slot["total"]:
             continue
-        record = f"{slot['right']} of {slot['total']} right"
+        right = slot["right"]
+        record = f"{right:g} of {slot['total']} right" if abs(right - round(right)) < 0.05 else \
+            f"about {right:.1f} of {slot['total']} right"
         due = b.half_life_hours and _hours(b.last_evidence_at, now) > b.half_life_hours
         if b.mean >= KNOWN and not due:
             candidates.append((2, "known", b.concept, f"Knows {b.concept} ({b.dimension}): {record}.", slot["evidence"]))
@@ -173,6 +226,13 @@ def compile_brief(revision: ProfileRevision | None, index: dict, topic: str, now
             candidates.append((1, "shaky", b.concept, f"{b.concept} ({b.dimension}) is {reason}: {record}.", slot["evidence"]))
         else:
             candidates.append((1, "shaky", b.concept, f"Struggled with {b.concept} ({b.dimension}): {record}.", slot["evidence"]))
+    for key, slot in sorted(index.items()):
+        if key.startswith("reasoning|") and slot["seen"] >= REASONING_SEEN:
+            concept, score = key.partition("|")[2], slot["score"] / slot["seen"]
+            text = f"Reasoning on {concept} is {level(score)} (score {score:.2f} over {slot['seen']:.1f} explained answers)."
+            if score < 0.6:
+                text += " Ask them to explain why, not only what."
+            candidates.append((2 if score >= 0.7 else 1, "known" if score >= 0.7 else "shaky", concept, text, slot["evidence"]))
     for note in revision.notes:
         candidates.append((3, "note", None, note.text, [str(c) for c in note.cites]))
     # Concepts that share words with the question come first, then by kind.

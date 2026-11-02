@@ -211,7 +211,17 @@ EVIDENCE_QUESTIONS = {
         "invalid": "The answer key is mathematically or factually wrong for this question.",
         "unsure": "Cannot tell from the question alone.",
     }),
+    # Asked only for free answers (typed, spoken, ink); judged apart from whether the result is right.
+    "reasoning": ("How much sound reasoning does the learner's own work show, apart from whether the final result is right?", {
+        "not_shown": "Only a final result or a bare phrase: no reasoning is visible to judge.",
+        "flawed": "Reasoning is shown, but it is wrong or confused.",
+        "surface": "Reasoning restates a rule or steps without showing why they apply here.",
+        "sound": "Reasoning is correct and connects the steps to why they work.",
+        "insightful": "Reasoning is correct and goes further: checks the result, generalizes, or names a limit.",
+    }),
 }
+# Expected reasoning quality is the mean of these over the visible levels (not_shown excluded).
+REASONING_SCORE = {"flawed": 0.0, "surface": 0.4, "sound": 0.8, "insightful": 1.0}
 
 
 class ChoiceAnswer(Contract):

@@ -99,8 +99,8 @@ def test_grade_uses_the_recomputed_key_and_tells_the_tutor():
 class FakeLabeler:
     """Scripted Elephant: picks the given choice per question, or raises; records every request."""
 
-    def __init__(self, picks=None, fail=None, delay=0.0, p=0.9):
-        self.picks, self.fail, self.delay, self.p = picks or {}, fail, delay, p
+    def __init__(self, picks=None, fail=None, delay=0.0, p=0.9, refuse=()):
+        self.picks, self.fail, self.delay, self.p, self.refuse = picks or {}, fail, delay, p, set(refuse)
         self.calls, self.timeout, self.configured, self.model = [], 8.0, True, "decision-models/baseten-elephant-9b-latest"
         self.provider_name, self.images = "baseten", ()
 
@@ -112,6 +112,8 @@ class FakeLabeler:
             raise ProviderFailure(self.fail)
         answers = {}
         for name, (_prompt, criteria) in asked.items():
+            if name in self.refuse:
+                continue
             options = list(criteria)
             choice = self.picks.get(name, options[0])
             rest = (1 - self.p) / (len(options) - 1)
@@ -189,7 +191,9 @@ def test_low_probability_labels_are_not_taken(env):
     events(answer(client, sid, qid, choice="nothing"))
     [row] = settled(client, sid)
     assert row["observation"]["miss_class"] is None and row["fields"]["miss_class"]["taken"] is False
-    assert row["observation"]["labeler"] == "deterministic"
+    # The verifier decided the outcome; the model's soft misconception mass is still kept.
+    assert row["observation"]["outcome_p"] is None and row["observation"]["label_confidence"] == 1.0
+    assert row["observation"]["misconception_p"] and row["observation"]["labeler"] == "baseten"
 
 
 def test_unverifiable_free_answer_is_labeled_by_elephant(env):
@@ -201,14 +205,27 @@ def test_unverifiable_free_answer_is_labeled_by_elephant(env):
     [row] = settled(client, sid)
     assert row["observation"]["outcome"] == "partial" and row["observation"]["miss_class"] == "structural"
     assert row["modality"] == "spoken" and row["observation"]["format_weight"] == 0.9
-    assert {"outcome", "miss_class", "misconception", "key_valid"} == set(holder["labeler"].calls[0][1])
+    # Seven words: reasoning is asked too.
+    assert {"outcome", "miss_class", "misconception", "key_valid", "reasoning"} == set(holder["labeler"].calls[0][1])
+    assert row["observation"]["outcome_p"]["partial"] == 0.9 and row["observation"]["reasoning_shown"] is not None
 
 
-def test_uncertain_outcome_leaves_no_observation_but_a_trace(env):
+def test_uncertain_outcome_keeps_its_distribution(env):
     client, capture, owner, sid, holder = env
     holder["labeler"] = FakeLabeler(p=0.3)
     qid = waiting(client, sid, holder, {**FREE, "q": "Why?", "key": "because"})
-    events(answer(client, sid, qid, text="no idea really"))
+    events(answer(client, sid, qid, text="no idea"))
+    [row] = settled(client, sid)
+    found = row["observation"]
+    assert row["status"] == "labeled" and found["label_confidence"] == 0.3
+    assert abs(sum(found["outcome_p"].values()) - 1) < 1e-3 and "reasoning" not in holder["labeler"].calls[0][1]
+
+
+def test_refused_outcome_leaves_no_observation_but_a_trace(env):
+    client, capture, owner, sid, holder = env
+    holder["labeler"] = FakeLabeler(refuse={"outcome"})
+    qid = waiting(client, sid, holder, {**FREE, "q": "Why?", "key": "because"})
+    events(answer(client, sid, qid, text="no idea"))
     [row] = settled(client, sid)
     assert row["status"] == "failed" and row["error"] == "label_uncertain" and row["observation"] is None
 
@@ -394,7 +411,7 @@ def test_label_budget_is_charged_before_the_call(env, monkeypatch):
     assert [r["error"] for r in rows] == [None, "label_budget"] and len(labeler.calls) == 1
 
 
-def test_labels_run_at_most_two_at_a_time(env):
+def test_labels_run_at_most_concurrency_at_a_time(env):
     client, capture, owner, sid, holder = env
     store = observations.ObservationStore(capture)
     active, peak = [0], [0]
@@ -410,13 +427,13 @@ def test_labels_run_at_most_two_at_a_time(env):
     labeler = Slow()
     q = {"kind": "mcq", "q": "q", "options": ["a", "b"], "key": "a", "concept": "c", "dim": "apply"}
     ids = [store.capture_answer(owner, str(sid), str(uuid4()), {**q, "qid": f"t.{i}"}, "b",
-                                {"result": "incorrect", "verified": "incorrect"}, "tap", [])[0]["observation_id"] for i in range(5)]
+                                {"result": "incorrect", "verified": "incorrect"}, "tap", [])[0]["observation_id"] for i in range(observations.CONCURRENCY + 3)]
 
     async def run():
         await asyncio.gather(*(observations.label(store, labeler, owner, i) for i in ids))
 
     asyncio.run(run())
-    assert peak[0] == observations.CONCURRENCY and len(labeler.calls) == 5
+    assert peak[0] == observations.CONCURRENCY and len(labeler.calls) == observations.CONCURRENCY + 3
 
 
 def test_evidence_trace_is_owner_scoped(env):

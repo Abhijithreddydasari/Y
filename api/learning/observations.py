@@ -21,7 +21,7 @@ from sqlalchemy import insert, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .contracts import Assistance, canonical, digest, now_iso
-from .decisions import EVIDENCE_QUESTIONS, EvidenceLabelProvider, ProviderFailure
+from .decisions import EVIDENCE_QUESTIONS, REASONING_SCORE, EvidenceLabelProvider, ProviderFailure
 from .learner_contracts import EvidenceSource, Observation
 from .storage import CaptureStore, StoreError, observations
 
@@ -373,8 +373,10 @@ def concept_of(question: dict, history: list[dict]) -> tuple[str, str]:
     return f"topic:{slug(goal or question['q'])}", "understand"
 
 
-def misconception_candidates(question: dict, concept: str, seen: list[str]) -> dict[str, str]:
-    """Option -> meaning for the decision model: this check's wrong options plus misconceptions already seen for the concept."""
+def misconception_candidates(question: dict, concept: str, seen: list[str],
+                             earlier: dict[str, str] | None = None) -> dict[str, str]:
+    """Option -> meaning for the decision model: this check's wrong options, then misconceptions already seen for the
+    concept in this session, then ones the learner's profile holds for it from earlier sessions."""
     criteria = {"none": "No misconception: the answer is right or the miss is a slip.",
                 "other": "A misconception, but none of the listed ones."}
     for option in question["options"]:
@@ -384,11 +386,15 @@ def misconception_candidates(question: dict, concept: str, seen: list[str]) -> d
         if len(criteria) >= 8:
             break
         criteria.setdefault(mid, f"The learner shows the earlier misconception {mid}.")
+    for mid, description in (earlier or {}).items():
+        if len(criteria) >= 8:
+            break
+        criteria.setdefault(mid, f"Seen in an earlier session. {description}"[:300])
     return dict(list(criteria.items())[:8])
 
 
 def build_observation(row: dict, outcome: str, *, misconception=None, miss_class=None, labeler="deterministic",
-                      label_confidence=None) -> Observation:
+                      label_confidence=None, **soft) -> Observation:
     question, value = json.loads(row["question_json"]), json.loads(row["verifier_json"])
     if outcome == "correct":
         misconception = miss_class = None
@@ -399,6 +405,7 @@ def build_observation(row: dict, outcome: str, *, misconception=None, miss_class
         concept=value["concept"], dimension=value["dimension"], outcome=outcome, misconception=misconception,
         miss_class=miss_class, assistance=Assistance(solution_revealed=value["revealed"]), confidence=value["confidence"],
         labeler=labeler, label_confidence=label_confidence, format_weight=value["format_weight"], key_status=row["key_status"],
+        **soft,
         sources=(EvidenceSource(event_id=UUID(row["turn_id"]), modality=row["modality"], content_hash=digest(row["answer_text"]),
                                 element_ids=tuple(value.get("element_ids", ()))),),
         created_at=value["created_at"])
@@ -570,6 +577,13 @@ class ObservationStore:
             images.append((asset["mime"], asset["content"]))
         return tuple(images)
 
+    def earlier_misconceptions(self, owner: str, concept: str) -> dict[str, str]:
+        """Active or suspected misconceptions on this concept from the owner's profile: id -> description."""
+        from .profile import ProfileStore
+        revision, _ = ProfileStore(self.capture).latest(owner)
+        return {m.id: m.description for m in (revision.misconceptions if revision else ())
+                if m.concept == concept and m.status != "resolved"}
+
     def seen_misconceptions(self, sid: str, concept: str) -> list[str]:
         with self.engine.connect() as conn:
             rows = conn.execute(select(observations.c.observation_json).where(
@@ -581,8 +595,10 @@ class ObservationStore:
 # ---------------------------------------------------------------------------------------------
 # Background labeling
 
-CONCURRENCY = 2
-ACCEPT = 0.5  # a field is taken only when its top probability reaches this
+CONCURRENCY = 4  # one decision call is ~0.2-0.5 s (measured 2026-11-02); 2 slots queued a 14-answer burst for seconds
+ACCEPT = 0.5  # a discrete field (miss class, key validity, top misconception) is taken only at this probability
+MISCONCEPTION_FLOOR = 0.05  # smaller candidate probabilities are not kept on the observation
+REASONING_WORDS = 4  # a typed or spoken answer this short is a bare result, so reasoning is not asked
 _slots: dict[int, asyncio.Semaphore] = {}
 _running: set[asyncio.Task] = set()
 
@@ -594,7 +610,7 @@ def _slot() -> asyncio.Semaphore:
     return _slots[loop]
 
 
-def label_request(row: dict, seen: list[str]) -> tuple[dict, dict]:
+def label_request(row: dict, seen: list[str], earlier: dict[str, str] | None = None) -> tuple[dict, dict]:
     """The state the decision model sees and only the questions still open for this answer."""
     question, value = json.loads(row["question_json"]), json.loads(row["verifier_json"])
     state = {"question": question["q"], "options": question["options"], "answer_key": question["key"],
@@ -605,46 +621,69 @@ def label_request(row: dict, seen: list[str]) -> tuple[dict, dict]:
     if value["verifier"]["result"] != "correct":
         asked["miss_class"] = EVIDENCE_QUESTIONS["miss_class"]
         asked["misconception"] = ("Which misconception, if any, does the learner's answer show?",
-                                  misconception_candidates(question, value["concept"], seen))
+                                  misconception_candidates(question, value["concept"], seen, earlier))
+    if row["modality"] == "ink" or (row["modality"] in ("typed", "spoken")
+                                    and len(row["answer_text"].split()) >= REASONING_WORDS):
+        asked["reasoning"] = EVIDENCE_QUESTIONS["reasoning"]
     return state, asked
 
 
 def merge_labels(row: dict, response, provider: str = "baseten") -> tuple[Observation | None, dict, str]:
-    """Combine verifier and decision-model fields; returns (observation or None, label trace, key status)."""
+    """Combine verifier and decision-model fields; returns (observation or None, label trace, key status).
+
+    The outcome keeps its whole distribution (the reducer updates on expected credit), as do the
+    misconception candidates and reasoning. Discrete fields (miss class, key validity, the single
+    misconception named on the observation) are taken only at ACCEPT.
+    """
     value = json.loads(row["verifier_json"])
     answers = response.answers
-    top = {name: (a.choice, a.probabilities[a.choice]) for name, a in answers.items()}
-    fields, used = {}, []
+    dist = {name: dict(a.probabilities) for name, a in answers.items()}
+    fields = {}
 
     def pick(name):
-        if name not in top:
+        if name not in answers:
             return None
-        choice, p = top[name]
+        choice = answers[name].choice
+        p = dist[name][choice]
         fields[name] = {"choice": choice, "p": round(p, 4), "source": provider, "taken": p >= ACCEPT}
-        if p >= ACCEPT:
-            used.append(p)
-            return choice
-        return None
+        return choice if p >= ACCEPT else None
 
-    outcome = value["verifier"]["result"]
+    outcome, outcome_p, confidence = value["verifier"]["result"], None, 1.0
     if outcome:
         fields["outcome"] = {"choice": outcome, "p": 1.0, "source": "deterministic", "taken": True}
-    else:
-        outcome = pick("outcome")
+    elif "outcome" in answers:
+        outcome = answers["outcome"].choice
+        outcome_p = {k: round(p, 4) for k, p in dist["outcome"].items()}
+        confidence = round(dist["outcome"][outcome], 4)
+        fields["outcome"] = {"choice": outcome, "p": confidence, "source": provider, "taken": True}
     miss = pick("miss_class")
     mis = pick("misconception")
     key_valid = pick("key_valid")
+    soft = {}
+    if "misconception" in dist:
+        soft["misconception_p"] = {k: round(p, 4) for k, p in dist["misconception"].items()
+                                   if k not in ("none", "other") and p >= MISCONCEPTION_FLOOR}
+        soft["other_misconception_p"] = round(dist["misconception"].get("other", 0.0), 4)
+    if "reasoning" in dist:
+        shown = 1 - dist["reasoning"].get("not_shown", 0.0)
+        soft["reasoning_shown"] = round(max(0.0, shown), 4)
+        if shown > 0.05:
+            soft["reasoning"] = round(min(1.0, sum(REASONING_SCORE[k] * p for k, p in dist["reasoning"].items()
+                                                   if k in REASONING_SCORE) / shown), 4)
+        top = answers["reasoning"].choice
+        fields["reasoning"] = {"choice": top, "p": round(dist["reasoning"][top], 4), "source": provider,
+                               "taken": True, "score": soft.get("reasoning")}
     key_status = row["key_status"]
     if key_status == "ok" and key_valid == "invalid":
         key_status = "suspect"
     label = {"provider": provider, "model": response.model, "usage": response.usage.model_dump(), "fields": fields,
-             "distributions": {name: dict(a.probabilities) for name, a in answers.items()}}
+             "distributions": dist}
     if outcome is None:
         return None, label, key_status
     observation = build_observation(
         {**row, "key_status": key_status}, outcome, misconception=None if mis in (None, "none", "other") else mis,
-        miss_class=None if miss in (None, "none") else miss, labeler=provider if used else "deterministic",
-        label_confidence=round(min(used), 4) if used else 1.0)
+        miss_class=None if miss in (None, "none") else miss, labeler=provider if answers else "deterministic",
+        label_confidence=confidence, outcome_p=outcome_p, **soft)
     return observation, label, key_status
 
 
@@ -661,13 +700,18 @@ async def label(store: ObservationStore, labeler: EvidenceLabelProvider, owner: 
             row = await anyio.to_thread.run_sync(lambda: store.claim(owner, observation_id))
             if row is None:
                 return
-            seen = await anyio.to_thread.run_sync(lambda: store.seen_misconceptions(row["session_id"], json.loads(row["verifier_json"])["concept"]))
-            state, asked = label_request(row, seen)
+            concept = json.loads(row["verifier_json"])["concept"]
+            seen = await anyio.to_thread.run_sync(lambda: store.seen_misconceptions(row["session_id"], concept))
+            earlier = await anyio.to_thread.run_sync(lambda: store.earlier_misconceptions(owner, concept))
+            state, asked = label_request(row, seen, earlier)
             images = await anyio.to_thread.run_sync(lambda: store.crop_images(owner, row)) if row["modality"] == "ink" else ()
+            called = time.perf_counter()
             with anyio.fail_after(labeler.timeout + 2):
                 response, _raw = await labeler.label(state, asked, images)
+            provider_ms = (time.perf_counter() - called) * 1000
         observation, trace, key_status = merge_labels(row, response, labeler.provider_name)
-        trace["images"] = len(images)
+        # label_ms is end to end (slot wait included); provider_ms is the HTTP call alone.
+        trace.update(images=len(images), provider_ms=round(provider_ms), queue_ms=round((called - started) * 1000))
         ms = (time.perf_counter() - started) * 1000
         status = "labeled" if observation is not None else "failed"
         error = None if observation is not None else "label_uncertain"

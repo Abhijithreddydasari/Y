@@ -264,3 +264,117 @@ def test_profile_route_and_owner_scope(env):
     assert got["revision"]["revision"] == 1 and got["brief"]["items"][0]["id"] == "M1"
     assert client.post(f"/learning/sessions/{uuid4()}/close").status_code == 404
     assert client.put(f"/learning/sessions/{uuid4()}/memory", json={"memory": False}).status_code == 404
+
+
+# --- probability-weighted updates and named misconceptions ------------------------------------------
+
+def test_belief_moves_by_expected_credit_not_the_top_choice():
+    unsure = obs("correct", outcome_p={"correct": 0.55, "partial": 0.4, "incorrect": 0.05, "unanswered": 0.0}, lc=0.55)
+    assert profile.credit(unsure) == pytest.approx(0.75) and profile.weight(unsure) == 1.0
+    rev, index = profile.reduce(None, {}, [unsure], S1)
+    assert belief(rev).alpha == pytest.approx(1.75) and belief(rev).beta == pytest.approx(1.25)
+    assert index["attention.softmax|understand"]["right"] == pytest.approx(0.75)
+    # An older hard label still moves by its top choice scaled by its confidence.
+    hard, _ = profile.reduce(None, {}, [obs("correct", lc=0.55)], S1)
+    assert belief(hard).alpha == pytest.approx(1.55) and belief(hard).beta == pytest.approx(1.0)
+
+
+def test_misconception_mass_accumulates_from_suspected_to_active():
+    mid = "attention.softmax/the-mean"
+    weak = obs("incorrect", misconception_p={mid: 0.6}, other_misconception_p=0.1, format_weight=0.5)  # mass 0.3
+    first, idx = profile.reduce(None, {}, [weak], S1)
+    [entry] = first.misconceptions
+    assert entry.status == "suspected" and entry.strength == pytest.approx(0.3)
+    item = next(i for i in profile.compile_brief(first, idx, "softmax").items if i.kind == "misconception")
+    assert item.text.startswith("Possibly (not yet confirmed)") and item.id == "M1"
+    again, _ = profile.reduce(first, idx, [obs("incorrect", misconception_p={mid: 0.8}, other_misconception_p=0.0,
+                                               hours=30)], S2)
+    assert again.misconceptions[0].status == "active" and again.misconceptions[0].strength == pytest.approx(1.1)
+    faint, _ = profile.reduce(None, {}, [obs("incorrect", misconception_p={mid: 0.1}, other_misconception_p=0.0)], S1)
+    assert faint.misconceptions == ()  # below one sighting
+    right, _ = profile.reduce(None, {}, [obs("correct", outcome_p={"correct": 0.9, "partial": 0.1, "incorrect": 0.0,
+                                                                  "unanswered": 0.0}, misconception_p={mid: 0.9})], S1)
+    assert right.misconceptions == ()  # a likely-right answer gives a misconception little mass
+
+
+def test_soft_resolution_needs_two_answers_worth_of_clean_credit():
+    mid = "attention.softmax/the-mean"
+    seen, idx = profile.reduce(None, {}, [obs("incorrect", misconception=mid, miss_class="discrimination")], S1)
+    three_quarters = {"correct": 0.6, "partial": 0.3, "incorrect": 0.1, "unanswered": 0.0}
+    two, _ = profile.reduce(seen, idx, [obs(outcome_p=three_quarters, hours=30, misconception_p={}),
+                                        obs(outcome_p=three_quarters, hours=31, misconception_p={})], S2)
+    assert two.misconceptions[0].status == "active"  # 1.5 of 2
+    three, _ = profile.reduce(seen, idx, [obs(outcome_p=three_quarters, hours=30 + h, misconception_p={})
+                                          for h in range(3)], S2)
+    assert three.misconceptions[0].status == "resolved"
+    recurred, _ = profile.reduce(seen, idx, [obs(hours=30), obs(hours=31), obs(hours=32),
+                                             obs("incorrect", misconception_p={mid: 0.5}, other_misconception_p=0.0,
+                                                 hours=33)], S2)
+    assert recurred.misconceptions[0].status == "active"
+
+
+def test_wrong_answers_are_grouped_into_one_named_belief_at_close():
+    from learning.consolidate import evidence_payload, keep_named
+    seven = obs("incorrect", concept="prob.independence", misconception_p={"prob.independence/7-12": 0.9},
+                other_misconception_p=0.05)
+    point7 = obs("incorrect", concept="prob.independence", misconception_p={"prob.independence/0-7": 0.4},
+                 other_misconception_p=0.0, hours=1)
+    drift = obs("incorrect", concept="prob.multiply", misconception_p={}, other_misconception_p=0.8, hours=2)
+    slip = obs("incorrect", misconception_p={}, other_misconception_p=0.1)
+    a, b, c, d = (str(x.observation_id) for x in (seven, point7, drift, slip))
+    raw = {"notes": [], "misconceptions": [
+        {"text": "adds the probabilities of independent events.", "cites": [a, b, c]},
+        {"text": "again", "cites": [a]},  # every answer joins one belief
+        {"text": "a slip", "cites": [d]},  # not flagged
+        {"text": "", "cites": [c]}]}
+    named, dropped = keep_named(raw, [seven, point7, drift, slip])
+    assert dropped == 3 and len(named) == 1
+    belief_ = named[0]
+    assert belief_["id"] == "prob.independence/belief-adds-the-probabilities-of-independent-ev"
+    assert belief_["evidence"] == [a, b, c] and belief_["mass"] == 2.0  # 0.95 + 0.4 + 0.8, capped
+    rev, _ = profile.reduce(None, {}, [seven, point7, drift, slip], S1, named=named)
+    # The option-shaped sightings are absorbed: one active belief, not three weak entries.
+    [entry] = rev.misconceptions
+    assert entry.status == "active" and entry.description == "On prob.independence: adds the probabilities of independent events"
+    marks = [row["misconception_signal"] for row in evidence_payload([seven, slip], {}, [])["observations"]]
+    assert marks == [True, False]
+
+
+def test_reasoning_quality_is_tallied_apart_from_mastery_and_briefed():
+    a, b = obs(reasoning=0.4, reasoning_shown=0.9), obs(reasoning=0.2, reasoning_shown=0.5)
+    rev, idx = profile.reduce(None, {}, [a, b], S1)
+    assert idx["reasoning|attention.softmax"]["seen"] == pytest.approx(1.4)
+    assert belief(rev).alpha == pytest.approx(3.0)  # reasoning never changes mastery
+    item = next(i for i in profile.compile_brief(rev, idx, "softmax").items if i.text.startswith("Reasoning"))
+    assert item.kind == "shaky" and "mostly surface-level" in item.text and "explain why" in item.text
+
+
+class NamingNotes(FakeNotes):
+    async def write(self, payload):
+        self.payloads.append(payload)
+        mark = next(o["id"] for o in payload["observations"] if o["misconception_signal"])
+        return {"notes": [], "misconceptions": [{"text": "thinks the scale factor is learned", "cites": [mark]}]}, \
+            {"model": "fake", "attempts": 1, "ms": 1}
+
+
+def test_close_names_an_unlisted_misconception_and_session_two_offers_it_to_the_labeler(env):
+    client, capture, owner, sid, holder = env
+    holder["labeler"] = FakeLabeler({"misconception": "other", "miss_class": "structural"})
+    holder["notes"] = NamingNotes()
+    qid = waiting(client, sid, holder, CHECK)
+    events(answer(client, sid, qid, choice="nothing"))
+    settled(client, sid)
+    body = client.post(f"/learning/sessions/{sid}/close").json()
+    named = "attention.scaling/belief-thinks-the-scale-factor-is-learned"
+    assert body["notes_trace"]["named"] == [named] and body["misconceptions"] == [named]
+
+    two = uuid4()
+    capture.create_session(owner, two)
+    holder["labeler"] = labeler = FakeLabeler()
+    holder["notes"] = FakeNotes()
+    qid = waiting(client, two, holder, {**CHECK, "q": "Where does 1/sqrt(d_k) come from?", "key": "a fixed choice",
+                                        "options": ["a fixed choice", "training"]})
+    events(answer(client, two, qid, choice="training"))
+    settled(client, two)
+    candidates = labeler.calls[0][1]["misconception"][1]
+    assert candidates[named].startswith("Seen in an earlier session. On attention.scaling: thinks")

@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from . import image_jobs, observations, profile
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
-from .consolidate import NOTES_MODEL, NotesWriter, evidence_payload, keep_cited
+from .consolidate import NOTES_MODEL, NotesWriter, evidence_payload, keep_cited, keep_named
 from .contracts import Contract, canonical, digest
 from .decisions import ProviderFailure, evidence_labeler
 from .learner_contracts import LearnerBrief
@@ -198,6 +198,7 @@ def _summary(revision, found, left, relabel, notes_trace, started) -> dict:
             "beliefs": [{"concept": b.concept, "dimension": b.dimension, "mean": round(b.mean, 3)}
                         for b in revision.beliefs if (b.concept, b.dimension) in touched],
             "misconceptions": [m.id for m in revision.misconceptions if m.status == "active"],
+            "suspected": [m.id for m in revision.misconceptions if m.status == "suspected"],
             "notes": [n.text for n in revision.notes], "notes_trace": notes_trace,
             "ms": round((time.perf_counter() - started) * 1000)}
 
@@ -235,13 +236,14 @@ async def close(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
         touched = {(o.concept, o.dimension) for o in found}
         beliefs = [{"concept": b.concept, "dimension": b.dimension, "mean": round(b.mean, 3)}
                    for b in draft.beliefs if (b.concept, b.dimension) in touched]
-        notes, notes_trace = [], {}
+        notes, named, notes_trace = [], [], {}
         try:
             await call_store(store.reserve, owner)
             answers = await call_store(evidence.answers, str(sid))
             raw, notes_trace = await writer.write(evidence_payload(found, answers, beliefs))
             notes, notes_trace["dropped"] = keep_cited(raw, {str(o.observation_id) for o in found})
-            notes_trace["kept"] = len(notes)
+            named, notes_trace["names_dropped"] = keep_named(raw, found)
+            notes_trace.update(kept=len(notes), named=[n["id"] for n in named])
         except (ProviderFailure, HTTPException) as exc:  # the revision is written without notes
             notes_trace = {"error": getattr(exc, "code", None) or str(exc.detail)}
         except Exception as exc:
@@ -249,8 +251,8 @@ async def close(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
             log.warning("teaching notes failed session=%s (%s)", sid, type(exc).__name__)
 
         def build(prev, idx):
-            revision, new_index = profile.reduce(prev, idx, found, str(sid), notes, NOTES_MODEL if notes else None,
-                                                 descriptions=texts)
+            revision, new_index = profile.reduce(prev, idx, found, str(sid), notes,
+                                                 NOTES_MODEL if notes or named else None, descriptions=texts, named=named)
             return revision, new_index, _summary(revision, found, left, relabel, notes_trace, started)
 
         revision, summary, replayed = await call_store(profiles.write, owner, str(sid), build)

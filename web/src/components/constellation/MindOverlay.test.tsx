@@ -16,7 +16,7 @@ const REV = {
   observation_ids: ["a0000000-0000-4000-8000-000000000000"], consolidator: null, created_at: "2026-11-03T10:00:00Z",
   beliefs: [{ concept: "attention.softmax", dimension: "understand", alpha: 3, beta: 1.5, half_life_hours: 24, last_evidence_at: "2026-11-03T10:00:00Z" }],
   misconceptions: [{ id: "attention.softmax/belief-x", concept: "attention.softmax", description: "On attention.softmax: thinks weights are equal", status: "active", strength: 0.8, evidence: ["a0000000-0000-4000-8000-000000000000"] }],
-  notes: [{ text: "Confront the equal-weights idea with two tokens.", cites: ["a0000000-0000-4000-8000-000000000000"] }],
+  notes: [{ text: "Confront the equal-weights idea from a0000000-0000-4000-8000-000000000000 with two tokens.", cites: ["a0000000-0000-4000-8000-000000000000"] }],
   links: [],
 };
 const HISTORY = { revisions: [REV], events: [{ id: "a0000000-0000-4000-8000-000000000000", concept: "attention.softmax", dimension: "understand",
@@ -41,7 +41,7 @@ describe("MindOverlay", () => {
     fireEvent.click(neuron);
     const sheet = await screen.findByRole("complementary", { name: "Softmax evidence" });
     expect(sheet).toHaveTextContent("Misconception: thinks weights are equal");
-    expect(sheet).toHaveTextContent("Confront the equal-weights idea with two tokens.");
+    expect(sheet).toHaveTextContent("Confront the equal-weights idea from that answer with two tokens.");
     expect(sheet).toHaveTextContent("“makes them equal” — incorrect");
   });
 

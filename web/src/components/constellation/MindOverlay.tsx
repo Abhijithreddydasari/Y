@@ -16,6 +16,8 @@ import { SEEN_KEY } from "./seen";
 const MindScene = dynamic(() => import("./MindScene"), { ssr: false, loading: () => <p className="absolute inset-0 grid place-items-center text-sm text-zinc-400">Loading your map…</p> });
 
 const REPLAY_MS = 4500;
+// Notes sometimes quote the observation id they cite; the learner sees "that answer" instead.
+const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const DIM_WORDS = ["Recall", "Understand", "Apply", "Analyze", "Transfer"];
 
 function prefersStill() {
@@ -94,7 +96,7 @@ function Sheet({ node, frame, map, onClose }: { node: MindNode; frame: MindFrame
         );
       })}
       {notes.length > 0 && <h4 className="mb-1 mt-4 font-semibold text-zinc-100">Teaching notes</h4>}
-      {notes.map((n) => <p key={n.text} className="mt-1">{n.text}</p>)}
+      {notes.map((n) => <p key={n.text} className="mt-1">{n.text.replace(UUID, "that answer")}</p>)}
       {events.length > 0 && <h4 className="mb-1 mt-4 font-semibold text-zinc-100">Recent answers</h4>}
       {events.map((e) => (
         <div key={e.id} className="mt-1.5">

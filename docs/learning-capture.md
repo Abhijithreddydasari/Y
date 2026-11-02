@@ -50,7 +50,7 @@ BASETEN_DECISION_MODEL=decision-models/baseten-elephant-9b-latest
 
 Alternatives are `decision-models/baseten-mammoth-27b-latest` and `decision-models/baseten-joey-2b-latest`. These are mutable aliases, not immutable model revisions: observations explicitly record `model_is_alias=true`. Recheck held-out behavior before relying on results after provider updates. Start with Elephant as a comparison baseline, not a claim that it is most accurate for Y. Baseten serves these through its hosted API; no GPU deployment is required. Confirm that your credit grant covers these Model API calls.
 
-For TypeSafe instead, set `DECISION_PROVIDER=jev`, `TYPESAFE_API_KEY`, and `JEV_MODEL=jev-1.14.0`. The Meta preflight uses `META_MODEL=muse-spark-1.3` unless overridden. Restart the API after changing its environment.
+Evidence labels for tutor checks use `EVIDENCE_LABEL_PROVIDER` (`openai` with `OPENAI_API_KEY`, model `gpt-6-luna`, or `baseten`); see `.env.example`. For TypeSafe instead, set `DECISION_PROVIDER=jev`, `TYPESAFE_API_KEY`, and `JEV_MODEL=jev-1.14.0`. The Meta preflight uses `META_MODEL=muse-spark-1.3` unless overridden. Restart the API after changing its environment.
 
 ```bat
 cd api

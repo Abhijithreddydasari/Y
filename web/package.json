@@ -12,6 +12,8 @@
   "dependencies": {
     "@excalidraw/excalidraw": "^0.18.1",
     "@excalidraw/mermaid-to-excalidraw": "2.2.2",
+    "@react-three/fiber": "9.8.2",
+    "d3-force-3d": "3.0.6",
     "dagre": "^0.8.5",
     "katex": "^0.16.45",
     "next": "16.3.3",
@@ -21,7 +23,8 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
-    "roughjs": "^4.6.6"
+    "roughjs": "^4.6.6",
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -33,6 +36,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/three": "0.186.0",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "jsdom": "^26.1.0",

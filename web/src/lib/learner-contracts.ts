@@ -31,9 +31,14 @@ export interface LearnerBrief { schema_version: 1; brief_id: string; topic: stri
 export interface Belief { concept: string; dimension: LearningDimension; alpha: number; beta: number; half_life_hours: number | null; last_evidence_at: string | null }
 export interface MisconceptionEntry { id: string; concept: string; description: string; status: "active" | "suspected" | "resolved"; strength?: number; evidence: string[] }
 export interface TeachingNote { text: string; cites: string[] }
+/** H6: a reasoning link shown by the learner's answers; explanatory only. `confused_with` has source < target. */
+export interface ConceptLink {
+  source: string; target: string; kind: "builds_on" | "confused_with"; why: string; strength: number;
+  evidence: string[]; provenance: "model" | "system"; first_revision: number;
+}
 export interface ProfileRevision {
   schema_version: 1; revision: number; parent_revision: number | null; session_id: string;
-  observation_ids: string[]; beliefs: Belief[]; misconceptions: MisconceptionEntry[]; notes: TeachingNote[];
+  observation_ids: string[]; beliefs: Belief[]; misconceptions: MisconceptionEntry[]; notes: TeachingNote[]; links?: ConceptLink[];
   consolidator: string | null; created_at: string;
 }
 
@@ -44,6 +49,13 @@ export interface ConstellationEdge { source: string; target: string; kind: "prer
 /** Nodes changed at this revision with their full state; replay in order to scrub. */
 export interface GraphRevision { revision: number; session_id: string; created_at: string; summary: string; nodes: ConstellationNode[] }
 export interface ConstellationGraph { schema_version: 1; revision: number; nodes: ConstellationNode[]; edges: ConstellationEdge[]; revisions: GraphRevision[] }
+
+/** `GET /learning/profile/revisions`: the latest 20 revisions (ascending) and the answers they rest on. */
+export interface ProfileEvent {
+  id: string; concept: string; dimension: LearningDimension; outcome: Outcome; modality: Modality | null;
+  created_at: string; question: string; answer: string;
+}
+export interface ProfileHistory { revisions: ProfileRevision[]; events: ProfileEvent[] }
 
 /** Shape of fixtures/attention-arc.v1.json, the two-session demo arc used for mocks. */
 export interface DemoArcFixture {

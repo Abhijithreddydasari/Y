@@ -2,6 +2,7 @@
 
 import ChatPanel from "@/components/ChatPanel";
 import CheckpointCard from "@/components/CheckpointCard";
+import MindButton from "@/components/constellation/MindButton";
 import EducatorPanel from "@/components/EducatorPanel";
 import LearnerPanel from "@/components/LearnerPanel";
 import Toolbar from "@/components/Toolbar";
@@ -54,6 +55,7 @@ export default function StudioShell({ session, interfaceMode }: Props) {
       />
       <CheckpointCard checkpoint={session.checkpoint} evidence={session.lastEvidence} />
       <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush} />
+      <MindButton />
       <TutorComposer tutor={session.tutor} blocked={session.busy && !session.tutor.busy} onStop={session.stop} />
       {session.teacherMode && <EducatorPanel notes={session.educatorNotes} busy={session.educatorBusy} />}
     </div>

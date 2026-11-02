@@ -92,6 +92,29 @@ export function questionOf(move: PublicMove): TutorQuestion | null {
   return { qid: move.qid, kind: move.type === "predict" ? "predict" : move.kind, q: move.q, options: move.options };
 }
 
+/** Leading option letter as typed: "B", "b)", "A, because…", "(c) the scores". A bare "a word" is an article. */
+const TYPED_LETTER = /^\(?([a-z])(?:$|[).,:;-]|\s*\)|\s+(?:because|since|as)\b)/i;
+
+/**
+ * Text typed into the composer while a card waits: an answer to that card, or null for a new question.
+ * A question mark always means a question; option cards need a leading letter or exactly one option's
+ * text, so a typed request that merely shares words with an option is never graded as an answer.
+ */
+export function composerAnswer(question: TutorQuestion, typed: string): { choice?: string; text: string } | null {
+  const text = typed.trim();
+  if (!text || text.endsWith("?")) return null;
+  if (question.kind === "free") return { text };
+  const letter = text.match(TYPED_LETTER)?.[1]?.toLowerCase();
+  if (letter) {
+    const index = letter.charCodeAt(0) - 97;
+    return index < question.options.length ? { choice: question.options[index], text } : null;
+  }
+  const flat = (value: string) => value.toLowerCase().replace(/\s+/g, " ").trim();
+  const said = flat(text);
+  const named = question.options.filter((option) => flat(option) && said.includes(flat(option)));
+  return named.length === 1 ? { choice: named[0], text } : null;
+}
+
 async function failure(response: Response): Promise<BoardError> {
   const value = await response.json().catch(() => ({}));
   return new BoardError(response.status, typeof value.detail === "string" ? value.detail : "tutor_request_failed");

@@ -15,7 +15,7 @@ from starlette.concurrency import run_in_threadpool
 from . import image_jobs, observations, profile
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
-from .consolidate import NOTES_MODEL, NotesWriter, evidence_payload, keep_cited, keep_named
+from .consolidate import NOTES_MODEL, NotesWriter, bridges, evidence_payload, keep_cited, keep_links, keep_named
 from .contracts import Contract, canonical, digest
 from .decisions import ProviderFailure, evidence_labeler
 from .learner_contracts import LearnerBrief
@@ -191,6 +191,15 @@ async def learner_profile(q: str = "", owner=Depends(require_owner), profiles=De
             "brief": brief.model_dump(mode="json") if brief else None, "brief_text": profile.render_brief(brief)}
 
 
+@router.get("/profile/revisions")
+async def profile_history(owner=Depends(require_owner), profiles=Depends(get_profiles), evidence=Depends(get_evidence)):
+    """The learner map's input: the latest 20 revisions (ascending) and the questions and answers they rest on."""
+    history = await call_store(profiles.history, owner, 20)
+    ids = list(dict.fromkeys(str(i) for r in history for i in r.observation_ids))[-400:]
+    events = await call_store(evidence.digest, owner, ids) if ids else []
+    return {"revisions": [r.model_dump(mode="json") for r in history], "events": events}
+
+
 def _summary(revision, found, left, relabel, notes_trace, started) -> dict:
     touched = {(o.concept, o.dimension) for o in found}
     return {"session_id": str(revision.session_id), "revision": revision.revision, "sealed": len(found),
@@ -198,6 +207,7 @@ def _summary(revision, found, left, relabel, notes_trace, started) -> dict:
             "beliefs": [{"concept": b.concept, "dimension": b.dimension, "mean": round(b.mean, 3)}
                         for b in revision.beliefs if (b.concept, b.dimension) in touched],
             "misconceptions": [m.id for m in revision.misconceptions if m.status == "active"],
+            "links": len([k for k in revision.links if k.first_revision == revision.revision]),
             "suspected": [m.id for m in revision.misconceptions if m.status == "suspected"],
             "notes": [n.text for n in revision.notes], "notes_trace": notes_trace,
             "ms": round((time.perf_counter() - started) * 1000)}
@@ -236,14 +246,17 @@ async def close(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
         touched = {(o.concept, o.dimension) for o in found}
         beliefs = [{"concept": b.concept, "dimension": b.dimension, "mean": round(b.mean, 3)}
                    for b in draft.beliefs if (b.concept, b.dimension) in touched]
-        notes, named, notes_trace = [], [], {}
+        notes, named, links, notes_trace = [], [], [], {}
+        known = {b.concept for b in previous.beliefs} if previous else set()
         try:
             await call_store(store.reserve, owner)
             answers = await call_store(evidence.answers, str(sid))
-            raw, notes_trace = await writer.write(evidence_payload(found, answers, beliefs))
+            raw, notes_trace = await writer.write(evidence_payload(found, answers, beliefs, tuple(known)))
             notes, notes_trace["dropped"] = keep_cited(raw, {str(o.observation_id) for o in found})
             named, notes_trace["names_dropped"] = keep_named(raw, found)
-            notes_trace.update(kept=len(notes), named=[n["id"] for n in named])
+            links, notes_trace["links_dropped"] = keep_links(raw, found, known)
+            links += bridges(named, found)
+            notes_trace.update(kept=len(notes), named=[n["id"] for n in named], links=len(links))
         except (ProviderFailure, HTTPException) as exc:  # the revision is written without notes
             notes_trace = {"error": getattr(exc, "code", None) or str(exc.detail)}
         except Exception as exc:
@@ -252,7 +265,8 @@ async def close(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
 
         def build(prev, idx):
             revision, new_index = profile.reduce(prev, idx, found, str(sid), notes,
-                                                 NOTES_MODEL if notes or named else None, descriptions=texts, named=named)
+                                                 NOTES_MODEL if notes or named or links else None, descriptions=texts,
+                                                 named=named, links=links)
             return revision, new_index, _summary(revision, found, left, relabel, notes_trace, started)
 
         revision, summary, replayed = await call_store(profiles.write, owner, str(sid), build)

@@ -134,6 +134,27 @@ class TeachingNote(Contract):
     cites: tuple[UUID, ...] = Field(min_length=1, max_length=16)
 
 
+class ConceptLink(Contract):
+    """A reasoning link between two concepts shown by this learner's answers (H6). Explanatory only:
+    links never change beliefs, the ledger or the brief. `confused_with` is unordered (source < target)."""
+    source: Identifier
+    target: Identifier
+    kind: Literal["builds_on", "confused_with"]
+    why: str = Field(min_length=1, max_length=240)
+    strength: float = Field(ge=0, le=1000)
+    evidence: tuple[UUID, ...] = Field(min_length=1, max_length=16)
+    provenance: Literal["model", "system"]
+    first_revision: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def distinct(self):
+        if self.source == self.target:
+            raise ValueError("a link needs two concepts")
+        if self.kind == "confused_with" and self.source > self.target:
+            raise ValueError("confused_with is stored with source < target")
+        return self
+
+
 class ProfileRevision(Contract):
     """Result of sealing one session; applying the same session twice is rejected upstream."""
     schema_version: Literal[1] = 1
@@ -144,6 +165,7 @@ class ProfileRevision(Contract):
     beliefs: tuple[Belief, ...] = Field(max_length=2000)
     misconceptions: tuple[MisconceptionEntry, ...] = Field(default=(), max_length=200)
     notes: tuple[TeachingNote, ...] = Field(default=(), max_length=40)
+    links: tuple[ConceptLink, ...] = Field(default=(), max_length=200)
     consolidator: str | None = Field(default=None, max_length=120)
     created_at: str
 

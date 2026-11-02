@@ -4,7 +4,7 @@ import { NextRequest } from "next/server";
 export const runtime = "nodejs";
 export const maxDuration = 180;
 
-const ALLOWED = /^(identity|catalog|sessions|speech|profile|tutor\/options|sessions\/[a-f0-9-]{36}(?:\/attempts)?|attempts\/[a-f0-9-]{36}(?:\/assess)?)$/;
+const ALLOWED = /^(identity|catalog|sessions|speech|profile(?:\/revisions)?|tutor\/options|sessions\/[a-f0-9-]{36}(?:\/attempts)?|attempts\/[a-f0-9-]{36}(?:\/assess)?)$/;
 const BOARD = /^(sessions\/[a-f0-9-]{36}\/tutor(?:\/turns)?|sessions\/[a-f0-9-]{36}\/(?:evidence|close|memory)|sessions\/[a-f0-9-]{36}\/images\/[a-f0-9]{32}|sessions\/[a-f0-9-]{36}\/transcribe(?:\/warm)?|sessions\/[a-f0-9-]{36}\/board(?:\/(?:edits|regions|attempts|context|teach|assets(?:\/[a-f0-9]{64})?))?|board-attempts\/[a-f0-9-]{36}(?:\/(?:assess|corrections))?)$/;
 
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {

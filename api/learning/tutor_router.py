@@ -12,10 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
-from . import image_jobs
+from . import image_jobs, observations
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
 from .contracts import canonical, digest
+from .decisions import evidence_labeler
 from .router import call_store, get_store, private_response, require_owner
 from .tutor_models import OptionUnavailable, resolve, tutor_options, voice_options
 from .tutor_moves import TurnValidator
@@ -44,6 +45,33 @@ def get_tutor_store(store=Depends(get_store)):
 
 def get_image_jobs(store=Depends(get_store)):
     return image_jobs.ImageJobs(store)
+
+
+def get_evidence(store=Depends(get_store)):
+    return observations.ObservationStore(store)
+
+
+def get_labeler():
+    return evidence_labeler()
+
+
+def _human_ink(boards, owner: str, sid: UUID, element_ids: tuple[str, ...]) -> None:
+    """Ink evidence must be the learner's own strokes; tutor-drawn or unknown elements never count."""
+    records = boards.load(owner, sid)["records"]
+    if any(records.get(i, {}).get("creator") != "human" for i in element_ids):
+        raise HTTPException(422, "evidence_not_learner")
+
+
+async def record_evidence(evidence, labeler, owner: str, sid: str, body: TurnInput, question: dict, outcome: dict,
+                          history: list[dict]) -> None:
+    """Record the answer once and start labeling in the background. Never fails or delays the lesson."""
+    try:
+        row, created = await call_store(evidence.capture_answer, owner, sid, str(body.turn_id), question, outcome["answer"],
+                                        outcome, observations.modality_of(body.via, body.choice), history, body.element_ids)
+        if created and row["status"] == "pending":
+            observations.start(evidence, labeler, owner, row["observation_id"])
+    except Exception as exc:  # the trace shows the gap; the learner never does
+        log.warning("evidence capture failed turn=%s (%s)", body.turn_id, type(exc).__name__)
 
 
 async def get_tutor(request: Request):
@@ -91,6 +119,12 @@ async def state(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
                        "tutor": (t["timing"] or {}).get("tutor")} for t in history[-20:]]}
 
 
+@router.get("/sessions/{sid}/evidence")
+async def evidence_trace(sid: UUID, owner=Depends(require_owner), evidence=Depends(get_evidence)):
+    """Developer trace of answered checks: verifier, labels and failures. Profiles are written at session close (H5)."""
+    return {"observations": await call_store(evidence.entries, owner, str(sid)), "profile_updated": False}
+
+
 @router.get("/sessions/{sid}/images/{image_id}")
 async def image(sid: UUID, image_id: str = Path(pattern=r"^[0-9a-f]{32}$"), owner=Depends(require_owner),
                 images=Depends(get_image_jobs)):
@@ -100,7 +134,8 @@ async def image(sid: UUID, image_id: str = Path(pattern=r"^[0-9a-f]{32}$"), owne
 
 @router.post("/sessions/{sid}/tutor/turns")
 async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(require_owner), store=Depends(get_tutor_store),
-               boards=Depends(get_board_store), tutor=Depends(get_tutor), illustrations=Depends(get_image_jobs)):
+               boards=Depends(get_board_store), tutor=Depends(get_tutor), illustrations=Depends(get_image_jobs),
+               evidence=Depends(get_evidence), labeler=Depends(get_labeler)):
     started = time.perf_counter()
     try:
         option = resolve(body.model)
@@ -114,11 +149,15 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
     question = open_question(history)
     if body.kind == "answer" and (question is None or question["qid"] != body.question_id):
         raise HTTPException(409, "tutor_question_not_open")
+    if body.element_ids:
+        await call_store(_human_ink, boards, owner, sid, body.element_ids)
     value = body.model_dump(mode="json", exclude={"board"})
     replay = await call_store(store.begin, owner, str(sid), str(body.turn_id), body.kind, value, digest(canonical(body)))
     if replay is not None:
         return EventSourceResponse(_replay(replay), headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
     outcome = grade(question, body) if body.kind == "answer" else None
+    if outcome is not None:
+        await record_evidence(evidence, labeler, owner, str(sid), body, question, outcome, history)
     run = None
     try:
         packet, images = None, []

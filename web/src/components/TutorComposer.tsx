@@ -1,6 +1,7 @@
 "use client";
 
 import MicButton from "@/components/MicButton";
+import TutorPicker from "@/components/TutorPicker";
 import type { TutorTurnState } from "@/hooks/useTutorSession";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 
@@ -44,6 +45,8 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }}
           className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
         />
+        <TutorPicker options={tutor.picker.options} prefs={tutor.picker.prefs} trace={tutor.picker.trace}
+          onModel={tutor.picker.setModel} onVoice={tutor.picker.setVoice} />
         <MicButton voice={voice} disabled={disabled} label="Hold to ask by voice" />
         {tutor.busy ? (
           <button type="button" onClick={onStop} className="min-h-10 shrink-0 rounded-xl bg-rose-500 px-4 text-sm font-semibold text-white">Stop</button>

@@ -129,6 +129,8 @@ interface PlayerOptions {
   onAudible?: (value: { text: string; engine: "kokoro" | "browser"; waitMs: number }) => void;
   /** Segment pacing: how many segments the board may draw ahead of the voice (default SEGMENTS_AHEAD). */
   segmentsAhead?: number;
+  /** Speak with the browser voice only (the learner picked it), never requesting Kokoro. */
+  browserOnly?: boolean;
 }
 
 /** What one segment says, and what to read aloud if the model gave it no `say`. */
@@ -212,6 +214,7 @@ export class LessonPlayer {
     this.handle = opts.handle;
     this.ttsEnabled = opts.ttsEnabled;
     this.voiceName = opts.voiceName ?? "kokoro_af_heart";
+    this.browserOnly = opts.browserOnly ?? false;
     this.visualGapMs = opts.visualGapMs ?? 380;
     this.onProgress = opts.onProgress;
     this.onNarratingChange = opts.onNarratingChange;
@@ -352,6 +355,11 @@ export class LessonPlayer {
     this.setNarrating(false);
   }
 
+  /** The learner switched between Kokoro and the browser voice; applies from the next clause. */
+  setBrowserOnly(browserOnly: boolean): void {
+    this.browserOnly = browserOnly;
+  }
+
   /** Switch the voice for the active line and everything queued after it. */
   setVoice(voiceName: string): boolean {
     this.voiceName = voiceName;
@@ -432,11 +440,13 @@ export class LessonPlayer {
       const cleanTag = sanitizeTag(tag);
 
       const result = await this.renderer.render(cleanTag);
-      const { skeletons, files, revealId, revealText, revealWidth, revealHeight, drawAnimation } = result;
+      const { skeletons, files, revealId, revealText, revealWidth, revealHeight, drawAnimation, embeddables } = result;
       if (skeletons.length === 0) return;
 
       const { convertToExcalidrawElements } = await loadExcalidraw();
-      const els = convertToExcalidrawElements(skeletons, { regenerateIds: false });
+      // Skeletons cannot express embeddables, so widgets convert as rectangles and are retyped here.
+      const els = convertToExcalidrawElements(skeletons, { regenerateIds: false })
+        .map((el) => (embeddables?.includes(el.id) ? { ...el, type: "embeddable" } as unknown as typeof el : el));
       if (this.validateSource && !this.validateSource()) { this.cancel(); return; }
       if (files) this.handle.addFiles(files);
 

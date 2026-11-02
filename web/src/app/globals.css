@@ -203,3 +203,8 @@ body {
   font-feature-settings: "liga";
   -webkit-font-smoothing: antialiased;
 }
+
+/* Board widgets (components/widgets/WidgetHost.tsx): controls opt into pointer input only while
+   the selection tool is active; the rest of the widget lets strokes and selection reach the canvas. */
+.y-widget[data-live="true"] :is(input, button, label, [data-control]) { pointer-events: auto; }
+.y-widget[data-live="false"] * { pointer-events: none; }

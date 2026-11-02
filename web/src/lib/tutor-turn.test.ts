@@ -20,6 +20,9 @@ describe("tutor move mapping", () => {
     expect(moveToPrimitive({ type: "write", text: "Sums grow." })).toEqual({ tag: "text", args: { content: "Sums grow." } });
     expect(moveToPrimitive({ type: "equation", latex: "\\sqrt{d_k}" })).toEqual({ tag: "equation", args: { latex: "\\sqrt{d_k}" } });
     expect(moveToPrimitive(check)).toEqual({ tag: "card", args: { id: "y-card-t.2", label: "Check", q: "What grows?", options: "variance\nmean" } });
+    expect(moveToPrimitive({ type: "diagram", mermaid: "flowchart LR\n A --> B" })).toEqual({ tag: "diagram", args: { mermaid: "flowchart LR\n A --> B" } });
+    expect(moveToPrimitive({ type: "widget", kind: "attention", spec: '{"tokens":["a","b"],"temp":1}' }))
+      .toEqual({ tag: "widget", args: { kind: "attention", spec: '{"tokens":["a","b"],"temp":1}' } });
     expect(moveToPrimitive({ type: "say", text: "aside" })).toBeNull();
     expect(moveToPrimitive({ type: "turn_end", reason: "wait" })).toBeNull();
     expect(questionOf(check)).toEqual({ qid: "t.2", kind: "mcq", q: "What grows?", options: ["variance", "mean"] });

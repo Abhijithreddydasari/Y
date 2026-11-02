@@ -33,6 +33,13 @@ describe("learning proxy boundary", () => {
     expect(fetcher.mock.calls[1][0]).toContain(`/learning/sessions/${sid}/tutor/turns`);
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/tutor/other`))).status).toBe(404);
   });
+  it("forwards the tutor options list and nothing beside it", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('{"models":[],"voices":[]}'));
+    vi.stubGlobal("fetch", fetcher);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context("tutor/options"))).status).toBe(200);
+    expect(fetcher.mock.calls[0][0]).toContain("/learning/tutor/options");
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context("tutor/models"))).status).toBe(404);
+  });
   it("forwards push-to-talk audio as WAV and serves Kokoro speech", async () => {
     const sid = "12345678-1234-1234-1234-123456789abc";
     const fetcher = vi.fn().mockResolvedValueOnce(new Response('{"text":"hi"}'))

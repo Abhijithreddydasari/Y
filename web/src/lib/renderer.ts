@@ -10,7 +10,9 @@
 import type { BinaryFileData, BinaryFiles, DataURL } from "@excalidraw/excalidraw/types";
 import type { FileId } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
+import { WIDGET_SCHEME, parseWidget, widgetSize } from "@/components/widgets/widget-spec";
 import { renderLatexToImage } from "./katex";
+import { diagramLabels, mermaidToBoard } from "./mermaid-board";
 import { parseSvg, rasterSvgToPng, type ParsedSvg } from "./svg";
 import type { PrimitiveTag } from "./types";
 
@@ -42,6 +44,8 @@ export interface RenderResult {
     height: number;
     caption?: string;
   };
+  /** Ids of placeholder rectangles the player turns into widget embeddables after conversion. */
+  embeddables?: string[];
 }
 
 const COL_WIDTH = 620;
@@ -152,6 +156,10 @@ export class LessonRenderer {
         return this.renderDrawPart(tag.args);
       case "card":
         return this.renderCard(tag.args);
+      case "diagram":
+        return this.renderDiagram(asStr(tag.args.mermaid));
+      case "widget":
+        return this.renderWidget(asStr(tag.args.kind), asStr(tag.args.spec));
       default:
         return { skeletons: [] };
     }
@@ -517,6 +525,35 @@ export class LessonRenderer {
       { type: "text", id: `${id}-text`, x: x + pad, y: y + pad, text: body, fontSize: NARRATION_FONT, fontFamily: 1,
         strokeColor: STROKE, width: COL_WIDTH - pad * 2, height: height - pad * 2, autoResize: false } as ExcalidrawElementSkeleton,
     ] };
+  }
+
+  private async renderDiagram(source: string): Promise<RenderResult> {
+    if (!source) return { skeletons: [] };
+    try {
+      const diagram = await mermaidToBoard(source, { x: this.narrationX, y: this.narrationY }, COL_WIDTH);
+      this.advanceNarration(diagram.height + 10);
+      return { skeletons: diagram.skeletons, files: Object.keys(diagram.files).length ? diagram.files : undefined };
+    } catch (error) {
+      // Never show a broken diagram: write its labels as one line instead.
+      console.warn("[tutor] diagram fell back to text", error);
+      const labels = diagramLabels(source);
+      return labels.length ? this.renderText(labels.join(" → ")) : { skeletons: [] };
+    }
+  }
+
+  private renderWidget(kind: string, raw: string): RenderResult {
+    const widget = parseWidget(kind, raw);
+    if (!widget) return this.renderText("(This interactive widget could not load.)");
+    const { width, height } = widgetSize(widget);
+    const id = `y-widget-${Date.now().toString(36)}-${(_textIdCounter += 1)}`;
+    const x = this.narrationX + Math.max(0, (COL_WIDTH - width) / 2), y = this.narrationY;
+    this.advanceNarration(height + 10);
+    return {
+      skeletons: [{ type: "rectangle", id, x, y, width, height, strokeColor: "#c4b5fd", backgroundColor: "#ffffff",
+        fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: { type: 3 }, link: `${WIDGET_SCHEME}${id}`,
+        customData: { yWidget: widget } } as ExcalidrawElementSkeleton],
+      embeddables: [id],
+    };
   }
 
   private renderLine(args: Record<string, string | number>): RenderResult {

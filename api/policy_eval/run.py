@@ -123,7 +123,8 @@ def write_report(run_dir: Path, out_md: Path, out_json: Path, out_candidate: Pat
     optimize_path = run_dir / "optimize.json"
     optimize_info = json.loads(optimize_path.read_text(encoding="utf-8")) if optimize_path.exists() else None
     report.write(out_md, out_json, out_candidate, verdict=gate_info["verdict"], baseline=base, candidate=candidate,
-                 seed=seed, cand=cand, cand_hash=digest, optimize=optimize_info, budget=runner.budget.summary(),
+                 seed=seed, cand=cand, cand_hash=digest, optimize=optimize_info,
+                 budget={**runner.budget.summary(), "cap": gate_info["budget"]["cap"]},
                  scenarios=scenarios, full_prompt=assemble(cand), title=title)
 
 

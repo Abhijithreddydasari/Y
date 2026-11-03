@@ -1,0 +1,800 @@
+{
+ "title": "H10 policy improvement: held-out report",
+ "verdict": {
+  "promote": false,
+  "reason": "held-out gain -0.020 is below 0.05",
+  "pairs": 18,
+  "excluded": 0,
+  "baseline": 0.8222222222222222,
+  "candidate": 0.8019444444444443,
+  "gain": -0.02027777777777784,
+  "interval90": [
+   -0.09625,
+   0.05319444444444445
+  ],
+  "interval_excludes_zero": false,
+  "valid": {
+   "baseline": 1.0,
+   "candidate": 1.0
+  },
+  "parts": {
+   "judge": {
+    "baseline": 0.7777777777777778,
+    "candidate": 0.7277777777777777
+   },
+   "resolved": {
+    "baseline": 1.0,
+    "candidate": 1.0
+   },
+   "probe": {
+    "baseline": 0.5555555555555556,
+    "candidate": 0.5
+   },
+   "addresses": {
+    "baseline": 0.6666666666666666,
+    "candidate": 0.7222222222222222
+   },
+   "valid": {
+    "baseline": 1.0,
+    "candidate": 1.0
+   },
+   "length": {
+    "baseline": 1.0,
+    "candidate": 1.0
+   }
+  },
+  "cross_judge": {
+   "pairs": 18,
+   "baseline": 0.7919666666666667,
+   "candidate": 0.7991541666666666,
+   "gain": 0.007187499999999902,
+   "agrees": true
+  },
+  "per_scenario": {
+   "amara.high-t-top-level": 0.0,
+   "amara.pauli-same-energy": 0.14999999999999997,
+   "amara.uncertainty-disturbance": -0.08374999999999999,
+   "priya.flash-approximates": 0.13625000000000004,
+   "priya.multihead-splits-tokens": 0.07375000000000004,
+   "priya.sqrt-d-normalises": -0.00874999999999998,
+   "tomas.conv-params-depend-on-image": -0.15375000000000005,
+   "tomas.eigenvectors-orthogonal": 0.00874999999999998,
+   "tomas.homography-keeps-parallel": -0.305
+  }
+ },
+ "candidate_hash": "4a392483726d",
+ "seed": {
+  "pedagogy_policy": "- Start where the learner is. Use the board, the session memory and the learner brief to judge\n  what they already know; begin one step past that, not from first principles every time.\n- One step per segment, one idea per step. A segment opens with `seg` and holds two to four\n  moves. A turn holds at most three segments.\n- Say why a step matters before doing it, in a short `write`.\n- Before revealing a result the learner could work out, ask them to predict it. Asking is the\n  last thing a turn does: put the `predict` or `check` at the end and stop with\n  `turn_end` `wait`. Never reveal the answer in the same turn.\n- After a step that carries the main idea, check understanding with one `check`.\n- Prefer a short turn that ends in a question over a long lecture. A first turn on a new topic\n  usually motivates, takes one or two steps, then asks.\n- If the learner says \"just tell me\", \"skip\" or similar, give the full answer plainly and end\n  with `turn_end` `done`. Do not ask a question in that turn.\n- Never claim the learner said or wrote something that is not in the context.",
+  "check_writer": "- A check tests the idea just taught, not trivia or wording.\n- `mcq`: two to four options. Every wrong option is a mistake a learner with a specific wrong\n  idea would actually make (a sign error, a confused definition, an overgeneralisation), not\n  filler. `key` is copied exactly from `options`. Vary the key's position.\n- `free`: a short-answer question with one clear answer; `key` is the expected answer and\n  `options` is empty.\n- `concept` is a short lowercase id for the idea tested, such as `attention.scaling` or\n  `linalg.eigenvector`. `dim` is the kind of thinking: recall, understand, apply, analyze or\n  transfer.\n- `predict` asks for a guess before a reveal: two to four options, `answer` copied exactly\n  from `options`.",
+  "feedback_policy": "When \"this turn\" is an answer to an open question:\n- Correct: confirm in one line, name the reason it is right, then take the next step and, if\n  useful, end with a new question.\n- Wrong: do not just repeat the explanation. Name the likely wrong idea behind the chosen\n  answer, then teach the point again from a different representation (a concrete number\n  example, a picture in words, a limiting case, an analogy) and ask a new, different question.\n- Free text: judge it against the key; accept equivalent answers and correct partial ones.\n- If the learner revealed the answer (\"just tell me\"), explain it fully and end with `done`.\n- High confidence with a wrong answer deserves a gentle, explicit correction of the idea."
+ },
+ "candidate": {
+  "pedagogy_policy": "- Start where the learner is. Use the board, the session memory and the learner brief to judge\n  what they already know; begin one step past that, not from first principles every time.\n- One step per segment, one idea per step. A segment opens with `seg` and holds two to four\n  moves. A turn holds at most three segments.\n- Say why a step matters before doing it, in a short `write`.\n- Before revealing a result the learner could work out, ask them to predict it. Asking is the\n  last thing a turn does: put the `predict` or `check` at the end and stop with\n  `turn_end` `wait`. Never reveal the answer in the same turn.\n- After a step that carries the main idea, check understanding with one `check`.\n- Prefer a short turn that ends in a question over a long lecture. A first turn on a new topic\n  usually motivates, takes one or two steps, then asks.\n- If the learner says \"just tell me\", \"skip\" or similar, give the full answer plainly and end\n  with `turn_end` `done`. Do not ask a question in that turn.\n- Never claim the learner said or wrote something that is not in the context.",
+  "check_writer": "- A check tests the idea just taught, not trivia or wording.\n- `mcq`: two to four options. Every wrong option is a mistake a learner with a specific wrong\n  idea would actually make (a sign error, a confused definition, an overgeneralisation), not\n  filler. `key` is copied exactly from `options`. Vary the key's position.\n- `free`: a short-answer question with one clear answer; `key` is the expected answer and\n  `options` is empty.\n- `concept` is a short lowercase id for the idea tested, such as `attention.scaling` or\n  `linalg.eigenvector`. `dim` is the kind of thinking: recall, understand, apply, analyze or\n  transfer.\n- `predict` asks for a guess before a reveal: two to four options, `answer` copied exactly\n  from `options`.",
+  "feedback_policy": "When \"this turn\" is an answer to an open question:\n- Correct: confirm in one line, name why right, then ask a new forced-choice where the misconception predicts the opposite; never stop after one pick, use fresh numbers requiring calculation.\n- Wrong: name the false general rule and why it seems plausible, reteach from a different representation (numbers, picture in words, limiting case, analogy), then ask a new forced-choice putting that same rule in direct conflict.\n- Free text: accept equivalents, fix partials, never count paraphrase as mastery — follow with a conflicting-case check where student predicts before seeing numbers.\n- Never drift: follow-up must test the same rule with a contrasting two-case counterexample (extreme vs neutral) the student generates.\n- Keep board to 3-4 moves, no repeated praise; correct high-confidence errors explicitly but gently.\n- If the learner revealed the answer (\"just tell me\"), explain it fully and end with `done`.\n- Verify every number before showing it and keep words, equations, and widgets tied to same numbers."
+ },
+ "optimize": {
+  "engine": "gepa 0.1.4",
+  "max_metric_calls": 150,
+  "stopped": "max_metric_calls",
+  "train": [
+   "priya.softmax-equalizes",
+   "priya.layernorm-across-batch",
+   "priya.attention-symmetric",
+   "tomas.base-rate-neglect",
+   "tomas.lr-bigger-faster",
+   "tomas.det-zero-all-zero",
+   "amara.entropy-disorder",
+   "amara.psi-is-probability",
+   "amara.z-is-probability"
+  ],
+  "val": [
+   "priya.kv-cache-stores-queries",
+   "priya.causal-mask-after-softmax",
+   "tomas.stride-keeps-size",
+   "tomas.singular-equals-eigen",
+   "amara.energy-kt-always",
+   "amara.lowering-ground"
+  ],
+  "candidates": [
+   {
+    "hash": "6d4fada4a891",
+    "val": 0.7454166666666667,
+    "parent": null,
+    "at": 0
+   },
+   {
+    "hash": "b036b459eb36",
+    "val": 0.7527083333333332,
+    "parent": 0,
+    "at": 24
+   },
+   {
+    "hash": "7c2a326b37ea",
+    "val": 0.7829166666666666,
+    "parent": 1,
+    "at": 36
+   },
+   {
+    "hash": "2e16b3691378",
+    "val": 0.8129166666666666,
+    "parent": 1,
+    "at": 60
+   },
+   {
+    "hash": "4a392483726d",
+    "val": 0.8316666666666666,
+    "parent": 1,
+    "at": 72
+   },
+   {
+    "hash": "88126e4b4f7c",
+    "val": 0.8044047619047618,
+    "parent": 4,
+    "at": 90
+   },
+   {
+    "hash": "46ceb2af4735",
+    "val": 0.8054166666666666,
+    "parent": 1,
+    "at": 108
+   },
+   {
+    "hash": "43a9f4a4b820",
+    "val": 0.7716666666666665,
+    "parent": 6,
+    "at": 126
+   },
+   {
+    "hash": "f6138d7a2e17",
+    "val": 0.7920833333333334,
+    "parent": 7,
+    "at": 144
+   }
+  ],
+  "best": "4a392483726d",
+  "metric_calls": 150,
+  "budget": {
+   "cap": 820,
+   "used": 621,
+   "by_role": {
+    "tutor": 242,
+    "student": 240,
+    "judge": 121,
+    "reflect": 16,
+    "tutor_repair": 2
+   },
+   "tokens": {
+    "tutor|muse-spark-1.3": {
+     "input_tokens": 941062,
+     "output_tokens": 177117,
+     "cached_tokens": 122104,
+     "reasoning_tokens": 87809
+    },
+    "student|meta-models/muse-spark-open-1026": {
+     "input_tokens": 132534,
+     "output_tokens": 95415,
+     "cached_tokens": 36992,
+     "reasoning_tokens": 86426
+    },
+    "judge|meta-models/muse-spark-open-1026": {
+     "input_tokens": 123715,
+     "output_tokens": 106241,
+     "cached_tokens": 39680,
+     "reasoning_tokens": 89352
+    },
+    "reflect|muse-spark-1.3": {
+     "input_tokens": 39902,
+     "output_tokens": 53757,
+     "cached_tokens": 0,
+     "reasoning_tokens": 49205
+    },
+    "tutor_repair|muse-spark-1.3": {}
+   }
+  }
+ },
+ "budget": {
+  "cap": 1100,
+  "used": 838,
+  "by_role": {
+   "tutor": 314,
+   "student": 312,
+   "judge": 157,
+   "reflect": 16,
+   "tutor_repair": 3,
+   "cross_judge": 36
+  },
+  "tokens": {
+   "tutor|muse-spark-1.3": {
+    "input_tokens": 1218517,
+    "output_tokens": 229291,
+    "cached_tokens": 242548,
+    "reasoning_tokens": 114685
+   },
+   "student|meta-models/muse-spark-open-1026": {
+    "input_tokens": 171431,
+    "output_tokens": 126310,
+    "cached_tokens": 40320,
+    "reasoning_tokens": 114434
+   },
+   "judge|meta-models/muse-spark-open-1026": {
+    "input_tokens": 160294,
+    "output_tokens": 137706,
+    "cached_tokens": 52352,
+    "reasoning_tokens": 115867
+   },
+   "reflect|muse-spark-1.3": {
+    "input_tokens": 39902,
+    "output_tokens": 53757,
+    "cached_tokens": 0,
+    "reasoning_tokens": 49205
+   },
+   "tutor_repair|muse-spark-1.3": {},
+   "cross_judge|gpt-6-luna": {
+    "input_tokens": 45666,
+    "output_tokens": 0
+   }
+  }
+ },
+ "spark_usd": 2.5091749500000002,
+ "held_out": [
+  {
+   "scenario": "amara.high-t-top-level",
+   "repeat": 0,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.9124999999999999,
+    "parts": {
+     "judge": 0.75,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.8543999999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.9474999999999999,
+    "parts": {
+     "judge": 0.85,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.88555,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "amara.high-t-top-level",
+   "repeat": 1,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.9474999999999999,
+    "parts": {
+     "judge": 0.85,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.8853749999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.9124999999999999,
+    "parts": {
+     "judge": 0.75,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9256249999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "amara.pauli-same-energy",
+   "repeat": 0,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.7975,
+    "parts": {
+     "judge": 0.85,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.718225,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.9299999999999999,
+    "parts": {
+     "judge": 0.8,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9243999999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "amara.pauli-same-energy",
+   "repeat": 1,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.7975,
+    "parts": {
+     "judge": 0.85,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.76425,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.965,
+    "parts": {
+     "judge": 0.9,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.8801249999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "amara.uncertainty-disturbance",
+   "repeat": 0,
+   "kind": "known",
+   "baseline": {
+    "score": 0.9824999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.911975,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.965,
+    "parts": {
+     "judge": 0.9,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9541499999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "amara.uncertainty-disturbance",
+   "repeat": 1,
+   "kind": "known",
+   "baseline": {
+    "score": 0.9824999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9607999999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.8324999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.7908499999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "priya.flash-approximates",
+   "repeat": 0,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.9299999999999999,
+    "parts": {
+     "judge": 0.8,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.8990249999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.9824999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9245749999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "priya.flash-approximates",
+   "repeat": 1,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.7449999999999999,
+    "parts": {
+     "judge": 0.7,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.7430749999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.965,
+    "parts": {
+     "judge": 0.9,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.87225,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "priya.multihead-splits-tokens",
+   "repeat": 0,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.6275,
+    "parts": {
+     "judge": 0.65,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.613325,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.7975,
+    "parts": {
+     "judge": 0.85,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.7425499999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "priya.multihead-splits-tokens",
+   "repeat": 1,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.7324999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.630475,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.71,
+    "parts": {
+     "judge": 0.6,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.7422,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "priya.sqrt-d-normalises",
+   "repeat": 0,
+   "kind": "known",
+   "baseline": {
+    "score": 0.5399999999999999,
+    "parts": {
+     "judge": 0.4,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.6009,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.61,
+    "parts": {
+     "judge": 0.6,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.6397499999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "priya.sqrt-d-normalises",
+   "repeat": 1,
+   "kind": "known",
+   "baseline": {
+    "score": 0.5575,
+    "parts": {
+     "judge": 0.45,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.6611,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.47,
+    "parts": {
+     "judge": 0.2,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.6184,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "tomas.conv-params-depend-on-image",
+   "repeat": 0,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.75,
+    "parts": {
+     "judge": 1.0,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.656025,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.5399999999999999,
+    "parts": {
+     "judge": 0.4,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.5956499999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "tomas.conv-params-depend-on-image",
+   "repeat": 1,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.62,
+    "parts": {
+     "judge": 0.2,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.7467,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.5225,
+    "parts": {
+     "judge": 0.35,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.6219,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "tomas.eigenvectors-orthogonal",
+   "repeat": 0,
+   "kind": "known",
+   "baseline": {
+    "score": 0.9824999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.918975,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.9824999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9282499999999999,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "tomas.eigenvectors-orthogonal",
+   "repeat": 1,
+   "kind": "known",
+   "baseline": {
+    "score": 0.965,
+    "parts": {
+     "judge": 0.9,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9058499999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.9824999999999999,
+    "parts": {
+     "judge": 0.95,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9364749999999998,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "tomas.homography-keeps-parallel",
+   "repeat": 0,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.965,
+    "parts": {
+     "judge": 0.9,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.9004249999999999,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.695,
+    "parts": {
+     "judge": 0.7,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.5,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.722125,
+    "infra_error": null
+   }
+  },
+  {
+   "scenario": "tomas.homography-keeps-parallel",
+   "repeat": 1,
+   "kind": "hidden",
+   "baseline": {
+    "score": 0.965,
+    "parts": {
+     "judge": 0.9,
+     "resolved": 1.0,
+     "probe": 1.0,
+     "addresses": 1.0,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.8845,
+    "infra_error": null
+   },
+   "candidate": {
+    "score": 0.625,
+    "parts": {
+     "judge": 0.5,
+     "resolved": 1.0,
+     "probe": 0.0,
+     "addresses": 0.5,
+     "valid": 1.0,
+     "length": 1.0
+    },
+    "cross": 0.6799499999999999,
+    "infra_error": null
+   }
+  }
+ ]
+}

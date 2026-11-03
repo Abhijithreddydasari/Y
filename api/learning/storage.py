@@ -90,8 +90,9 @@ def make_engine(url: str) -> Engine:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
     elif url.startswith("postgresql+psycopg://"):
-        engine = create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=5,
-                               connect_args={"connect_timeout": 5})
+        # Production raises the pool (Y_LIMIT_DB_POOL) so 16 concurrent inputs per container do not queue on it.
+        engine = create_engine(url, pool_pre_ping=True, pool_size=limit("DB_POOL", 3), max_overflow=limit("DB_OVERFLOW", 2),
+                               pool_timeout=10, pool_recycle=240, connect_args={"connect_timeout": 5})
     else:
         raise ValueError("learning storage supports SQLite or Postgres")
     return engine

@@ -16,7 +16,9 @@ API = REPO / "api"
 MODULES = ("speech.py", "transcription.py", "teacher.py", "parser.py", "validator.py")
 # Production budgets: tighter than local so judging cannot drain the model credits kept for H10.
 LIMITS = {"Y_LIMIT_TUTOR_GLOBAL": "150", "Y_LIMIT_TUTOR_DAILY": "1500", "Y_LIMIT_TUTOR_OWNER": "60",
-          "Y_LIMIT_TRANSCRIBE_GLOBAL": "300", "Y_LIMIT_SPEECH_GLOBAL": "4000"}
+          "Y_LIMIT_TRANSCRIBE_GLOBAL": "300", "Y_LIMIT_SPEECH_GLOBAL": "4000",
+          # Postgres pool per container (3 containers x 20 stays far under Neon's connection cap).
+          "Y_LIMIT_DB_POOL": "12", "Y_LIMIT_DB_OVERFLOW": "8"}
 
 
 def _bake_kokoro():

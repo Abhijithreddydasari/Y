@@ -13,6 +13,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const streaming = path.endsWith("/teach") || path.endsWith("/tutor/turns");
   // Closing re-labels open answers (up to 20 s) and writes teaching notes (up to 30 s).
   const closing = path.endsWith("/close");
+  // A persona's first use builds its three-week history; on hosted Postgres that takes far longer than locally.
+  const building = path.startsWith("personas/");
   const audio = path.endsWith("/transcribe");
   const limit = path.endsWith("/assets") ? 2 * 1024 * 1024 : path.endsWith("/edits") ? 1024 * 1024 : audio ? 1_100_000 : 40_000;
   const origin = request.headers.get("origin");
@@ -56,7 +58,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       method: request.method, headers, body: body as BodyInit | undefined,
       cache: "no-store", redirect: "error",
       // Kokoro's first synthesis loads the voice, so speech gets the longer board timeout.
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(streaming ? 150_000 : closing ? 90_000 : BOARD.test(path) || path === "speech" ? 35_000 : 20_000)]),
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(streaming || building ? 150_000 : closing ? 90_000 : BOARD.test(path) || path === "speech" ? 35_000 : 20_000)]),
     });
     const contentType = upstream.headers.get("Content-Type") || "application/json";
     const responseHeaders = new Headers({ "Content-Type": contentType, "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });

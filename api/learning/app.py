@@ -22,9 +22,11 @@ from .voice_router import prefetch_speech, router as voice_router
 @asynccontextmanager
 async def lifespan(app):
     # Idle connections to the provider stay pooled for a minute, so a transcription warmed at record start is not cold.
-    limits = httpx.Limits(max_connections=8, max_keepalive_connections=4, keepalive_expiry=60)
-    async with httpx.AsyncClient(limits=limits) as client:
+    # Narration has its own pool: a turn's clauses fire together and must never starve the tutor stream.
+    limits = httpx.Limits(max_connections=32, max_keepalive_connections=8, keepalive_expiry=60)
+    async with httpx.AsyncClient(limits=limits) as client, httpx.AsyncClient(limits=limits) as speech_client:
         app.state.board_http = client
+        app.state.speech_http = speech_client
         warm = asyncio.create_task(prefetch_speech())
         yield
         warm.cancel()

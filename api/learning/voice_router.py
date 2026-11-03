@@ -74,7 +74,7 @@ class DeepgramSpeech:
 
 
 async def get_cloud_speech(request: Request):
-    client = getattr(request.app.state, "board_http", None)
+    client = getattr(request.app.state, "speech_http", None)
     if client is not None:
         yield DeepgramSpeech(client)
     else:

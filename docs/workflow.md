@@ -73,6 +73,7 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H6 Learner map ("Your mind") | done (branch `feature/constellation`) | `f25dfb3`, `216db47` | [H6](handoffs/H6.md) |
 | H7 Study loop extras | done, teach-back cut (branch `feature/study-loop`) | `59f7547`, `e634a3c` | [H7](handoffs/H7.md) |
 | H8 Pointing, trace drawer, polish | done (branch `feature/pointing-polish`) | `f422141`, `37885fe` | [H8](handoffs/H8.md) |
+| H8 follow-up: board UI (Places arc, tool dock, card) | done (branch `feature/board-ui`) | see handoff | [H8 board UI](handoffs/H8-board-ui.md) |
 | H9–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01

@@ -2,37 +2,48 @@
 
 // Review: checks from earlier sessions that are due now (the warm-up queue). Starting draws the first one on the
 // board with no model call; answers count as evidence like any other check.
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { conceptLabel } from "@/components/constellation/map-model";
+import PlaceSheet from "@/components/places/PlaceSheet";
 import type { TutorTurnState } from "@/hooks/useTutorSession";
+import type { Outcome, ProfileHistory, ProfileEvent } from "@/lib/learner-contracts";
 
 const REASONS = {
   misconception: { label: "Misconception", tone: "bg-rose-100 text-rose-800" },
   fading: { label: "Fading", tone: "bg-amber-100 text-amber-800" },
   shaky: { label: "Shaky", tone: "bg-indigo-100 text-indigo-800" },
 } as const;
+const MARKS: Record<Outcome, { mark: string; label: string; tone: string }> = {
+  correct: { mark: "✓", label: "Right", tone: "bg-emerald-100 text-emerald-700" },
+  partial: { mark: "~", label: "Partly", tone: "bg-sky-100 text-sky-700" },
+  incorrect: { mark: "!", label: "Not quite", tone: "bg-amber-100 text-amber-700" },
+  unanswered: { mark: "·", label: "Told the answer", tone: "bg-slate-100 text-slate-500" },
+};
+const RECENT = 6;
+
+/** The latest answered checks sealed into the profile (what Mind rests on), newest first. */
+function useRecentChecks(): ProfileEvent[] | null {
+  const [events, setEvents] = useState<ProfileEvent[] | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/api/learning/profile/revisions", { cache: "no-store", credentials: "same-origin", signal: controller.signal })
+      .then((r) => (r.ok ? r.json() as Promise<ProfileHistory> : { revisions: [], events: [] }))
+      .then((body) => setEvents([...body.events].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, RECENT)))
+      .catch(() => { if (!controller.signal.aborted) setEvents([]); });
+    return () => controller.abort();
+  }, []);
+  return events;
+}
 
 export default function ReviewSheet({ tutor, onClose }: { tutor: TutorTurnState; onClose: () => void }) {
   const { items, started } = tutor.warmup;
   const blocked = tutor.busy || tutor.sealed || Boolean(tutor.question);
-
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
+  const recent = useRecentChecks();
 
   return (
-    <div className="pointer-events-auto fixed inset-0 z-[90] grid place-items-center bg-slate-950/25 p-4" onClick={onClose}>
-      <section role="dialog" aria-modal="true" aria-label="Review" onClick={(event) => event.stopPropagation()}
-        className="y-glass-strong flex max-h-[84dvh] w-[min(560px,100%)] flex-col gap-4 rounded-[28px] p-5">
-        <header className="flex items-center gap-3">
-          <div>
-            <h2 className="text-xl font-bold text-slate-950">Review</h2>
-            <p className="text-xs text-slate-500">Checks from earlier sessions, due now</p>
-          </div>
-          <button type="button" onClick={onClose} aria-label="Close review" className="ml-auto grid h-10 w-10 place-items-center rounded-full bg-slate-900/5 text-lg">×</button>
-        </header>
+    <PlaceSheet title="Review" subtitle="Checks from earlier sessions, due now" width="w-[min(900px,100%)]" onClose={onClose}>
+        <div className="grid gap-6 md:grid-cols-[1.25fr_1fr]">
+        <div className="flex min-w-0 flex-col gap-3">
         {items.length === 0 ? (
           <p className="rounded-2xl bg-white p-4 text-sm text-slate-600">
             Nothing is due. Checks you answer become reviews once you end a session, and come back as they fade.
@@ -69,7 +80,31 @@ export default function ReviewSheet({ tutor, onClose }: { tutor: TutorTurnState;
             <span className="text-xs text-slate-500">{tutor.question ? "Answer the open card first." : "Drawn on your board at once, no wait."}</span>
           </div>
         )}
-      </section>
-    </div>
+        </div>
+        <div className="flex min-w-0 flex-col gap-1" aria-label="Recent checks">
+          <h3 className="text-sm font-bold text-slate-900">Recent checks</h3>
+          {recent === null ? <p className="text-xs text-slate-500">Loading…</p>
+            : recent.length === 0 ? <p className="text-xs text-slate-500">Answered checks appear here once a session is saved.</p>
+            : (
+              <ul className="flex flex-col" data-testid="recent-checks">
+                {recent.map((event) => {
+                  const m = MARKS[event.outcome] ?? MARKS.unanswered;
+                  return (
+                    <li key={event.id} className="flex items-start gap-2.5 border-b border-slate-900/5 py-2.5">
+                      <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-extrabold ${m.tone}`} aria-label={m.label}>{m.mark}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px] font-medium text-slate-900">{event.question}</span>
+                        <span className="block text-[11px] text-slate-500">
+                          {m.label} · {conceptLabel(event.concept, [event.question])} · {new Date(event.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+        </div>
+        </div>
+    </PlaceSheet>
   );
 }

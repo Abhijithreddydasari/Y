@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import type { TurnBody, TutorTurnEvents } from "@/lib/tutor-turn";
+import { BOARD_QUESTION } from "@/lib/tutor-turn";
 import { useTutorSession } from "./useTutorSession";
 
 const mocks = vi.hoisted(() => ({
@@ -75,6 +76,23 @@ describe("tutor turn flow", () => {
     mocks.fetchSessionStatus.mockResolvedValue({ memory: true, status: "open" });
     mocks.closeSession.mockReturnValue(new Promise(() => {}));  // a real close reloads the page
     window.localStorage.clear();
+  });
+
+  it("Ask with an empty box answers the question on the board, and a blank board makes no call", async () => {
+    const blank = { ...board(), getElements: () => [], board: { ...board().board, state: { records: {} } } } as unknown as WhiteboardHandle;
+    const { result } = renderHook(() => useTutorSession());
+    act(() => result.current.onWhiteboardReady(blank));
+    await waitFor(() => expect(result.current.tutor.configured).toBe(true));
+    act(() => result.current.tutor.ask("  "));
+    expect(mocks.streamTutorTurn).not.toHaveBeenCalled();
+    expect(result.current.tutor.error).toMatch(/Write or draw your question/);
+
+    const ink = { id: "ink1", type: "freedraw", isDeleted: false };
+    const written = { ...board(), getElements: () => [ink], board: { ...board().board, state: { records: { ink1: { creator: "human" } } } } } as unknown as WhiteboardHandle;
+    act(() => result.current.onWhiteboardReady(written));
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => { h.onTurn?.({ turn_id: "t9", outcome: null }); h.onDone({ status: "done", question: null }); }));
+    await act(async () => { result.current.tutor.ask(""); });
+    expect(mocks.streamTutorTurn.mock.calls[0][1]).toMatchObject({ kind: "question", text: BOARD_QUESTION });
   });
 
   it("runs warm-up → answer → hint → exit ticket → close without dead ends", async () => {

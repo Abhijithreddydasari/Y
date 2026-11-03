@@ -83,6 +83,8 @@ export function tutorErrorMessage(error: unknown): string {
 }
 
 export const cardId = (qid: string) => `y-card-${qid}`;
+/** Sent when the learner presses Ask with an empty box and their question is on the board. */
+export const BOARD_QUESTION = "Answer the question I wrote on the board. If it shows my working, check it step by step.";
 export const pointId = (turnId: string, index: number) => `y-point-${turnId}-${index}`;
 
 /** Board primitive for a move, or null for moves that do not draw (say, turn_end) or are not rendered yet. */
@@ -98,8 +100,8 @@ export function moveToPrimitive(move: PublicMove): PrimitiveTag | null {
     case "predict":
     case "check":
       if (!move.qid) return null;
-      return { tag: "card", args: { id: cardId(move.qid), label: move.type === "predict" ? "Predict" : "Check", q: move.q,
-        options: move.options.join("\n") } };
+      // The board keeps the question as a record and an anchor; its options live on the answer card beside it.
+      return { tag: "card", args: { id: cardId(move.qid), label: move.type === "predict" ? "Predict" : "Check", q: move.q, options: "" } };
     default: return null;
   }
 }

@@ -2,7 +2,8 @@
 
 // Settings: the switches that used to sit around the composer and in the old Studio card. The tutor model and
 // voice stay in the composer's picker, where they apply from the next turn.
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode } from "react";
+import PlaceSheet from "@/components/places/PlaceSheet";
 import type { useInterfaceMode } from "@/hooks/useInterfaceMode";
 import type { TutorSession } from "@/hooks/useTutorSession";
 import { setClassicTools, useClassicTools } from "@/lib/classic";
@@ -35,20 +36,9 @@ export default function SettingsSheet({ session, interfaceMode, onClose }: Props
   const classic = useClassicTools();
   const { tutor } = session;
 
-  useEffect(() => {
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    window.addEventListener("keydown", close);
-    return () => window.removeEventListener("keydown", close);
-  }, [onClose]);
-
   return (
-    <div className="pointer-events-auto fixed inset-0 z-[90] grid place-items-center bg-slate-950/25 p-4" onClick={onClose}>
-      <section role="dialog" aria-modal="true" aria-label="Settings" onClick={(event) => event.stopPropagation()}
-        className="y-glass-strong flex max-h-[84dvh] w-[min(460px,100%)] flex-col gap-4 overflow-y-auto rounded-[28px] p-5">
-        <header className="flex items-center">
-          <h2 className="text-xl font-bold text-slate-950">Settings</h2>
-          <button type="button" onClick={onClose} aria-label="Close settings" className="ml-auto grid h-10 w-10 place-items-center rounded-full bg-slate-900/5 text-lg">×</button>
-        </header>
+    <PlaceSheet title="Settings" subtitle="Tutor, voice and layout" width="w-[min(460px,100%)]" onClose={onClose}>
+      <div className="flex flex-col gap-4">
         <Section title="Tutor">
           <Switch label="Memory" detail="Use what Mind knows about you in this session" on={tutor.memory.on} disabled={tutor.busy}
             onChange={tutor.memory.set} />
@@ -65,7 +55,7 @@ export default function SettingsSheet({ session, interfaceMode, onClose }: Props
           </div>
           <Switch label="Classic tools" detail="Show Teach me, Practice, samples and the old chat" on={classic} onChange={setClassicTools} />
         </Section>
-      </section>
-    </div>
+      </div>
+    </PlaceSheet>
   );
 }

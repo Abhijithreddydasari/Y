@@ -100,3 +100,33 @@ The Mind page was left as it is, on request, for a later pass.
 - The Mind page tweaks (since-last-session card, search, legend) are for a later pass.
 - Trace does not yet record the voice transcription, Kokoro or image steps shown in the mockup.
 - On Mobile the drawing tools are still Excalidraw's own.
+
+## Follow-up fixes (same day, from the user's notes)
+
+- **Ask with an empty box answers the board.**
+  - If the learner has ink or text on the board, an empty Ask sends `BOARD_QUESTION` ("Answer the question I
+    wrote on the board. If it shows my working, check it step by step.").
+  - A blank board makes no request and shows "Write or draw your question on the board, or type it here."
+  - Live: 0 requests on a blank board. A board with handwritten working got "Check your first step" and
+    "Finish and get x", with 2 rings on the ink.
+- **The writing keeps pace with the voice.** `SEGMENTS_AHEAD` is now 0 (write, then explain): a segment is drawn
+  only after the previous one has been spoken. With narration off, nothing waits.
+- **The board card shows only the question.** Its options live on the answer card beside it. The board copy
+  remains the record, the anchor for the answer card, and the place for "You answered: …".
+- **Mind.**
+  - Neuron and region labels are placed on whole pixels and measured for centring; subpixel and percentage
+    offsets made them shimmer while the map turned.
+  - The region cards no longer blur the 3D canvas behind them on every frame.
+  - Night (dark) is the default unless the learner chose Paper.
+  - Not checked by eye in the browser.
+- **Knowledge atlas.** A 56 px glass button with a node-tree icon and a ring that fills with the profile's
+  certainty. Dragging and the panel work as before; the panel uses the reading glass. It stays clear of the zoom
+  bar.
+- **Places share one frame.** `PlaceSheet` (backdrop, reading glass, header, close button, Escape) is used by
+  Canvases, Review and Settings; Trace uses the same header.
+  - **Canvases:** board-like cards (the opening question in the board's hand on a dotted grid, with a state
+    chip), a New canvas tile, search and a filter. A canvas opened with an empty Ask is titled "Question on the
+    board".
+  - **Review:** two columns, the due checks and the six latest sealed checks (from `GET /learning/profile/revisions`).
+  - **Trace:** summary tiles (first move, voice start, models used) and a coloured, lettered stage per row.
+- **Checks:** 167 frontend tests pass, plus tsc, lint, build, and a browser look at Canvases, Review and Trace.

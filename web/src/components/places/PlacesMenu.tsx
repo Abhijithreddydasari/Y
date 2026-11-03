@@ -53,7 +53,7 @@ export default function PlacesMenu({ session, interfaceMode, variant = "studio" 
           Y{(fresh || due > 0) && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-amber-400" />}
         </span>} />
       {place === "mind" && <MindView onClose={close} />}
-      {place === "canvases" && <CanvasDialog onClose={close} />}
+      {place === "canvases" && <CanvasDialog onClose={close} onNew={tutor.newSession} />}
       {place === "review" && <ReviewSheet tutor={tutor} onClose={close} />}
       {place === "trace" && <TraceView timing={tutor.timing} onClose={close} />}
       {place === "settings" && <SettingsSheet session={session} interfaceMode={interfaceMode} onClose={close} />}

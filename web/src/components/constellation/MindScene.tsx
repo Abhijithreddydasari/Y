@@ -478,7 +478,8 @@ function Rig(props: SceneProps) {
       const off = (r + 0.03) * (h / (2 * Math.tan(((camera as THREE.PerspectiveCamera).fov * Math.PI) / 360))) / camera.position.distanceTo(sim.q[id]);
       const visible = tmp.v.z < 1 && shown.has(id) && lod > 0.4;
       el.style.opacity = visible ? String(Math.min(1, (lod - 0.4) * 2.5)) : "0";
-      el.style.transform = `translate(${((tmp.v.x + 1) / 2) * w}px, ${((1 - tmp.v.y) / 2) * h + off}px) translate(-50%, 0)`;
+      // Whole pixels, centred by measured width: a subpixel or percentage offset makes text shimmer while turning.
+      el.style.transform = `translate3d(${Math.round(((tmp.v.x + 1) / 2) * w - el.offsetWidth / 2)}px, ${Math.round(((1 - tmp.v.y) / 2) * h + off)}px, 0)`;
     }
     const regionLabels = live.current.regionLabels.current ?? {};
     for (const [id, el] of Object.entries(regionLabels)) {
@@ -488,7 +489,7 @@ function Rig(props: SceneProps) {
       const o = Math.max(0, 1 - lod / 0.6);
       el.style.opacity = tmp.v.z < 1 ? String(o) : "0";
       el.style.pointerEvents = o > 0.3 ? "auto" : "none";
-      el.style.transform = `translate(${((tmp.v.x + 1) / 2) * w}px, ${((1 - tmp.v.y) / 2) * h}px) translate(-50%, -100%)`;
+      el.style.transform = `translate3d(${Math.round(((tmp.v.x + 1) / 2) * w - el.offsetWidth / 2)}px, ${Math.round(((1 - tmp.v.y) / 2) * h - el.offsetHeight)}px, 0)`;
     }
 
     moving += energy;

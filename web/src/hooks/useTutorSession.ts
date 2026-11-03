@@ -12,7 +12,7 @@ import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 import { boardSession, startNextBoardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
 import { belowCard, drawPoint } from "@/lib/board-pointing";
-import { cardId, closeSession, fetchReview, fetchSessionStatus, fetchTutorState, moveToPrimitive, pointId, questionOf, requestHint,
+import { BOARD_QUESTION, cardId, closeSession, fetchReview, fetchSessionStatus, fetchTutorState, moveToPrimitive, pointId, questionOf, requestHint,
   setSessionMemory, streamTutorTurn, tutorErrorMessage, type CloseSummary, type Hint, type ReviewItem, type TurnBody,
   type TurnMemory, type TutorQuestion, type TutorTimeline, composerAnswer } from "@/lib/tutor-turn";
 import { pendingImages, watchImage } from "@/lib/board-images";
@@ -700,8 +700,14 @@ export function useTutorSession(): TutorSession {
   }, [closeNow, question, runTurn]);
 
   const ask = useCallback((text: string) => {
-    const clean = text.trim();
-    if (!clean) return;
+    let clean = text.trim();
+    if (!clean) {
+      // Ask with an empty box answers what the learner wrote on the board; a blank board makes no call.
+      const records = handleRef.current?.board?.state?.records ?? {};
+      const learnerWork = (handleRef.current?.getElements() ?? []).some((e) => !e.isDeleted && (records[e.id] ? records[e.id].creator === "human" : true));
+      if (!learnerWork) { setTutorError("Write or draw your question on the board, or type it here."); return; }
+      clean = BOARD_QUESTION;
+    }
     // An answer typed into the composer while a card waits is evidence for that card, not a new question.
     const typed = question && composerAnswer(question, clean);
     if (typed) { setDraft(""); answer({ ...typed, confidence: null, via: "typed" }); return; }

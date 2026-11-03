@@ -143,11 +143,12 @@ interface Segment { says: string[]; writes: string[]; question: string }
 const FIRST_CLIP_WAIT_MS = 3_500;
 const NEXT_CLIP_WAIT_MS = 8_000;
 /**
- * How many segments the board may draw ahead of the voice. 1 (current choice) fills the board in about
- * 4-5 s, but the voice trails a segment behind what the learner is reading. 0 is write-then-explain: the
- * voice always talks about the segment just written, and a two-segment turn takes about 15-18 s to draw.
+ * How many segments the board may draw ahead of the voice. 1 fills the board in about 4-5 s, but the voice
+ * trails a segment behind what the learner is reading. 0 (current choice, user decision 2026-11-03) is
+ * write-then-explain: the voice always talks about the segment just written, and a two-segment turn takes
+ * about 15-18 s to draw. With narration off nothing waits.
  */
-export const SEGMENTS_AHEAD = 1;
+export const SEGMENTS_AHEAD = 0;
 
 /**
  * Split a spoken line into clauses so Kokoro (about real time on a laptop CPU) can start on a short clip and

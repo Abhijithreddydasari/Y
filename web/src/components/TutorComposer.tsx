@@ -21,9 +21,10 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
   const unavailable = tutor.configured === false || tutor.sealed;
   const disabled = blocked || unavailable || tutor.busy;
   const notice = tutor.error || voice.error;
-  const submit = () => { if (!disabled && tutor.draft.trim()) { voice.clearError(); tutor.ask(tutor.draft); } };
+  // An empty Ask answers the question written on the board (the hook refuses a blank board without a call).
+  const submit = () => { if (!disabled) { voice.clearError(); tutor.ask(tutor.draft); } };
   const placeholder = tutor.sealed ? "This canvas is sealed. Start a new session to ask." : unavailable ? "Tutor not configured on the server"
-    : tutor.question ? "Answer the card, or ask something else…" : "Ask about anything on the board…";
+    : tutor.question ? "Answer the card, or ask something else…" : "Type a question, or just press Ask…";
 
   return (
     <div className={variant === "mobile" ? "w-full" : "pointer-events-auto fixed bottom-4 left-1/2 z-40 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2"}
@@ -81,7 +82,7 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           disabled={unavailable}
           placeholder={placeholder}
           onChange={(event) => tutor.setDraft(event.target.value)}
-          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); submit(); } }}
+          onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (tutor.draft.trim()) submit(); } }}
           className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
         />
         <TutorPicker options={tutor.picker.options} prefs={tutor.picker.prefs} trace={tutor.picker.trace}
@@ -94,7 +95,8 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
             {tutor.narrating && (
               <button type="button" onClick={onStop} className="min-h-10 shrink-0 rounded-xl border border-rose-300 px-3 text-sm font-semibold text-rose-600">Stop</button>
             )}
-            <button type="submit" disabled={disabled || !tutor.draft.trim()} className="min-h-10 shrink-0 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Ask</button>
+            <button type="submit" disabled={disabled} title={tutor.draft.trim() ? undefined : "Answer the question on the board"}
+              className="min-h-10 shrink-0 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white disabled:opacity-40">Ask</button>
           </>
         )}
       </form>

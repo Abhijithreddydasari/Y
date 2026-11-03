@@ -2,6 +2,8 @@
 // browser only remembers which option ids this learner picked, per device, and sends the model id
 // with each turn. An option that has become unavailable falls back to the default on load.
 
+import { ensureIdentity } from "./identity";
+
 export interface TutorOption { id: string; label: string; note: string; default: boolean; available: boolean; reason: string | null;
   effort?: string | null }
 export interface TutorOptions { models: TutorOption[]; voices: TutorOption[] }
@@ -14,6 +16,7 @@ export const KOKORO_VOICES = new Set(["kokoro_af_heart", "kokoro_am_michael"]);
 
 export async function fetchTutorOptions(): Promise<TutorOptions | null> {
   try {
+    await ensureIdentity();
     const response = await fetch("/api/learning/tutor/options", { credentials: "same-origin", cache: "no-store" });
     return response.ok ? (await response.json() as TutorOptions) : null;
   } catch {

@@ -5,6 +5,7 @@ Conditional writes and unique constraints coordinate independent API instances.
 """
 from __future__ import annotations
 
+import os
 import secrets
 import time
 from dataclasses import dataclass
@@ -19,6 +20,14 @@ from sqlalchemy.exc import IntegrityError
 from .contracts import Assessment, AttemptInput, CapturedAttempt, SourceRef, TaskSpec, canonical, digest, now_iso
 
 metadata = MetaData()
+
+
+def limit(name: str, default: int) -> int:
+    """A budget cap, overridable per deployment with Y_LIMIT_<NAME> (production tightens paid calls)."""
+    raw = os.environ.get(f"Y_LIMIT_{name}", "").strip()
+    return int(raw) if raw.isdigit() else default
+
+
 identities = Table("learning_identities", metadata,
     Column("owner_id", String(36), primary_key=True),
     Column("token_hash", String(64), nullable=False, unique=True),
@@ -81,8 +90,9 @@ def make_engine(url: str) -> Engine:
             connection.execute("PRAGMA foreign_keys=ON")
             connection.execute("PRAGMA journal_mode=WAL")
     elif url.startswith("postgresql+psycopg://"):
-        engine = create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=2, pool_timeout=5,
-                               connect_args={"connect_timeout": 5})
+        # Production raises the pool (Y_LIMIT_DB_POOL) so 16 concurrent inputs per container do not queue on it.
+        engine = create_engine(url, pool_pre_ping=True, pool_size=limit("DB_POOL", 3), max_overflow=limit("DB_OVERFLOW", 2),
+                               pool_timeout=10, pool_recycle=240, connect_args={"connect_timeout": 5})
     else:
         raise ValueError("learning storage supports SQLite or Postgres")
     return engine
@@ -213,7 +223,7 @@ class CaptureStore:
                 attempts.c.session_id == str(session_id)).order_by(attempts.c.created_at)).mappings()
             return [self._view(row) for row in rows]
 
-    def _spend(self, conn, bucket: str, limit: int) -> None:
+    def _spend(self, conn, bucket: str, limit: int, code: str = "assessment_budget_exhausted") -> None:
         if conn.dialect.name == "postgresql":
             from sqlalchemy.dialects.postgresql import insert as upsert
         else:
@@ -222,7 +232,14 @@ class CaptureStore:
         changed = conn.execute(update(budgets).where(budgets.c.bucket == bucket, budgets.c.used < limit)
                                .values(used=budgets.c.used + 1))
         if changed.rowcount != 1:
-            raise StoreError(429, "assessment_budget_exhausted")
+            raise StoreError(429, code)
+
+    def charge(self, kind: str, owner: str, per_owner: int, per_global: int) -> None:
+        """Charge one call to the hourly per-owner and global buckets of `kind`; 429 `<kind>_budget_exhausted` past either."""
+        hour = int(time.time() // 3600)
+        with self.engine.begin() as conn:
+            self._spend(conn, f"{kind}-global:{hour}", per_global, f"{kind}_budget_exhausted")
+            self._spend(conn, f"{kind}-{owner}:{hour}", per_owner, f"{kind}_budget_exhausted")
 
     def claim(self, owner: str, attempt_id: UUID, reserve_budget: bool = True) -> tuple[str, CapturedAttempt] | None:
         aid, now, token = str(attempt_id), time.time(), secrets.token_hex(16)

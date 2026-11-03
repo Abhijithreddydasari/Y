@@ -1,6 +1,7 @@
 // Demo personas ("Try as…"): the server keeps which persona a browser acts as; this mirrors it locally so the
 // board session id is stored per profile and never sent to another profile's owner.
 import { useEffect, useState } from "react";
+import { ensureIdentity } from "./identity";
 
 export interface Persona { key: string; name: string; blurb: string; topics: string[]; copied: boolean }
 export interface PersonaListing { active: string | null; personas: Persona[] }
@@ -28,7 +29,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** The listing; asks for the anonymous identity first, since this can run before the board has one. */
 export async function fetchPersonas(): Promise<PersonaListing> {
-  await call<unknown>("identity", { method: "POST", body: "{}" });
+  await ensureIdentity();
   return call<PersonaListing>("personas");
 }
 

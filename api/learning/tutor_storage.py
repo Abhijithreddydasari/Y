@@ -12,11 +12,12 @@ from sqlalchemy import Column, Float, ForeignKey, Integer, String, Table, Text, 
 from sqlalchemy.exc import IntegrityError
 
 from .contracts import canonical
-from .storage import CaptureStore, StoreError, metadata, sessions
+from .storage import CaptureStore, StoreError, limit, metadata, sessions
 
 LEASE_SECONDS = 150
 TURN_LIMIT = 400  # per session
-HOURLY_TURNS, HOURLY_TURNS_GLOBAL = 60, 600
+HOURLY_TURNS, HOURLY_TURNS_GLOBAL = limit("TUTOR_OWNER", 60), limit("TUTOR_GLOBAL", 600)
+DAILY_TURNS_GLOBAL = limit("TUTOR_DAILY", 0)  # 0 = off; production sets it to protect shared model credits
 
 turns = Table("learning_tutor_turns", metadata,
     Column("turn_id", String(36), primary_key=True),
@@ -90,6 +91,8 @@ class TutorStore:
     def reserve(self, owner: str) -> None:
         with self.engine.begin() as conn:
             hour = int(time.time() // 3600)
+            if DAILY_TURNS_GLOBAL:
+                self.capture._spend(conn, f"tutor-day:{hour // 24}", DAILY_TURNS_GLOBAL)
             self.capture._spend(conn, f"tutor-global:{hour}", HOURLY_TURNS_GLOBAL)
             self.capture._spend(conn, f"tutor-{owner}:{hour}", HOURLY_TURNS)
 

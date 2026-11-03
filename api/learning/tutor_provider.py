@@ -6,6 +6,7 @@ validation live in the turn engine so a mocked adapter exercises the same path.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from collections.abc import AsyncIterator
@@ -16,6 +17,8 @@ from .decisions import ProviderFailure
 from .tutor_models import PROVIDERS, TutorOption, api_key, default_option
 from .tutor_moves import response_format
 from .tutor_turn import ENABLED
+
+log = logging.getLogger("y.tutor.provider")
 
 MAX_OUTPUT_TOKENS = 3000  # minimal effort reasons for ~450 tokens; a turn is ~600-1,000 output tokens
 MAX_CONTENT_CHARS = 40_000
@@ -109,6 +112,7 @@ class MetaTutor:
                 if finish == "length":
                     raise ProviderFailure("provider_output_truncated")
         except httpx.TimeoutException as exc:
+            log.warning("tutor stream %s after %.0f ms (%s chars)", type(exc).__name__, (time.perf_counter() - started) * 1000, chars)
             raise ProviderFailure("provider_timeout") from exc
         except httpx.HTTPError as exc:
             raise ProviderFailure("provider_unavailable") from exc

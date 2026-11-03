@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { GET, POST, PUT } from "./route";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 const context = (path: string) => ({ params: Promise.resolve({ path: path.split("/") }) });
 
 describe("learning proxy boundary", () => {
@@ -118,5 +118,22 @@ describe("learning proxy boundary", () => {
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/close/x`))).status).toBe(404);
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/trace`))).status).toBe(200);
     expect(fetcher.mock.calls[3][0]).toContain(`/learning/sessions/${sid}/trace`);
+  });
+  it("sends the proxy secret upstream only, never back to the browser", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('{"ready":true}', {
+      headers: { "Set-Cookie": "y_learning_identity=" + "b".repeat(43) + "; HttpOnly; Path=/; SameSite=Strict" },
+    }));
+    vi.stubGlobal("fetch", fetcher);
+    vi.stubEnv("LEARNING_API_BASE", "https://api.example.modal.run/");
+    vi.stubEnv("LEARNING_PROXY_SECRET", "proxy-secret-value");
+    const response = await POST(new NextRequest("https://y.test/api/learning/identity", { method: "POST", body: "{}" }), context("identity"));
+    expect(fetcher.mock.calls[0][0]).toBe("https://api.example.modal.run/learning/identity");
+    expect((fetcher.mock.calls[0][1].headers as Headers).get("X-Y-Proxy-Secret")).toBe("proxy-secret-value");
+    expect([...response.headers.values()].join(" ")).not.toContain("proxy-secret-value");
+    // On https the relayed identity cookie is Secure even if upstream forgot.
+    expect(response.headers.get("set-cookie")).toMatch(/HttpOnly.*; Secure$/);
+    vi.stubEnv("LEARNING_PROXY_SECRET", "");
+    await POST(new NextRequest("https://y.test/api/learning/identity", { method: "POST", body: "{}" }), context("identity"));
+    expect((fetcher.mock.calls[1][1].headers as Headers).has("X-Y-Proxy-Secret")).toBe(false);
   });
 });

@@ -189,3 +189,22 @@ def test_seeded_trace_names_no_live_model(app, capture):
     assert shown["turns"][0]["seed"] and not shown["turns"][0]["model_call"]
     assert {row["labeler"] for row in shown["labels"]} <= {"seed", "deterministic"}
     assert shown["close"]["seed"] and shown["close"]["notes_model"] == "seed"
+
+
+def test_staged_build_copies_the_same_persona_in_one_transaction(tmp_path):
+    """Hosted Postgres builds in a scratch SQLite and copies the rows; the result must match a direct build."""
+    results = {}
+    for staged in (False, True):
+        store = CaptureStore(make_engine(f"sqlite:///{(tmp_path / f'staged-{staged}.db').as_posix()}"))
+        store.initialize()
+        people = personas.PersonaStore(store)
+        owner = store.owner_for_token(store.issue_identity())
+        people.populate(owner, "tomas", staged=staged)
+        # The fingerprint covers decayed beliefs, which depend on the build instant; everything else must match.
+        results[staged] = {k: v for k, v in personas.summary(people, owner).items() if k != "fingerprint"}
+        with store.engine.connect() as conn:
+            results[(staged, "sessions")] = conn.scalar(select(func.count()).select_from(personas.sessions)
+                                                        .where(personas.sessions.c.owner_id == owner))
+        store.engine.dispose()
+    assert results[True] == results[False] and results[True]["revisions"] == 7
+    assert results[(True, "sessions")] == results[(False, "sessions")] == 7

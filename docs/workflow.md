@@ -53,6 +53,11 @@
   - Feedback starts under the answered card; Mind labels read "FFN role"; warm-up canvases have
     titles.
   - Open: ink turns take 6–7 s to the first move (image reading). Next: H9.
+- Personas done ([handoff](handoffs/personas.md)) on `feature/personas`. Settings → Try as… gives a private copy
+  of Priya (ML), Tomás (CV and maths) or Amara (quantum and stat mech). Each is built through the real capture,
+  reduce and close path from authored sessions, with notes recorded from Muse Spark 1.3, and labelled seeded.
+  Reset, Your own, and End session into another mind all work. Live: Tomás 7 → 8 with OpenAI labels, and the next
+  turn cited his history. Next: H9.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -74,6 +79,7 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H7 Study loop extras | done, teach-back cut (branch `feature/study-loop`) | `59f7547`, `e634a3c` | [H7](handoffs/H7.md) |
 | H8 Pointing, trace drawer, polish | done (branch `feature/pointing-polish`) | `f422141`, `37885fe` | [H8](handoffs/H8.md) |
 | H8 follow-up: board UI (Places arc, tool dock, card) | done (branch `feature/board-ui`) | see handoff | [H8 board UI](handoffs/H8-board-ui.md) |
+| Personas ("Try as…" demo learners) | done (branch `feature/personas`) | `5d75994`, `b1e42dd` | [personas](handoffs/personas.md) |
 | H9–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01

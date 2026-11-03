@@ -146,7 +146,7 @@ describe("tutor turn flow", () => {
       h.onDone({ status: "done", question: null });
     }));
     await act(async () => { result.current.tutor.answer({ choice: "variance", confidence: null }); });
-    await waitFor(() => expect(mocks.closeSession).toHaveBeenCalledWith("sid"));
+    await waitFor(() => expect(mocks.closeSession).toHaveBeenCalledWith("sid", undefined));
   });
 
   it("a failed exit turn falls back to a plain end; a sealed canvas offers no warm-up", async () => {

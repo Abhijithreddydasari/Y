@@ -17,7 +17,7 @@ const PRIOR = 1; // Beta(1, 1): alpha + beta − 2 is the evidence weight a beli
 export interface MindMisconception { id: string; description: string; status: MisconceptionEntry["status"]; strength: number; evidence: string[] }
 export interface MindLink {
   source: string; target: string; kind: "builds_on" | "confused_with"; why: string; strength: number;
-  provenance: "model" | "system" | "sample"; evidence: string[]; first_revision: number;
+  provenance: "model" | "system" | "seed" | "sample"; evidence: string[]; first_revision: number;
 }
 export interface MindNode {
   id: string; label: string; region: string;

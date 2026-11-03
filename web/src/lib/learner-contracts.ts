@@ -17,7 +17,7 @@ export interface Observation {
   concept: string; dimension: LearningDimension; outcome: Outcome;
   misconception: string | null; miss_class: MissClass | null;
   assistance: Assistance & { hint_ids: string[] };
-  confidence: number | null; labeler: "deterministic" | "baseten" | "openai" | "none"; label_confidence: number | null;
+  confidence: number | null; labeler: "deterministic" | "baseten" | "openai" | "seed" | "none"; label_confidence: number | null;
   outcome_p?: Partial<Record<Outcome, number>> | null; misconception_p?: Record<string, number>;
   other_misconception_p?: number | null; reasoning?: number | null; reasoning_shown?: number | null;
   format_weight: number; key_status: KeyStatus;
@@ -34,7 +34,7 @@ export interface TeachingNote { text: string; cites: string[] }
 /** H6: a reasoning link shown by the learner's answers; explanatory only. `confused_with` has source < target. */
 export interface ConceptLink {
   source: string; target: string; kind: "builds_on" | "confused_with"; why: string; strength: number;
-  evidence: string[]; provenance: "model" | "system"; first_revision: number;
+  evidence: string[]; provenance: "model" | "system" | "seed"; first_revision: number;
 }
 export interface ProfileRevision {
   schema_version: 1; revision: number; parent_revision: number | null; session_id: string;

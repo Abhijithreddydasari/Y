@@ -1,5 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { Assistance } from "./board-types";
+import { sessionKey, setProfileKey } from "./personas";
 
 export type Actor = "human" | "model" | "system" | "unknown";
 export interface Rect { x: number; y: number; w: number; h: number }
@@ -41,15 +42,17 @@ export async function boardRequest<T>(path: string, body?: unknown): Promise<T> 
 let sessionPromise: Promise<string> | null = null;
 export function boardSession(): Promise<string> {
   if (!sessionPromise) sessionPromise = (async () => {
-    await boardRequest("identity", {});
-    let id = localStorage.getItem("y_board_session_v1") || crypto.randomUUID();
+    const identity = await boardRequest<{ persona?: string | null }>("identity", {});
+    // The server says which profile this browser acts as; each profile keeps its own board session.
+    setProfileKey(identity.persona ?? null);
+    let id = localStorage.getItem(sessionKey()) || crypto.randomUUID();
     try { await boardRequest("sessions", { session_id: id }); }
     catch (error) {
       if (!(error instanceof BoardError) || error.status !== 404) throw error;
       id = crypto.randomUUID();
       await boardRequest("sessions", { session_id: id });
     }
-    localStorage.setItem("y_board_session_v1", id);
+    localStorage.setItem(sessionKey(), id);
     return id;
   })().catch(error => { sessionPromise = null; throw error; });
   return sessionPromise;
@@ -57,13 +60,13 @@ export function boardSession(): Promise<string> {
 
 /** After "End session": the next load starts a fresh board session; the sealed one stays saved on the server. */
 export function startNextBoardSession(): void {
-  localStorage.setItem("y_board_session_v1", crypto.randomUUID());
+  localStorage.setItem(sessionKey(), crypto.randomUUID());
   sessionPromise = null;
 }
 
 /** Resume a saved session (Canvas): it becomes the board session on the next load. */
 export function openBoardSession(id: string): void {
-  localStorage.setItem("y_board_session_v1", id);
+  localStorage.setItem(sessionKey(), id);
   sessionPromise = null;
 }
 

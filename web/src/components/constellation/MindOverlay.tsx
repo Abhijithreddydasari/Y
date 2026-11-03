@@ -94,7 +94,7 @@ function Sheet({ node, frame, map, palette, onClose }: { node: MindNode; frame: 
         return (
           <div key={`${l.kind}${l.source}${l.target}`} className="mt-2 rounded-xl border border-[var(--mind-line)] px-3 py-2">
             <p className={`text-[11px] ${l.kind === "builds_on" ? "text-[var(--mind-link)]" : "text-[var(--mind-misfire)]"}`}>
-              {l.kind === "builds_on" ? (l.source === node.id ? "Led to " : "Builds on ") : "Confused with "}{other(l)} · {l.provenance === "model" ? "written at close, cited" : l.provenance === "system" ? "same wrong belief" : "sample"}
+              {l.kind === "builds_on" ? (l.source === node.id ? "Led to " : "Builds on ") : "Confused with "}{other(l)} · {l.provenance === "model" ? "written at close, cited" : l.provenance === "system" ? "same wrong belief" : l.provenance === "seed" ? "seeded demo history" : "sample"}
             </p>
             <p className="mt-0.5 text-[var(--mind-text)]">{l.why}</p>
             {cited.map((e) => <p key={e.id} className="mt-1 text-[var(--mind-faint)]">“{e.answer || "(no text)"}” — {e.outcome}</p>)}

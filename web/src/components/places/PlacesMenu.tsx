@@ -11,6 +11,7 @@ import SettingsSheet from "@/components/places/SettingsSheet";
 import TraceView, { preloadTrace } from "@/components/trace/TraceView";
 import type { useInterfaceMode } from "@/hooks/useInterfaceMode";
 import type { TutorSession } from "@/hooks/useTutorSession";
+import { firstName, usePersonas } from "@/lib/personas";
 
 type Place = "mind" | "canvases" | "review" | "trace" | "settings";
 
@@ -26,6 +27,8 @@ export default function PlacesMenu({ session, interfaceMode, variant = "studio" 
   const [fresh, seen] = useMindFresh(place === "mind");
   const { tutor } = session;
   const due = tutor.sealed ? 0 : tutor.warmup.items.length;
+  const personas = usePersonas();
+  const mind = tutor.saveTo.value?.name ?? (personas.active ? `${firstName(personas.active)}'s mind` : "Mind");
 
   const items: ArcItem[] = [
     { id: "mind", label: "Mind", hint: "your learner map", icon: MIND_ICON, badge: fresh ? "new" : undefined, onIntent: preloadMind,
@@ -33,7 +36,7 @@ export default function PlacesMenu({ session, interfaceMode, variant = "studio" 
     { id: "canvases", label: "Canvases", hint: "saved boards", icon: "M4 7h11v12H4zM8 4h12v12", onSelect: () => setPlace("canvases") },
     { id: "review", label: "Review", hint: due ? `${due} due` : "nothing due", icon: "M4 12a8 8 0 1 0 2.3-5.6M4 4v4h4M12 8v4l3 2",
       badge: due || undefined, onSelect: () => setPlace("review") },
-    { id: "end", label: tutor.ending ? "Saving…" : "End session", hint: "save to Mind", icon: "M6 4h12v16l-6-4-6 4z",
+    { id: "end", label: tutor.ending ? "Saving…" : "End session", hint: `save to ${mind}`, icon: "M6 4h12v16l-6-4-6 4z",
       disabled: tutor.busy || tutor.ending || tutor.sealed || tutor.configured === false, onSelect: tutor.endSession },
     { id: "trace", label: "Trace", hint: "models and timing", icon: "M3 12h4l3-7 4 14 3-7h4", onIntent: preloadTrace,
       onSelect: () => setPlace("trace") },
@@ -56,7 +59,14 @@ export default function PlacesMenu({ session, interfaceMode, variant = "studio" 
       {place === "canvases" && <CanvasDialog onClose={close} onNew={tutor.newSession} />}
       {place === "review" && <ReviewSheet tutor={tutor} onClose={close} />}
       {place === "trace" && <TraceView timing={tutor.timing} onClose={close} />}
-      {place === "settings" && <SettingsSheet session={session} interfaceMode={interfaceMode} onClose={close} />}
+      {place === "settings" && <SettingsSheet session={session} interfaceMode={interfaceMode} onClose={close} personas={personas} />}
+      {personas.active && (
+        // Which learner this browser is acting as; opens Settings to switch back.
+        <button type="button" onClick={() => setPlace("settings")} title="Trying as a demo learner. Switch in Settings."
+          className={`${variant === "mobile" ? "absolute -top-9 left-0" : "fixed bottom-[7.25rem] right-5"} z-20 rounded-full bg-indigo-600 px-3 py-1 text-xs font-semibold text-white shadow-md`}>
+          As {firstName(personas.active)}
+        </button>
+      )}
     </>
   );
 }

@@ -74,7 +74,7 @@ export default function TraceDrawer({ timing, onClose }: Props) {
   const turns = [...(trace?.turns ?? [])].reverse();
   const models = new Set([...(trace?.turns ?? []).filter((t) => t.model_call && t.tutor).map((t) => t.tutor!.model),
     ...(trace?.hints ?? []).map((h) => h.tutor?.model), ...(trace?.labels ?? []).map((l) => l.model ?? (l.labeler === "deterministic" ? null : l.labeler)),
-    trace?.close?.notes_model].filter(Boolean));
+    trace?.close?.notes_model].filter((m) => m && m !== "seed"));
   const firstMove = timing?.first_move_ms ?? turns[0]?.ms.first_move_ms;
   return (
     <aside ref={panel} tabIndex={-1} role="dialog" aria-label="Trace: models and latency"
@@ -111,7 +111,7 @@ export default function TraceDrawer({ timing, onClose }: Props) {
                   const detail = [first, tokens, points, t.dropped ? `${t.dropped} dropped` : "", t.repairs ? `${t.repairs} repaired` : "",
                     t.error ?? "", t.status].filter(Boolean).join(" · ");
                   return <Row key={t.seq} stage={t.model_call ? "turn" : "stored"} title={`#${t.seq} ${t.kind}${t.goal ? `: ${t.goal}` : ""}`} ms={t.ms.total_ms} detail={detail}
-                    model={t.model_call ? modelName(t.tutor?.model, t.tutor?.effort) : "Stored check (no model)"} />;
+                    model={t.model_call ? modelName(t.tutor?.model, t.tutor?.effort) : t.seed ? "Seeded demo history (no model)" : "Stored check (no model)"} />;
                 })}
               </ul>
             </section>
@@ -139,7 +139,7 @@ export default function TraceDrawer({ timing, onClose }: Props) {
               <section aria-label="Session close" className="pt-3">
                 <h3 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Session close</h3>
                 <ul>
-                  <Row stage="close" title={`Sealed revision ${trace.close.revision ?? "—"}`} ms={trace.close.ms} model={modelName(trace.close.notes_model)}
+                  <Row stage="close" title={`Sealed revision ${trace.close.revision ?? "—"}`} ms={trace.close.ms} model={trace.close.seed ? "Seeded demo history (notes recorded earlier)" : modelName(trace.close.notes_model)}
                     detail={trace.close.notes.error ? `notes failed: ${trace.close.notes.error}`
                       : [`${trace.close.sealed ?? 0} answers`, `${trace.close.notes.kept ?? 0} cited notes`,
                         trace.close.notes.named?.length ? `${trace.close.notes.named.length} named beliefs` : "",

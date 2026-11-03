@@ -14,6 +14,7 @@ existing route and ownership check runs unchanged and nobody can reach another v
 from __future__ import annotations
 
 import json
+import logging
 import secrets
 import threading
 import time
@@ -23,8 +24,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from uuid import NAMESPACE_URL, UUID, uuid5
 
-from sqlalchemy import Column, Float, ForeignKey, String, Table, delete, insert, select, update
+from sqlalchemy import Column, Float, ForeignKey, String, Table, create_engine, delete, insert, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.pool import StaticPool
 
 from . import board_storage, image_jobs, observations, profile, study, tutor_storage
 from .consolidate import keep_cited, keep_links
@@ -50,6 +52,7 @@ viewers = Table("learning_viewer_state", metadata,
     Column("active_persona", String(32)))
 _ready: set[int] = set()
 _build_lock = threading.Lock()
+log = logging.getLogger("y.personas")
 
 
 @lru_cache(maxsize=None)
@@ -137,6 +140,29 @@ class PersonaStore:
             if conn.scalar(select(identities.c.owner_id).where(identities.c.owner_id == owner)) is None:
                 conn.execute(insert(identities).values(owner_id=owner, token_hash=digest(secrets.token_urlsafe(32)),
                                                       expires_at=expires_at))
+
+    def populate(self, owner: str, key: str, staged: bool | None = None) -> None:
+        """Build persona `key` into `owner`. On Postgres the build runs in a private in-memory SQLite and its rows
+        are copied in one transaction: the direct build makes thousands of small commits (93 s on Neon, 0.3 s on
+        SQLite). Ids are the same either way, so the copy is identical to a direct build."""
+        if not (self.engine.dialect.name != "sqlite" if staged is None else staged):
+            self.build(owner, key)
+            return
+        scratch_engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+        try:
+            scratch = CaptureStore(scratch_engine)
+            scratch.initialize()
+            PersonaStore(scratch).build(owner, key)
+            skip = {identities.name, "learning_budgets", "learning_schema", copies.name, viewers.name}
+            with scratch_engine.connect() as source, self.engine.begin() as target:
+                for table in metadata.sorted_tables:
+                    if table.name in skip:
+                        continue
+                    rows = [dict(row._mapping) for row in source.execute(select(table))]
+                    if rows:
+                        target.execute(insert(table), rows)
+        finally:
+            scratch_engine.dispose()
 
     def build(self, owner: str, key: str, now: float | None = None, notes_source=None) -> dict:
         """Build persona `key` into `owner` (idempotent). `notes_source(index, found, payload)` overrides the
@@ -248,15 +274,18 @@ class PersonaStore:
         owner = self.copy_owner(viewer, key)
         if owner is not None:
             return owner
+        started = time.perf_counter()
         self._spend(viewer)
+        spent = time.perf_counter()
         with _build_lock:
+            locked = time.perf_counter()
             owner = self.copy_owner(viewer, key)
             if owner is None:
                 owner = str(uuid5(UUID(viewer), f"persona:{key}:{secrets.token_hex(8)}"))
                 with self.engine.connect() as conn:
                     expires = conn.scalar(select(identities.c.expires_at).where(identities.c.owner_id == viewer))
                 self._identity(owner, expires or time.time() + 30 * 86400)
-                self.build(owner, key)
+                self.populate(owner, key)
                 try:
                     with self.engine.begin() as conn:
                         conn.execute(insert(copies).values(viewer_owner_id=viewer, persona=key, copy_owner_id=owner,
@@ -264,6 +293,8 @@ class PersonaStore:
                 except IntegrityError:  # another instance finished first; keep its copy, drop ours
                     self.wipe(owner, keep_identity=False)
                     owner = self.copy_owner(viewer, key)
+        log.warning("persona copy %s: budget %.2f s, lock wait %.2f s, build %.2f s", key, spent - started,
+                    locked - spent, time.perf_counter() - locked)
         return owner
 
     def activate(self, viewer: str, key: str | None) -> dict:
@@ -288,7 +319,7 @@ class PersonaStore:
         self._spend(viewer)
         with _build_lock:
             self.wipe(owner)
-            self.build(owner, key)
+            self.populate(owner, key)
         return self.listing(viewer)
 
     def name_of(self, owner: str) -> str | None:

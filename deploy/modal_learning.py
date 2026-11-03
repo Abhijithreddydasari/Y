@@ -53,7 +53,8 @@ app = modal.App("y-learning", image=image)
 secret = modal.Secret.from_name("y-learning")
 
 
-@app.function(secrets=[secret], cpu=2.0, memory=3072, timeout=180, scaledown_window=600,
+# Pinned next to Neon (AWS us-east-1): unpinned containers landed far away and each query cost ~350 ms instead of ~3 ms.
+@app.function(secrets=[secret], region="us-east", cpu=2.0, memory=3072, timeout=180, scaledown_window=600,
               min_containers=int(os.environ.get("Y_MIN_CONTAINERS", "1")), max_containers=3)
 @modal.concurrent(max_inputs=16)
 @modal.asgi_app()
@@ -67,7 +68,7 @@ def _store():
     return get_store()
 
 
-@app.function(secrets=[secret], timeout=300)
+@app.function(secrets=[secret], region="us-east", timeout=300)
 def init_db():
     """Create every table (additive) and print table names only; no learner data or URLs."""
     from sqlalchemy import inspect
@@ -85,7 +86,7 @@ def init_db():
     print(sorted(inspect(store.engine).get_table_names()))
 
 
-@app.function(secrets=[secret], timeout=600, schedule=modal.Cron("30 3 * * *"))
+@app.function(secrets=[secret], region="us-east", timeout=600, schedule=modal.Cron("30 3 * * *"))
 def sweep_expired():
     """Daily: delete persona copies whose viewer identity has expired. Logs a count only."""
     from learning.personas import PersonaStore, sweep_expired as sweep

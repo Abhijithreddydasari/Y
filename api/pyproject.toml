@@ -32,6 +32,10 @@ speech = [
 stt = [
     "moonshine-voice==0.0.69",
 ]
+# H10 offline policy evaluation (api/policy_eval); not used by the live service or the Modal image.
+policy-eval = [
+    "gepa==0.1.4",
+]
 training = [
     "datasets>=3.0",
     "sentence-transformers>=3.4",

@@ -36,8 +36,9 @@ image = (
     .env({"PYTHONPATH": "/app/api", "MOONSHINE_VOICE_CACHE": "/assets/tts", "SPEECH_CACHE_DIR": "/tmp/speech-cache",
           "SPEECH_PREFETCH": "1", "SPEECH_REQUIRE_LOCK": "0", "SPEECH_SLOTS": "2",
           "LEARNING_REQUIRE_POSTGRES": "1", "LEARNING_COOKIE_SECURE": "1", **LIMITS})
+    # The Windows-made asset lock does not match the Linux download of one voice file, so no lock ships;
+    # speech.py still rejects forbidden voice families.
     .add_local_file(str(API / "speech.py"), "/app/api/speech.py", copy=True)
-    .add_local_file(str(API / "speech_assets.lock.json"), "/app/api/speech_assets.lock.json", copy=True)
     .run_function(_bake_kokoro)
     .add_local_dir(str(API / "learning"), "/app/api/learning", ignore=["__pycache__/**", "**/*.pyc"])
     .add_local_dir(str(API / "prompts"), "/app/api/prompts")

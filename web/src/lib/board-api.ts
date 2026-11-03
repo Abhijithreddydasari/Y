@@ -1,5 +1,6 @@
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import type { Assistance } from "./board-types";
+import { ensureIdentity } from "./identity";
 import { sessionKey, setProfileKey } from "./personas";
 
 export type Actor = "human" | "model" | "system" | "unknown";
@@ -42,7 +43,7 @@ export async function boardRequest<T>(path: string, body?: unknown): Promise<T> 
 let sessionPromise: Promise<string> | null = null;
 export function boardSession(): Promise<string> {
   if (!sessionPromise) sessionPromise = (async () => {
-    const identity = await boardRequest<{ persona?: string | null }>("identity", {});
+    const identity = await ensureIdentity();
     // The server says which profile this browser acts as; each profile keeps its own board session.
     setProfileKey(identity.persona ?? null);
     let id = localStorage.getItem(sessionKey()) || crypto.randomUUID();

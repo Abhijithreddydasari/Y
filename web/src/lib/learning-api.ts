@@ -1,3 +1,4 @@
+import { ensureIdentity } from "./identity";
 export interface PracticeTask { task_id: string; prompt: string; concept_ids: string[] }
 export interface PracticePack { pack_id: string; title: string; tasks: PracticeTask[] }
 export interface CaptureObservation {
@@ -51,12 +52,8 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-// Avoid duplicate anonymous identities during React Strict Mode's effect replay.
-let identityRequest: Promise<unknown> | null = null;
-export function ensureLearningIdentity(): Promise<unknown> {
-  if (!identityRequest) identityRequest = request("identity", {}).finally(() => { identityRequest = null; });
-  return identityRequest;
-}
+// One identity per page, shared with the board (see identity.ts).
+export const ensureLearningIdentity = ensureIdentity;
 
 export const fetchPracticeCatalog = () => request<{ packs: PracticePack[] }>("catalog");
 export const createPracticeSession = (id: string) => request<{ session_id: string }>("sessions", { session_id: id });

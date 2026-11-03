@@ -6,6 +6,7 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { ensureIdentity } from "@/lib/identity";
 import { SEEN_KEY } from "./seen";
 
 const MindOverlay = dynamic(() => import("./MindOverlay"), { ssr: false });
@@ -18,7 +19,7 @@ export function useMindFresh(open: boolean): [boolean, () => void] {
     if (open) return;
     let cancelled = false;
     const check = () => {
-      fetch("/api/learning/profile", { cache: "no-store", credentials: "same-origin" })
+      ensureIdentity().then(() => fetch("/api/learning/profile", { cache: "no-store", credentials: "same-origin" }))
         .then((r) => (r.ok ? r.json() : null))
         .then((body: { revision?: { revision?: number } | null } | null) => {
           let seen = 0;

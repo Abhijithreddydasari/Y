@@ -4,6 +4,9 @@ Local: uvicorn learning.app:app --env-file ../.env --port 8101
 The existing main.app also mounts the same router.
 """
 import asyncio
+import hmac
+import json
+import os
 from contextlib import asynccontextmanager
 
 import httpx
@@ -26,7 +29,28 @@ async def lifespan(app):
         yield
         warm.cancel()
 
+class ProxyOnly:
+    """With LEARNING_PROXY_SECRET set (production), only the same-origin web proxy may call the API; /health stays
+    open. Plain ASGI rather than BaseHTTPMiddleware, so streamed turns and client cancellation pass through untouched."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        secret = os.environ.get("LEARNING_PROXY_SECRET", "").encode()
+        if scope["type"] == "http" and secret and scope["path"] != "/health":
+            sent = dict(scope["headers"]).get(b"x-y-proxy-secret", b"")
+            if not hmac.compare_digest(sent, secret):
+                body = json.dumps({"detail": "proxy_required"}).encode()
+                await send({"type": "http.response.start", "status": 403,
+                            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]})
+                await send({"type": "http.response.body", "body": body})
+                return
+        await self.app(scope, receive, send)
+
+
 app = FastAPI(title="Y learning capture", version="0.2.0", lifespan=lifespan)
+app.add_middleware(ProxyOnly)
 app.include_router(router)
 app.include_router(board_router)
 app.include_router(tutor_router)

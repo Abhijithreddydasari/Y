@@ -80,3 +80,6 @@ HACKATHON_PLAN.md
 
 # Generated dependency inventory (recreate with api/scripts/generate_sbom.py)
 /sbom.spdx.json
+
+# Deployment secrets (H9)
+deploy/.env.modal

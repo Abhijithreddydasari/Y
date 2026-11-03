@@ -71,7 +71,9 @@ def env(tmp_path, monkeypatch):
     app.include_router(voice.router)
     app.dependency_overrides[get_store] = lambda: capture
     app.dependency_overrides[voice.get_transcriber] = transcriber
-    monkeypatch.setattr(voice, "_recent", voice.collections.defaultdict(voice.collections.deque))
+    cloud = {"speech": voice.DeepgramSpeech(httpx.AsyncClient(), api_key="")}
+    app.dependency_overrides[voice.get_cloud_speech] = lambda: cloud["speech"]
+    app.state.cloud = cloud
     client = TestClient(app)
     client.cookies.set(COOKIE, token)
     yield client, capture, owner, sid, provider, holder
@@ -218,3 +220,63 @@ def test_speech_unavailable_is_503(env, monkeypatch):
     monkeypatch.setattr(voice, "get_speech_engine", lambda: FakeEngine(available=False))
     response = client.post("/learning/speech", json={"text": "hello"})
     assert (response.status_code, response.json()["detail"]) == (503, "speech_unavailable")
+
+
+def deepgram(reply):
+    """A DeepgramSpeech over a scripted transport; returns (speech, requests)."""
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return reply(request)
+    return voice.DeepgramSpeech(httpx.AsyncClient(transport=httpx.MockTransport(handler)), api_key="dg-test"), requests
+
+
+def test_speech_prefers_deepgram_and_maps_the_voice(env, monkeypatch):
+    client, *_ = env
+    engine = FakeEngine()
+    monkeypatch.setattr(voice, "get_speech_engine", lambda: engine)
+    speech, requests = deepgram(lambda request: httpx.Response(200, content=wav(0.3, 24_000)))
+    client.app.state.cloud["speech"] = speech
+    response = client.post("/learning/speech", json={"text": "Look at the board.", "voice": "kokoro_am_michael"})
+    assert response.status_code == 200 and response.headers["x-speech-engine"] == "deepgram"
+    # The browser checks the served voice against the requested picker id.
+    assert response.headers["x-speech-voice"] == "kokoro_am_michael" and response.content[:4] == b"RIFF"
+    sent = requests[0]
+    assert sent.url.params["model"] == "aura-2-apollo-en" and sent.url.params["container"] == "wav"
+    assert sent.headers["authorization"] == "Token dg-test" and json.loads(sent.content) == {"text": "Look at the board."}
+    assert engine.calls == []
+
+
+@pytest.mark.parametrize("reply", [lambda r: httpx.Response(500), lambda r: httpx.Response(200, content=b"not audio"),
+                                   lambda r: (_ for _ in ()).throw(httpx.ReadTimeout("slow"))])
+def test_deepgram_failure_falls_back_to_kokoro(env, monkeypatch, reply):
+    client, *_ = env
+    engine = FakeEngine()
+    monkeypatch.setattr(voice, "get_speech_engine", lambda: engine)
+    client.app.state.cloud["speech"] = deepgram(reply)[0]
+    response = client.post("/learning/speech", json={"text": "hello", "voice": "kokoro_af_heart"})
+    assert response.status_code == 200 and response.headers["x-speech-engine"] == "kokoro"
+    assert len(engine.calls) == 1
+
+
+def test_speech_budget_past_the_cap_uses_kokoro_without_a_paid_call(env, monkeypatch):
+    client, *_ = env
+    engine = FakeEngine()
+    monkeypatch.setattr(voice, "get_speech_engine", lambda: engine)
+    monkeypatch.setattr(voice, "HOURLY_SPEECH", 1)
+    speech, requests = deepgram(lambda request: httpx.Response(200, content=wav(0.3, 24_000)))
+    client.app.state.cloud["speech"] = speech
+    engines = [client.post("/learning/speech", json={"text": f"line {i}"}).headers["x-speech-engine"] for i in range(2)]
+    assert engines == ["deepgram", "kokoro"] and len(requests) == 1
+
+
+def test_transcription_budget_is_shared_across_instances(env, monkeypatch):
+    """The cap lives in the database, so a second API process sees the same count."""
+    client, capture, owner, sid, provider, _ = env
+    monkeypatch.setattr(voice, "HOURLY_TRANSCRIPTIONS", 1)
+    assert post(client, sid, wav()).status_code == 200
+    from learning.storage import StoreError
+    with pytest.raises(StoreError) as caught:
+        capture.charge("transcribe", owner, 1, 600)
+    assert caught.value.code == "transcribe_budget_exhausted"

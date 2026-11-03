@@ -340,6 +340,21 @@ class PersonaStore:
                 conn.execute(delete(identities).where(identities.c.owner_id == owner))
 
 
+def sweep_expired(store: PersonaStore, now: float | None = None, cap: int = 200) -> int:
+    """Delete the persona copies of viewers whose identity has expired (daily cron); returns how many went."""
+    now = now or time.time()
+    with store.engine.connect() as conn:
+        rows = conn.execute(select(copies.c.viewer_owner_id, copies.c.copy_owner_id)
+                            .join(identities, identities.c.owner_id == copies.c.viewer_owner_id)
+                            .where(identities.c.expires_at < now).limit(cap)).all()
+    for viewer, copy in rows:
+        with store.engine.begin() as conn:
+            conn.execute(delete(copies).where(copies.c.copy_owner_id == copy))
+            conn.execute(delete(viewers).where(viewers.c.viewer_owner_id == viewer))
+        store.wipe(copy, keep_identity=False)
+    return len(rows)
+
+
 def summary(store: PersonaStore, owner: str) -> dict:
     """What a built persona shows: revisions, beliefs, ledger, links and due reviews (seed script, tests)."""
     revision, _ = store.profiles.latest(owner)

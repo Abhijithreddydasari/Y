@@ -83,9 +83,9 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
       style={position}
       className={docked
         ? variant === "mobile"
-          ? "pointer-events-auto fixed bottom-[calc(16.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-[55] max-h-[45dvh] overflow-y-auto rounded-2xl border border-violet-200 bg-white/97 p-3 shadow-xl"
-          : "pointer-events-auto fixed bottom-36 left-1/2 z-40 w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-violet-200 bg-white/97 p-3 shadow-xl"
-        : "pointer-events-auto fixed z-40 rounded-2xl border border-violet-200 bg-white/97 p-3 shadow-xl"}
+          ? "pointer-events-auto fixed bottom-[calc(16.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-[55] max-h-[45dvh] overflow-y-auto y-glass-strong rounded-2xl p-3 ring-1 ring-violet-200/70"
+          : "pointer-events-auto fixed bottom-36 left-1/2 z-40 w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 y-glass-strong rounded-2xl p-3 ring-1 ring-violet-200/70"
+        : "pointer-events-auto fixed z-40 y-glass-strong rounded-2xl p-3 ring-1 ring-violet-200/70"}
     >
       {question.origin && (
         <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-violet-500">

@@ -11,6 +11,7 @@ import type {
 } from "@excalidraw/excalidraw/element/types";
 import type { InterfaceMode } from "@/lib/interface-mode";
 import { BoardController } from "@/lib/board-controller";
+import { installFrameProbe } from "@/lib/frame-probe";
 import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/WidgetHost";
 import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
@@ -232,6 +233,9 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       return new DOMRect(x, y, w, h);
     },
   }), []);
+
+  // `?fps=1` frame-time probe and `?glass=0` opaque chrome, for the glass performance check.
+  useEffect(() => installFrameProbe(window.location.search), []);
 
   useEffect(() => {
     if (loaded && apiRef.current && onReady) {

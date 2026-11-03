@@ -44,7 +44,7 @@ export default function MindButton({ variant = "studio" }: { variant?: "studio" 
         </button>
       ) : (
         <button type="button" aria-label={label} onPointerEnter={preload} onFocus={preload} onTouchStart={preload} onClick={() => setOpen(true)}
-          className="pointer-events-auto fixed left-3 top-[64px] z-40 flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-2.5 text-[12px] font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:bg-slate-50 motion-reduce:transition-none">
+          className="pointer-events-auto fixed left-3 top-[64px] z-40 flex h-9 items-center gap-1.5 y-glass rounded-xl px-2.5 text-[12px] font-semibold text-slate-700 transition hover:bg-white motion-reduce:transition-none">
           {icon}<span>Mind</span>{fresh && <span className="h-2 w-2 rounded-full bg-amber-300" aria-hidden="true" />}
         </button>
       )}

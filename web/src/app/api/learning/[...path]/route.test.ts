@@ -116,5 +116,7 @@ describe("learning proxy boundary", () => {
     await GET(new NextRequest(`https://y.test/api/learning/profile?q=${"a".repeat(300)}&x=1`), context("profile"));
     expect(fetcher.mock.calls[2][0]).toMatch(/\/learning\/profile\?q=a{200}$/);
     expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/close/x`))).status).toBe(404);
+    expect((await GET(new NextRequest("https://y.test/api/learning/x"), context(`sessions/${sid}/trace`))).status).toBe(200);
+    expect(fetcher.mock.calls[3][0]).toContain(`/learning/sessions/${sid}/trace`);
   });
 });

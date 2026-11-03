@@ -128,6 +128,39 @@ body {
   }
 }
 
+/* Glass chrome for small fixed controls only (toolbar, composer, pills, cards, drawer). The board,
+ * ink, equations and widgets stay opaque; blur never covers a full-screen layer. A modest radius
+ * keeps the compositor cost low while the canvas repaints underneath (measured in H8). */
+.y-glass,
+.y-glass-strong {
+  background: rgba(255, 255, 255, .74);
+  border: 1px solid rgba(255, 255, 255, .7);
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, .07), 0 1px 0 rgba(255, 255, 255, .8) inset, 0 12px 32px rgba(15, 23, 42, .12);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+/* Text a learner must read (a question, its options) sits on a near-opaque pane. */
+.y-glass-strong { background: rgba(255, 255, 255, .9); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .y-glass, .y-glass-strong { background: #fff; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .y-glass, .y-glass-strong { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* `?glass=0` (the frame-time comparison) and the opaque fallback use the same surface. */
+:root[data-glass="off"] .y-glass,
+:root[data-glass="off"] .y-glass-strong { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Reduced motion: every app transition and animation ends at once on its final state. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Landing page helpers ported from the original HTML mockup. Scoped to the
  * landing components by class so the whiteboard app is unaffected. */
 

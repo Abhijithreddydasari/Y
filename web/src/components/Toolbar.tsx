@@ -76,7 +76,7 @@ export default function Toolbar({
 
   return (
     <div className="pointer-events-none absolute right-3 top-20 z-30 min-[1100px]:right-4 min-[1100px]:top-4">
-      <div className="pointer-events-auto w-[260px] rounded-2xl border border-slate-200/80 bg-white/95 p-3 shadow-[0_14px_45px_rgba(15,23,42,.14)] backdrop-blur-xl">
+      <div className="pointer-events-auto w-[260px] y-glass rounded-2xl p-3">
         <div className="flex items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 font-black text-slate-950">Y</span>
           <div className="min-w-0 flex-1">

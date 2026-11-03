@@ -327,6 +327,14 @@ export class LessonPlayer {
     this.drawChain = this.drawChain.then(() => this.playOne(tag));
   }
 
+  /** Run a board step in stream order (a pointing ring), skipped after Stop; its ids join the final fit. */
+  enqueueStep(step: () => Promise<string[]>): void {
+    this.drawChain = this.drawChain.then(async () => {
+      if (this.signal?.aborted) return;
+      try { this.renderedIds.push(...await step()); } catch { /* a ring that cannot be placed never stops the lesson */ }
+    });
+  }
+
   /**
    * Resolve once every queued primitive has finished playing. Lockstep pacing includes speech; segment
    * pacing closes the last segment and returns with its narration still playing (see finishNarration).

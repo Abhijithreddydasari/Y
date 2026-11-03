@@ -11,7 +11,8 @@ import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 import { boardSession, startNextBoardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
-import { cardId, closeSession, fetchReview, fetchSessionStatus, fetchTutorState, moveToPrimitive, questionOf, requestHint,
+import { belowCard, drawPoint } from "@/lib/board-pointing";
+import { cardId, closeSession, fetchReview, fetchSessionStatus, fetchTutorState, moveToPrimitive, pointId, questionOf, requestHint,
   setSessionMemory, streamTutorTurn, tutorErrorMessage, type CloseSummary, type Hint, type ReviewItem, type TurnBody,
   type TurnMemory, type TutorQuestion, type TutorTimeline, composerAnswer } from "@/lib/tutor-turn";
 import { pendingImages, watchImage } from "@/lib/board-images";
@@ -586,14 +587,16 @@ export function useTutorSession(): TutorSession {
     tutorAbortRef.current = controller;
     const started = performance.now();
     const stages: TutorTimeline = {};
-    let asked: TutorQuestion | null = null, accepted = false, moved = false;
+    let asked: TutorQuestion | null = null, accepted = false, moved = false, turnId = body.turn_id;
     const previous = question;
     try {
       const prepared = await board.prepare(undefined, true, false);
       stages.prepare_ms = performance.now() - started;
       const view = prepared.request.viewport;
-      // A blank board starts inside the view; otherwise the builder's area beside the work.
-      const origin = prepared.packet.focused.length ? prepared.packet.response_area : { x: view.x + Math.min(120, view.w * 0.1), y: view.y + 100 };
+      // Feedback goes under the answered card when that space is free; a blank board starts inside the view;
+      // otherwise the builder's area beside the work.
+      const beside = body.kind === "answer" && body.question_id ? belowCard(handle.getElements(), cardId(body.question_id)) : null;
+      const origin = beside ?? (prepared.packet.focused.length ? prepared.packet.response_area : { x: view.x + Math.min(120, view.w * 0.1), y: view.y + 100 });
       // The board is written at board speed; each segment's `say` is spoken once its visuals are drawn.
       const player = new LessonPlayer({ origin, handle, ttsEnabled: true, voiceName: voiceRef.current, onNarratingChange: setNarrating,
         browserOnly: prefsRef.current.voice === "browser",
@@ -608,11 +611,13 @@ export function useTutorSession(): TutorSession {
       setStatus("Thinking…");
       const model = tutorOptions ? { model: prefsRef.current.model } : {};
       await streamTutorTurn(board.session, { ...body, ...model, board: prepared.request }, {
-        onTurn: () => { accepted = true; if (body.kind === "question") setDraft(""); else setQuestion(null); onAccepted?.(); },
-        onMove: (move) => {
+        onTurn: (value) => { turnId = value.turn_id; accepted = true; if (body.kind === "question") setDraft(""); else setQuestion(null); onAccepted?.(); },
+        onMove: (move, index) => {
           stages.first_move_ms ??= performance.now() - started;
           moved = true;
           if (move.type === "say") { player.say(move.text); return; }
+          // A ring on the learner's own ink, drawn in stream order before the explanation that follows it.
+          if (move.type === "point") { player.enqueueStep(() => drawPoint(handle, move, pointId(turnId, index))); return; }
           if (move.type === "seg") player.beginSegment();
           asked = questionOf(move) ?? asked;
           const tag = moveToPrimitive(move);

@@ -27,7 +27,7 @@ export default function MobileShell({ session, interfaceMode }: Props) {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-40" data-interface="mobile">
-      <header className="pointer-events-auto fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/95 px-3 pb-2 pt-[calc(.55rem+env(safe-area-inset-top))] shadow-sm backdrop-blur-xl">
+      <header className="pointer-events-auto fixed inset-x-0 top-0 z-50 y-glass border-x-0 border-t-0 px-3 pb-2 pt-[calc(.55rem+env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-amber-400 text-lg font-black text-slate-950">Y</span>
           <div className="min-w-0 flex-1">
@@ -51,7 +51,7 @@ export default function MobileShell({ session, interfaceMode }: Props) {
       <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} variant="mobile" question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
         hints={session.tutor.hints.given} hintBusy={session.tutor.hints.busy} onHint={session.tutor.hints.next} />
 
-      <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/96 px-3 pb-[calc(.65rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_36px_rgba(15,23,42,.12)] backdrop-blur-xl">
+      <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-50 y-glass border-x-0 border-b-0 px-3 pb-[calc(.65rem+env(safe-area-inset-bottom))] pt-2">
         <div className="mx-auto mb-2 max-w-md">
           <TutorComposer variant="mobile" tutor={session.tutor} blocked={session.busy && !session.tutor.busy} onStop={session.stop} />
         </div>

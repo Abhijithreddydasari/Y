@@ -1,6 +1,7 @@
 "use client";
 
 import MicButton from "@/components/MicButton";
+import TraceButton from "@/components/trace/TraceButton";
 import TutorPicker from "@/components/TutorPicker";
 import type { TutorTurnState } from "@/hooks/useTutorSession";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
@@ -27,7 +28,7 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
     <div className={variant === "mobile" ? "w-full" : "pointer-events-auto fixed bottom-4 left-1/2 z-40 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2"}
       data-testid="tutor-composer">
       {(tutor.caption || notice) && (
-        <p className={`mb-1.5 rounded-xl px-3 py-1.5 text-xs shadow-sm ${notice ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "bg-white/95 text-slate-600 ring-1 ring-slate-200"}`}
+        <p className={`mb-1.5 rounded-xl px-3 py-1.5 text-xs shadow-sm ${notice ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "y-glass text-slate-600"}`}
           role={notice ? "alert" : "status"}>
           {notice || `Y: ${tutor.caption}`}
         </p>
@@ -68,17 +69,18 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
             Using {tutor.memory.turn.items.length} item{tutor.memory.turn.items.length === 1 ? "" : "s"} from earlier sessions
           </span>
         ) : null}
-        <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-white/95 px-2.5 py-1 text-slate-600 shadow-sm ring-1 ring-slate-200">
+        <label className="flex cursor-pointer items-center gap-1.5 y-glass rounded-full px-2.5 py-1 text-slate-600">
           <input type="checkbox" role="switch" aria-label="Memory" checked={tutor.memory.on} disabled={tutor.busy}
             onChange={(event) => tutor.memory.set(event.target.checked)} className="accent-indigo-600" />
           Memory {tutor.memory.on ? "on" : "off"}
         </label>
         <button type="button" onClick={tutor.endSession} disabled={tutor.busy || tutor.ending || unavailable}
-          className="rounded-full bg-white/95 px-2.5 py-1 font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 disabled:opacity-40">
+          className="y-glass rounded-full px-2.5 py-1 font-semibold text-slate-700 disabled:opacity-40">
           {tutor.ending ? "Saving…" : "End session"}
         </button>
+        <TraceButton timing={tutor.timing} />
       </div>
-      <form className="relative flex items-end gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-[0_14px_45px_rgba(15,23,42,.14)] backdrop-blur-xl"
+      <form className="relative flex items-end gap-2 y-glass rounded-2xl p-2"
         onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <textarea
           aria-label="Ask the tutor"

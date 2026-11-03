@@ -2,6 +2,7 @@ import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from "@excalidraw
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
 import { boardRequest, boardSession, BoardError, type Actor, type Batch, type BoardEdit, type BoardState, type ContextRequest, type Packet, type Rect, type Region } from "./board-api";
 import { readDraft, writeDraft } from "./board-outbox";
+import { isPointElement } from "./board-pointing";
 import type { Assistance } from "./board-types";
 
 const empty: BoardState = { revision: 0, records: {}, viewport: null, regions: [], active_region: null };
@@ -262,6 +263,8 @@ export class BoardController {
     if (!this.validSource(this.generationSource)) throw new Error("Your question changed; ask again with the updated board.");
     const area = this.generationArea;
     for (const e of elements) {
+      // A pointing ring belongs on the learner's work, outside the response area; it never covers ink (no fill).
+      if (isPointElement(e) && [e.x, e.y, e.width, e.height].every(Number.isFinite)) continue;
       if (![e.x, e.y, e.width, e.height].every(Number.isFinite) || e.x < area.x || e.y < area.y ||
           e.x + Math.abs(e.width) > area.x + area.w || e.y + Math.abs(e.height) > area.y + area.h) throw new Error("The tutor response exceeded its drawing area. Completed work is saved.");
     }

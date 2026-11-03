@@ -38,7 +38,7 @@ export default function CanvasList({ variant = "studio" }: { variant?: "studio" 
       <button type="button" onClick={() => { setError(""); setCanvases(null); setOpen(true); }} aria-label="Canvases: saved sessions"
         className={variant === "mobile"
           ? "min-h-12 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700"
-          : "pointer-events-auto fixed left-3 top-[108px] z-40 flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white/95 px-2.5 text-[12px] font-semibold text-slate-700 shadow-sm backdrop-blur hover:bg-slate-50"}>
+          : "pointer-events-auto fixed left-3 top-[108px] z-40 flex h-9 items-center gap-1.5 y-glass rounded-xl px-2.5 text-[12px] font-semibold text-slate-700 hover:bg-white"}>
         <svg aria-hidden="true" viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.4">
           <rect x="2" y="3" width="9" height="9" rx="1.5" /><path d="M5 1.5h8.5a1 1 0 0 1 1 1V11" />
         </svg>

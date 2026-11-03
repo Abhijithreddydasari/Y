@@ -76,7 +76,7 @@ export default function TutorPicker({ options, prefs, trace, onModel, onVoice, c
       </button>
       {open && (
         <div id={menuId} role="menu" aria-label="Tutor and voice"
-          className="absolute bottom-full right-0 z-50 mb-2 w-[min(18rem,100%)] rounded-2xl border border-slate-200 bg-white/95 p-1 shadow-[0_18px_50px_rgba(15,23,42,.18)] backdrop-blur-xl">
+          className="absolute bottom-full right-0 z-50 mb-2 w-[min(18rem,100%)] y-glass-strong rounded-2xl p-1">
           <Group title="Tutor" items={options.models} value={prefs.model} onPick={(id) => { onModel(id); setOpen(false); }} />
           <div className="mx-3 border-t border-slate-100" />
           <Group title="Voice" items={options.voices} value={prefs.voice} onPick={(id) => { onVoice(id); setOpen(false); }} />

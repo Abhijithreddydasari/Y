@@ -61,6 +61,12 @@ export function startNextBoardSession(): void {
   sessionPromise = null;
 }
 
+/** Resume a saved session (Canvas): it becomes the board session on the next load. */
+export function openBoardSession(id: string): void {
+  localStorage.setItem("y_board_session_v1", id);
+  sessionPromise = null;
+}
+
 /** Read an SSE body frame by frame; a handler may throw to stop reading. */
 export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (event: string, value: unknown) => void): Promise<void> {
   const reader = body.getReader(), decoder = new TextDecoder();

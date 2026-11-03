@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import MicButton from "@/components/MicButton";
 import type { TutorAnswer } from "@/hooks/useTutorSession";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
-import type { TutorQuestion } from "@/lib/tutor-turn";
+import type { Hint, TutorQuestion } from "@/lib/tutor-turn";
 import { matchOption } from "@/lib/voice-input";
 
 interface Props {
@@ -16,14 +16,21 @@ interface Props {
   /** The learner started speaking: silence the narration. */
   onListen?: () => void;
   variant?: "studio" | "mobile";
+  /** Hint ladder: rungs given so far, and a request for the next (1 nudge, 2 worked step). */
+  hints?: Hint[];
+  hintBusy?: boolean;
+  onHint?: () => void;
 }
+
+const HINT_LABELS = ["Hint", "Show a step"];
 
 const WIDTH = 360;
 /** Room kept free at the bottom for the composer and its caption line. */
 const COMPOSER_CLEARANCE = 164;
 
 /** Answer controls for the waiting predict/check, placed under its card on the board. Key it by qid to reset. */
-export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, onListen, variant = "studio" }: Props) {
+export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, onListen, variant = "studio", hints = [],
+  hintBusy = false, onHint }: Props) {
   const [choice, setChoice] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
@@ -80,6 +87,11 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
           : "pointer-events-auto fixed bottom-36 left-1/2 z-40 w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 rounded-2xl border border-violet-200 bg-white/97 p-3 shadow-xl"
         : "pointer-events-auto fixed z-40 rounded-2xl border border-violet-200 bg-white/97 p-3 shadow-xl"}
     >
+      {question.origin && (
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-violet-500">
+          {question.origin === "review" ? "Warm-up from last time" : "Exit ticket"}
+        </p>
+      )}
       {docked && <p className="mb-2 text-sm font-medium text-slate-900">{question.q}</p>}
       {free ? (
         <textarea aria-label="Your answer" value={text} onChange={(event) => setText(event.target.value)} rows={2} maxLength={2000}
@@ -100,6 +112,15 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
           onChange={(event) => setConfidence(Number(event.target.value))} className="flex-1 accent-violet-600" />
         <span className="w-12 text-right tabular-nums">{confidence === null ? "—" : `${confidence}%`}</span>
       </label>
+      {hints.length > 0 && (
+        <ol className="mt-2 space-y-1" aria-label="Hints" data-testid="hints">
+          {hints.map((hint) => (
+            <li key={hint.level} className="rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-900 ring-1 ring-amber-200">
+              <span className="mr-1 font-semibold">{hint.level === 1 ? "Nudge:" : "Step:"}</span>{hint.text}
+            </li>
+          ))}
+        </ol>
+      )}
       {(heard || voice.error) && (
         <p role="status" className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-800">
           {voice.error || `Heard "${heard}". Tap the option you mean.`}
@@ -108,6 +129,12 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
       <div className="mt-2 flex items-center justify-between gap-2">
         <button type="button" disabled={busy} onClick={() => onAnswer({ reveal: true, confidence: null })}
           className="text-xs font-medium text-slate-500 underline-offset-2 hover:underline disabled:opacity-40">Just tell me</button>
+        {onHint && hints.length < HINT_LABELS.length && (
+          <button type="button" disabled={busy || hintBusy} onClick={onHint}
+            className="min-h-9 rounded-xl border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 disabled:opacity-40">
+            {hintBusy ? "Thinking…" : HINT_LABELS[hints.length]}
+          </button>
+        )}
         <MicButton voice={voice} disabled={busy} label={free ? "Hold to answer by voice" : "Hold and say a letter or an option"} className="ml-auto min-h-9 min-w-9" />
         <button type="button" disabled={!ready} onClick={() => onAnswer(free ? { text: text.trim(), confidence } : { choice: choice!, confidence })}
           className="min-h-9 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white disabled:opacity-40">Submit</button>

@@ -80,8 +80,64 @@ function tutor(overrides: Partial<TutorTurnState> = {}): TutorTurnState {
     setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, hush: vi.fn(),
     picker: { options: null, prefs: { model: "spark-1.3", voice: "kokoro_af_heart" }, trace: null, setModel: vi.fn(), setVoice: vi.fn() },
     memory: { on: true, set: vi.fn(), turn: null }, endSession: vi.fn(), ending: false,
+    warmup: { items: [], visible: false, started: false, start: vi.fn(), skip: vi.fn() },
+    exit: { offered: false, take: vi.fn(), skip: vi.fn() },
+    hints: { given: [], busy: false, next: vi.fn() }, sealed: false, newSession: vi.fn(),
     ...overrides };
 }
+
+describe("Study loop (H7)", () => {
+  const due = { concept: "attention.softmax", reason: "misconception" as const, q: "What does softmax do?", retention: 1, mean: 0.4 };
+
+  it("offers a warm-up that can be started or skipped and hides it while a card waits", () => {
+    const state = tutor({ warmup: { items: [due], visible: true, started: false, start: vi.fn(), skip: vi.fn() } });
+    const { rerender } = render(<TutorComposer tutor={state} onStop={vi.fn()} />);
+    expect(screen.getByTestId("warmup")).toHaveTextContent("Warm-up · 1 due from last time");
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
+    expect(state.warmup.start).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    expect(state.warmup.skip).toHaveBeenCalled();
+    rerender(<TutorComposer tutor={{ ...state, question: mcq }} onStop={vi.fn()} />);
+    expect(screen.queryByTestId("warmup")).toBeNull();
+    // Asking stays possible whatever the warm-up shows.
+    expect(screen.getByRole("textbox", { name: "Ask the tutor" })).not.toBeDisabled();
+  });
+
+  it("offers the exit ticket or a plain end", () => {
+    const state = tutor({ exit: { offered: true, take: vi.fn(), skip: vi.fn() } });
+    render(<TutorComposer tutor={state} onStop={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Take it" }));
+    expect(state.exit.take).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Just end" }));
+    expect(state.exit.skip).toHaveBeenCalled();
+  });
+
+  it("explains a sealed canvas and offers a new session", () => {
+    const state = tutor({ sealed: true });
+    render(<TutorComposer tutor={state} onStop={vi.fn()} />);
+    expect(screen.getByRole("textbox", { name: "Ask the tutor" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "Ask the tutor" })).toHaveAttribute("placeholder", "This canvas is sealed. Start a new session to ask.");
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    expect(state.newSession).toHaveBeenCalled();
+  });
+
+  it("climbs the hint ladder on the card, then leaves the reveal to Just tell me", () => {
+    const onHint = vi.fn();
+    const { rerender } = render(<TutorQuestionCard question={{ ...mcq, origin: "review" }} busy={false} cardRect={() => null}
+      onAnswer={vi.fn()} hints={[]} onHint={onHint} />);
+    expect(screen.getByText("Warm-up from last time")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hint" }));
+    expect(onHint).toHaveBeenCalledTimes(1);
+    rerender(<TutorQuestionCard question={mcq} busy={false} cardRect={() => null} onAnswer={vi.fn()} onHint={onHint}
+      hints={[{ level: 1, text: "Look at the exponent." }]} />);
+    expect(screen.getByTestId("hints")).toHaveTextContent("Nudge:Look at the exponent.");
+    fireEvent.click(screen.getByRole("button", { name: "Show a step" }));
+    rerender(<TutorQuestionCard question={mcq} busy={false} cardRect={() => null} onAnswer={vi.fn()} onHint={onHint}
+      hints={[{ level: 1, text: "Look at the exponent." }, { level: 2, text: "e^2 is about 7.4." }]} />);
+    expect(screen.queryByRole("button", { name: /Hint|Show a step/ })).toBeNull();
+    expect(screen.getByRole("button", { name: "Just tell me" })).toBeInTheDocument();
+  });
+});
 
 describe("Memory and End session", () => {
   it("toggles memory, shows what the brief contributed and ends the session", () => {

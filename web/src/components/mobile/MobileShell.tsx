@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import CanvasList from "@/components/CanvasList";
 import ChatPanel from "@/components/ChatPanel";
 import CheckpointCard from "@/components/CheckpointCard";
 import MindButton from "@/components/constellation/MindButton";
@@ -47,7 +48,8 @@ export default function MobileShell({ session, interfaceMode }: Props) {
 
       <CheckpointCard variant="mobile" checkpoint={session.checkpoint} evidence={session.lastEvidence} />
 
-      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} variant="mobile" question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush} />
+      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} variant="mobile" question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
+        hints={session.tutor.hints.given} hintBusy={session.tutor.hints.busy} onHint={session.tutor.hints.next} />
 
       <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/96 px-3 pb-[calc(.65rem+env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_36px_rgba(15,23,42,.12)] backdrop-blur-xl">
         <div className="mx-auto mb-2 max-w-md">
@@ -98,6 +100,7 @@ export default function MobileShell({ session, interfaceMode }: Props) {
               <button type="button" onClick={session.toggleTts} className={`min-h-12 rounded-xl border text-sm font-semibold ${session.ttsEnabled ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-slate-200 text-slate-700"}`}>Narration {session.ttsEnabled ? "on" : "off"}</button>
               <button type="button" onClick={session.replay} disabled={!session.hasReplay || session.busy} className="min-h-12 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700 disabled:opacity-40">Replay lesson</button>
               <button type="button" onClick={() => interfaceMode.setMode("studio")} className="min-h-12 rounded-xl border border-indigo-200 bg-indigo-50 text-sm font-semibold text-indigo-700">Open Studio UI</button>
+              <CanvasList variant="mobile" />
               <button type="button" onClick={interfaceMode.useAutomaticMode} className="min-h-12 rounded-xl border border-slate-200 text-sm font-semibold text-slate-700">Use device default</button>
             </div>
             <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500">Mobile Demo keeps the same lesson, learner profile, and canvas as Studio. Only the controls change.</p>

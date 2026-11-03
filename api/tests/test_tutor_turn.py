@@ -125,7 +125,7 @@ def test_question_streams_moves_in_order_and_waits_without_leaking_the_key(env):
     assert done["status"] == "waiting" and done["question"]["qid"] == card["qid"]
     assert "first_move_ms" in done["timing"]
     state = client.get(f"/learning/sessions/{sid}/tutor").json()
-    assert state["open"] == {"qid": card["qid"], "kind": "mcq", "q": CHECK["q"], "options": CHECK["options"]}
+    assert state["open"] == {"qid": card["qid"], "kind": "mcq", "q": CHECK["q"], "options": CHECK["options"], "hints": []}
     assert state["turns"][0]["status"] == "waiting" and state["turns"][0]["goals"] == [SEG["goal"]]
 
 

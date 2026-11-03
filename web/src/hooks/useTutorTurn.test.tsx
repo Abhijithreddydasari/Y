@@ -10,6 +10,10 @@ const mocks = vi.hoisted(() => ({
   enqueued: [] as { tag: string; args: Record<string, unknown> }[],
   voice: [] as string[],
   fetchTutorOptions: vi.fn(),
+  fetchReview: vi.fn(),
+  fetchSessionStatus: vi.fn(),
+  closeSession: vi.fn(),
+  requestHint: vi.fn(),
 }));
 
 vi.mock("@/lib/api", () => ({ fetchHealth: vi.fn().mockResolvedValue(null), fetchLearner: vi.fn().mockResolvedValue(null),
@@ -17,7 +21,8 @@ vi.mock("@/lib/api", () => ({ fetchHealth: vi.fn().mockResolvedValue(null), fetc
 vi.mock("@/lib/tts", () => ({ cancelSpeech: vi.fn() }));
 vi.mock("@/lib/board-api", async (original) => ({ ...await original<object>(), boardSession: vi.fn().mockResolvedValue("sid") }));
 vi.mock("@/lib/tutor-turn", async (original) => ({ ...await original<object>(),
-  fetchTutorState: mocks.fetchTutorState, streamTutorTurn: mocks.streamTutorTurn }));
+  fetchTutorState: mocks.fetchTutorState, streamTutorTurn: mocks.streamTutorTurn, fetchReview: mocks.fetchReview,
+  fetchSessionStatus: mocks.fetchSessionStatus, closeSession: mocks.closeSession, requestHint: mocks.requestHint }));
 vi.mock("@/lib/tutor-options", async (original) => ({ ...await original<object>(), fetchTutorOptions: mocks.fetchTutorOptions }));
 vi.mock("@/lib/lesson-player", () => ({
   LessonPlayer: class {
@@ -66,7 +71,86 @@ describe("tutor turn flow", () => {
     mocks.voice.length = 0;
     mocks.fetchTutorState.mockResolvedValue({ configured: true, model: "m", open: null, turns: [] });
     mocks.fetchTutorOptions.mockResolvedValue(null);
+    mocks.fetchReview.mockResolvedValue([]);
+    mocks.fetchSessionStatus.mockResolvedValue({ memory: true, status: "open" });
+    mocks.closeSession.mockReturnValue(new Promise(() => {}));  // a real close reloads the page
     window.localStorage.clear();
+  });
+
+  it("runs warm-up → answer → hint → exit ticket → close without dead ends", async () => {
+    const due = { concept: "attention.softmax", reason: "misconception", q: question.q, retention: 1, mean: 0.4 };
+    mocks.fetchReview.mockResolvedValue([due]);
+    const { result } = renderHook(() => useTutorSession());
+    act(() => result.current.onWhiteboardReady(board()));
+    await waitFor(() => expect(result.current.tutor.warmup.visible).toBe(true));
+
+    const review = { ...question, origin: "review" as const };
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => {
+      h.onTurn?.({ turn_id: "t1", outcome: null });
+      h.onMove({ type: "check", kind: "mcq", q: question.q, options: question.options, qid: question.qid }, 1);
+      h.onDone({ status: "waiting", question: review });
+    }));
+    await act(async () => { result.current.tutor.warmup.start(); });
+    expect(mocks.streamTutorTurn.mock.calls[0][1]).toMatchObject({ kind: "review", concept: "attention.softmax" });
+    await waitFor(() => expect(result.current.tutor.question?.origin).toBe("review"));
+    expect(result.current.tutor.warmup.items).toEqual([]);
+
+    // Hint ladder on the open card.
+    mocks.requestHint.mockResolvedValueOnce([{ level: 1, text: "Nudge." }]);
+    await act(async () => { result.current.tutor.hints.next(); });
+    await waitFor(() => expect(result.current.tutor.hints.given).toHaveLength(1));
+    expect(mocks.requestHint).toHaveBeenCalledWith("sid", question.qid, 1);
+
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => {
+      h.onTurn?.({ turn_id: "t2", outcome: { qid: question.qid, result: "correct" } });
+      h.onMove({ type: "write", text: "Right." }, 0);
+      h.onDone({ status: "done", question: null });
+    }));
+    await act(async () => { result.current.tutor.answer({ choice: "variance", confidence: null }); });
+    await waitFor(() => expect(result.current.tutor.question).toBeNull());
+    expect(result.current.tutor.hints.given).toEqual([]);
+
+    // End session offers the exit ticket first; its answer flows into the close.
+    act(() => result.current.tutor.endSession());
+    expect(result.current.tutor.exit.offered).toBe(true);
+    expect(mocks.closeSession).not.toHaveBeenCalled();
+    const ticket = { ...question, qid: "t3.1", origin: "exit" as const };
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => {
+      h.onTurn?.({ turn_id: "t3", outcome: null });
+      h.onMove({ type: "check", kind: "mcq", q: question.q, options: question.options, qid: ticket.qid }, 1);
+      h.onDone({ status: "waiting", question: ticket });
+    }));
+    await act(async () => { result.current.tutor.exit.take(); });
+    expect(mocks.streamTutorTurn.mock.calls[2][1]).toMatchObject({ kind: "exit" });
+    await waitFor(() => expect(result.current.tutor.question?.origin).toBe("exit"));
+    mocks.streamTutorTurn.mockImplementationOnce(scripted((h) => {
+      h.onTurn?.({ turn_id: "t4", outcome: { qid: ticket.qid, result: "correct" } });
+      h.onDone({ status: "done", question: null });
+    }));
+    await act(async () => { result.current.tutor.answer({ choice: "variance", confidence: null }); });
+    await waitFor(() => expect(mocks.closeSession).toHaveBeenCalledWith("sid"));
+  });
+
+  it("a failed exit turn falls back to a plain end; a sealed canvas offers no warm-up", async () => {
+    mocks.fetchTutorState.mockResolvedValue({ configured: true, model: "m", open: null,
+      turns: [{ turn_id: "a", seq: 1, kind: "answer", status: "done", learner: "x", goals: [], said: [] }] });
+    const { result } = renderHook(() => useTutorSession());
+    act(() => result.current.onWhiteboardReady(board()));
+    await waitFor(() => expect(result.current.tutor.configured).toBe(true));
+    act(() => result.current.tutor.endSession());
+    expect(result.current.tutor.exit.offered).toBe(true);
+    mocks.streamTutorTurn.mockRejectedValueOnce(new Error("The tutor took too long."));
+    await act(async () => { result.current.tutor.exit.take(); });
+    await waitFor(() => expect(result.current.tutor.exit.offered).toBe(true));
+    act(() => result.current.tutor.exit.skip());
+    await waitFor(() => expect(mocks.closeSession).toHaveBeenCalled());
+
+    mocks.fetchReview.mockClear();
+    mocks.fetchSessionStatus.mockResolvedValue({ memory: true, status: "closed" });
+    const sealed = renderHook(() => useTutorSession());
+    await waitFor(() => expect(sealed.result.current.tutor.sealed).toBe(true));
+    expect(sealed.result.current.tutor.warmup.visible).toBe(false);
+    expect(mocks.fetchReview).not.toHaveBeenCalled();
   });
 
   it("sends the picked model, applies the picked voice and restores both after a refresh", async () => {

@@ -403,7 +403,8 @@ def build_observation(row: dict, outcome: str, *, misconception=None, miss_class
     return Observation(
         observation_id=UUID(row["observation_id"]), session_id=UUID(row["session_id"]), check_id=row["qid"],
         concept=value["concept"], dimension=value["dimension"], outcome=outcome, misconception=misconception,
-        miss_class=miss_class, assistance=Assistance(solution_revealed=value["revealed"]), confidence=value["confidence"],
+        miss_class=miss_class, assistance=Assistance(solution_revealed=value["revealed"],
+                                                                   hint_ids=tuple(value.get("hint_ids", ()))), confidence=value["confidence"],
         labeler=labeler, label_confidence=label_confidence, format_weight=value["format_weight"], key_status=row["key_status"],
         **soft,
         sources=(EvidenceSource(event_id=UUID(row["turn_id"]), modality=row["modality"], content_hash=digest(row["answer_text"]),
@@ -443,7 +444,7 @@ class ObservationStore:
 
     def capture_answer(self, owner: str, sid: str, turn_id: str, question: dict, answer: str, graded: dict,
                        modality: str, history: list[dict], element_ids: tuple[str, ...] = (),
-                       crops: tuple[str, ...] = ()) -> tuple[dict, bool]:
+                       crops: tuple[str, ...] = (), hint_ids: tuple[str, ...] = ()) -> tuple[dict, bool]:
         """Insert-or-get on (session_id, qid). Returns (row view, created); a repeat only counts a duplicate."""
         concept, dimension = concept_of(question, history)
         revealed = graded["result"] == "revealed"
@@ -452,7 +453,7 @@ class ObservationStore:
         value = {"concept": concept, "dimension": dimension, "revealed": revealed, "confidence":
                  None if graded.get("confidence") is None else graded["confidence"] / 100,
                  "format_weight": format_weight(question, modality, revealed), "element_ids": list(element_ids),
-                 "crop_hashes": list(crops[:MAX_CROPS]),
+                 "crop_hashes": list(crops[:MAX_CROPS]), "hint_ids": list(hint_ids),
                  "verifier": verifier, "created_at": now_iso()}
         row = {"observation_id": str(uuid4()), "session_id": sid, "owner_id": owner, "qid": question["qid"],
                "turn_id": turn_id, "modality": modality, "question_json": canonical(question), "answer_text": answer,

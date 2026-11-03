@@ -16,11 +16,11 @@ interface Props {
 /** Question box: type or push-to-talk. A transcript asks exactly like typed text and stays editable if the turn fails. */
 export default function TutorComposer({ tutor, blocked = false, onStop, variant = "studio" }: Props) {
   const voice = useVoiceInput(tutor.ask, tutor.hush);
-  const unavailable = tutor.configured === false;
+  const unavailable = tutor.configured === false || tutor.sealed;
   const disabled = blocked || unavailable || tutor.busy;
   const notice = tutor.error || voice.error;
   const submit = () => { if (!disabled && tutor.draft.trim()) { voice.clearError(); tutor.ask(tutor.draft); } };
-  const placeholder = unavailable ? "Tutor not configured on the server"
+  const placeholder = tutor.sealed ? "This canvas is sealed. Start a new session to ask." : unavailable ? "Tutor not configured on the server"
     : tutor.question ? "Answer the card, or ask something else…" : "Ask about anything on the board…";
 
   return (
@@ -31,6 +31,35 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           role={notice ? "alert" : "status"}>
           {notice || `Y: ${tutor.caption}`}
         </p>
+      )}
+      {tutor.exit.offered && !tutor.busy && (
+        <div className="mb-1.5 flex flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-1.5 text-xs text-violet-900 ring-1 ring-violet-200"
+          role="group" aria-label="Exit ticket" data-testid="exit-offer">
+          <span className="mr-auto font-medium">One quick check before you go?</span>
+          <button type="button" onClick={tutor.exit.take} className="min-h-8 rounded-lg bg-violet-600 px-3 font-semibold text-white">Take it</button>
+          <button type="button" onClick={tutor.exit.skip} disabled={tutor.ending} className="min-h-8 rounded-lg px-2 font-semibold text-violet-700 disabled:opacity-40">Just end</button>
+        </div>
+      )}
+      {tutor.warmup.visible && !tutor.question && !tutor.busy && (
+        <div className="mb-1.5 flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-1.5 text-xs text-amber-900 ring-1 ring-amber-200"
+          role="group" aria-label="Warm-up" data-testid="warmup"
+          title={tutor.warmup.items.map((item) => item.q).join(" · ")}>
+          <span className="mr-auto font-medium">
+            {tutor.warmup.started ? `Next warm-up · ${tutor.warmup.items.length} left` : `Warm-up · ${tutor.warmup.items.length} due from last time`}
+          </span>
+          <button type="button" onClick={tutor.warmup.start} className="min-h-8 rounded-lg bg-amber-500 px-3 font-semibold text-white">
+            {tutor.warmup.started ? "Next" : "Start"}
+          </button>
+          <button type="button" onClick={tutor.warmup.skip} className="min-h-8 rounded-lg px-2 font-semibold text-amber-800">
+            {tutor.warmup.started ? "Done" : "Skip"}
+          </button>
+        </div>
+      )}
+      {tutor.sealed && (
+        <div className="mb-1.5 flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-1.5 text-xs text-slate-700 ring-1 ring-slate-200" data-testid="sealed">
+          <span className="mr-auto">This canvas is sealed in your profile. You can look around.</span>
+          <button type="button" onClick={tutor.newSession} className="min-h-8 rounded-lg bg-slate-900 px-3 font-semibold text-white">New session</button>
+        </div>
       )}
       <div className="mb-1.5 flex items-center justify-end gap-2 text-xs">
         {tutor.memory.on && tutor.memory.turn?.items.length ? (

@@ -11,9 +11,9 @@ import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 import { boardSession, startNextBoardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
-import { cardId, closeSession, fetchSessionMemory, fetchTutorState, moveToPrimitive, questionOf, setSessionMemory,
-  streamTutorTurn, tutorErrorMessage, type CloseSummary, type TurnBody, type TurnMemory, type TutorQuestion,
-  type TutorTimeline, composerAnswer } from "@/lib/tutor-turn";
+import { cardId, closeSession, fetchReview, fetchSessionStatus, fetchTutorState, moveToPrimitive, questionOf, requestHint,
+  setSessionMemory, streamTutorTurn, tutorErrorMessage, type CloseSummary, type Hint, type ReviewItem, type TurnBody,
+  type TurnMemory, type TutorQuestion, type TutorTimeline, composerAnswer } from "@/lib/tutor-turn";
 import { pendingImages, watchImage } from "@/lib/board-images";
 import { fetchTutorOptions, KOKORO_VOICES, loadPrefs, resolvePrefs, savePrefs, type TutorOptions, type TutorPrefs,
   type TutorTrace } from "@/lib/tutor-options";
@@ -41,9 +41,18 @@ export interface TutorTurnState {
     setVoice: (id: string) => void };
   /** Memory on: turns read the brief compiled from earlier sessions. Off: the generic tutor (for comparison). */
   memory: { on: boolean; set: (on: boolean) => void; turn: TurnMemory | null };
-  /** Seal this session's evidence into the learner profile, then start a fresh session. */
+  /** End session: offers the exit ticket first when the session has answered checks, otherwise seals at once. */
   endSession: () => void;
   ending: boolean;
+  /** Warm-up reviews due from earlier sessions; never blocks asking. `visible` is false once skipped or asked past. */
+  warmup: { items: ReviewItem[]; visible: boolean; started: boolean; start: () => void; skip: () => void };
+  /** The exit-ticket offer shown after End session: take it, or end straight away. */
+  exit: { offered: boolean; take: () => void; skip: () => void };
+  /** Hint ladder on the open card: 1 nudge, 2 worked step; the third rung is "Just tell me". */
+  hints: { given: Hint[]; busy: boolean; next: () => void };
+  /** This canvas was sealed at an earlier End session: it can be viewed, and asking needs a new session. */
+  sealed: boolean;
+  newSession: () => void;
 }
 
 const LAST_CLOSE = "y_last_close";
@@ -202,6 +211,18 @@ export function useTutorSession(): TutorSession {
   const [memoryOn, setMemoryOn] = useState(true);
   const [turnMemory, setTurnMemory] = useState<TurnMemory | null>(null);
   const [ending, setEnding] = useState(false);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [warmupOpen, setWarmupOpen] = useState(true);
+  const [warmupStarted, setWarmupStarted] = useState(false);
+  const [exitOffered, setExitOffered] = useState(false);
+  // Hints fetched for one card; each card starts its own ladder, and a restored card brings the hints already given.
+  const [fetchedHints, setFetchedHints] = useState<{ qid: string; hints: Hint[] } | null>(null);
+  const hints = (fetchedHints && fetchedHints.qid === question?.qid ? fetchedHints.hints : question?.hints) ?? [];
+  const [hintBusy, setHintBusy] = useState(false);
+  const [sealed, setSealed] = useState(false);
+  // Answered checks this session (an exit ticket is offered only after some) and whether one was taken.
+  const answeredRef = useRef(0);
+  const exitTakenRef = useRef(false);
 
   const refreshLearner = useCallback(async () => {
     const id = userIdRef.current;
@@ -256,6 +277,10 @@ export function useTutorSession(): TutorSession {
       tutorKnownRef.current = true;
       setTutorConfigured(state.configured);
       setQuestion(state.open);
+      answeredRef.current = state.turns.filter((t) => t.kind === "answer").length;
+      exitTakenRef.current = state.turns.some((t) => t.kind === "exit");
+      // The warm-up belongs to the start of a session: once the learner has asked something, it stays out of the way.
+      if (state.turns.some((t) => t.kind === "question")) setWarmupOpen(false);
       const said = state.turns.at(-1)?.said.at(-1);
       if (said) setCaption(said);
       let closed: string | null = null;
@@ -264,7 +289,12 @@ export function useTutorSession(): TutorSession {
       else if (closed) setStatus(closed);
       else setStatus(state.open ? "Your turn: answer the card on the board." : "Ready. Ask a question about anything on the board.");
     }).catch((error) => { if (!cancelled) setTutorError(tutorErrorMessage(error)); });
-    void boardSession().then(fetchSessionMemory).then((on) => { if (!cancelled) setMemoryOn(on); }).catch(() => {});
+    void boardSession().then(fetchSessionStatus).then(({ memory, status }) => {
+      if (cancelled) return;
+      setMemoryOn(memory);
+      if (status === "closed") { setSealed(true); setStatus("This canvas is sealed. You can look around; start a new session to ask."); }
+      else void boardSession().then(fetchReview).then((items) => { if (!cancelled) setReviews(items); }).catch(() => {});
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
@@ -623,12 +653,28 @@ export function useTutorSession(): TutorSession {
     }
   }, [busy, question, tutorBusy, tutorOptions]);
 
+  const closeNow = useCallback(() => {
+    setEnding(true); setTutorError(""); setExitOffered(false);
+    setStatus("Saving this session to your learner profile…");
+    void boardSession().then(closeSession).then((summary) => {
+      const message = closeMessage(summary);
+      try { sessionStorage.setItem(LAST_CLOSE, message); } catch { /* the status is shown once anyway */ }
+      startNextBoardSession();
+      window.location.reload();
+    }).catch((error) => {
+      const message = tutorErrorMessage(error);
+      setTutorError(message); setStatus(message); setEnding(false);
+    });
+  }, []);
+
   const answer = useCallback((value: TutorAnswer) => {
     if (!question) return;
+    const exitTicket = question.origin === "exit";
     const handle = handleRef.current, label = value.reveal ? "You asked to be told." : `You answered: ${value.choice ?? value.text ?? ""}`
       + (value.confidence === null ? "" : ` (${value.confidence}% sure)`);
     void runTurn({ turn_id: crypto.randomUUID(), kind: "answer", question_id: question.qid, choice: value.choice,
       text: value.text, confidence: value.confidence, reveal: value.reveal, ...(value.via ? { via: value.via } : {}) }, () => {
+      answeredRef.current += 1;
       // Record the answer on the card itself; the server keeps the learner's input as the source of truth.
       const frame = handle?.getElements().find((e) => e.id === cardId(question.qid));
       const text = handle?.getElements().find((e) => e.id === `${cardId(question.qid)}-text`);
@@ -642,8 +688,11 @@ export function useTutorSession(): TutorSession {
       } catch (error) {
         console.warn("could not mark the answered card", error);
       }
+    }).then((accepted) => {
+      // The exit ticket flows into the close once its one-line feedback has been drawn.
+      if (exitTicket && accepted) closeNow();
     });
-  }, [question, runTurn]);
+  }, [closeNow, question, runTurn]);
 
   const ask = useCallback((text: string) => {
     const clean = text.trim();
@@ -652,8 +701,37 @@ export function useTutorSession(): TutorSession {
     const typed = question && composerAnswer(question, clean);
     if (typed) { setDraft(""); answer({ ...typed, confidence: null, via: "typed" }); return; }
     setDraft(clean);
+    setWarmupOpen(false);
     void runTurn({ turn_id: crypto.randomUUID(), kind: "question", text: clean });
   }, [answer, question, runTurn]);
+
+  const startReview = useCallback(() => {
+    const item = reviews[0];
+    if (!item) return;
+    setWarmupStarted(true);
+    void runTurn({ turn_id: crypto.randomUUID(), kind: "review", concept: item.concept }).then((accepted) => {
+      if (accepted) setReviews((current) => current.filter((r) => r.concept !== item.concept));
+    });
+  }, [reviews, runTurn]);
+
+  const takeExit = useCallback(() => {
+    setExitOffered(false);
+    exitTakenRef.current = true;
+    void runTurn({ turn_id: crypto.randomUUID(), kind: "exit" }).then((accepted) => {
+      // No card came back (provider failure): offer the plain close so End session is never a dead end.
+      if (!accepted) setExitOffered(true);
+    });
+  }, [runTurn]);
+
+  const nextHint = useCallback(() => {
+    if (!question || hintBusy) return;
+    const level = hints.length + 1;
+    if (level > 2) { answer({ reveal: true, confidence: null }); return; }
+    setHintBusy(true); setTutorError("");
+    const qid = question.qid;
+    void boardSession().then((session) => requestHint(session, qid, level)).then((given) => setFetchedHints({ qid, hints: given }))
+      .catch((error) => setTutorError(tutorErrorMessage(error))).finally(() => setHintBusy(false));
+  }, [answer, hintBusy, hints.length, question]);
 
   const setMemory = useCallback((on: boolean) => {
     setMemoryOn(on);
@@ -664,18 +742,16 @@ export function useTutorSession(): TutorSession {
 
   const endSession = useCallback(() => {
     if (ending || tutorBusy) return;
-    setEnding(true); setTutorError("");
-    setStatus("Saving this session to your learner profile…");
-    void boardSession().then(closeSession).then((summary) => {
-      const message = closeMessage(summary);
-      try { sessionStorage.setItem(LAST_CLOSE, message); } catch { /* the status is shown once anyway */ }
-      startNextBoardSession();
-      window.location.reload();
-    }).catch((error) => {
-      const message = tutorErrorMessage(error);
-      setTutorError(message); setStatus(message); setEnding(false);
-    });
-  }, [ending, tutorBusy]);
+    // One short check on the session's main idea first, when there is something to check; never required.
+    if (answeredRef.current > 0 && !exitTakenRef.current && !exitOffered) {
+      setExitOffered(true);
+      setStatus("One quick check before you go?");
+      return;
+    }
+    closeNow();
+  }, [closeNow, ending, exitOffered, tutorBusy]);
+
+  const newSession = useCallback(() => { startNextBoardSession(); window.location.reload(); }, []);
 
   const cardRect = useCallback((qid: string) => handleRef.current?.getElementScreenRect(cardId(qid)) ?? null, []);
 
@@ -760,6 +836,10 @@ export function useTutorSession(): TutorSession {
     tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing, narrating,
       setDraft, ask, answer, cardRect, hush,
       picker: { options: tutorOptions, prefs, trace, setModel: (model) => choose({ model }), setVoice: (voice) => choose({ voice }) },
-      memory: { on: memoryOn, set: setMemory, turn: turnMemory }, endSession, ending },
+      memory: { on: memoryOn, set: setMemory, turn: turnMemory }, endSession, ending,
+      warmup: { items: reviews, visible: warmupOpen && !sealed && reviews.length > 0, started: warmupStarted, start: startReview,
+        skip: () => setWarmupOpen(false) },
+      exit: { offered: exitOffered, take: takeExit, skip: closeNow },
+      hints: { given: hints, busy: hintBusy, next: nextHint }, sealed, newSession },
   };
 }

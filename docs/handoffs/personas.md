@@ -66,6 +66,27 @@ Status: done, 2026-11-03. Branch `feature/personas`, cut from `main` at `361aab2
 - **Seed script.** `scripts/seed_personas.py` builds the three templates into fixed owners and prints a summary.
   A second run seals nothing. "Try as…" does not need it: it builds the same fixture into each copy.
 
+## Where concepts come from
+
+- **Demo learners: authored.** Every concept id in the fixtures was written by hand, for example
+  `attention.softmax`, `linalg.eigenvectors` and `stat.partition-function`. So were each check's dimension, the
+  named misconceptions and the authored links. The only LLM output is the teaching notes and 1–4 links per persona,
+  recorded once from Muse Spark 1.3.
+- **Live sessions: chosen by the LLM, with no fixed list.**
+  - The board-move schema requires every check to carry a `concept` id and a `dim`. The tutor (Muse Spark) makes
+    these up for each question.
+  - The reducer creates a Beta belief the first time it sees a concept × dimension. A mind holds only the topics a
+    learner was checked on.
+  - The tutor prompt (`personalization`) asks the tutor to reuse the concept ids in the brief. That is how
+    Tomás's live Bayes question attached to his seeded `prob.bayes-rule`.
+  - Misconception mass comes from the OpenAI labeler's probabilities. Belief names and `builds_on` /
+    `confused_with` links come from Spark Open at close, and each must cite answers.
+  - Mind regions ("Attention", "Linear algebra") appear to come from the concept id's prefix, not a separate
+    classifier.
+- **Weak spot.** Because the LLM picks the ids, one idea can end up under two ids. In the live run, a new base-rate
+  belief sat beside the seeded one instead of merging into it (see Open). A fixed taxonomy, or a merge step at
+  close, would fix that later.
+
 ## Contract changes
 
 - `Observation.labeler` adds `"seed"`; `ConceptLink.provenance` adds `"seed"`. The TypeScript mirrors are updated.

@@ -208,6 +208,10 @@ def test_canvas_list_titles_sessions_and_marks_sealed(env):
     by_id = {c["session_id"]: c for c in listed}
     assert by_id[str(sid)]["sealed"] and by_id[str(sid)]["title"] == "Why divide by root d_k?" and by_id[str(sid)]["turns"] == 2
     assert not by_id[str(two)]["sealed"] and by_id[str(two)]["title"] == "Untitled canvas"
+    # A canvas that began (and so far only ran) a warm-up is named by the check it re-asked.
+    events(review(client, two, CHECK["concept"]))
+    listed = {c["session_id"]: c for c in client.get("/learning/canvases").json()["canvases"]}
+    assert listed[str(two)]["title"] == f"Warm-up: {CHECK['q']}"
     # Another owner sees none of these.
     other = capture.issue_identity()
     client.cookies.set("y_learning_identity", other)

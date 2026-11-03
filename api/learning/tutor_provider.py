@@ -20,6 +20,12 @@ from .tutor_turn import ENABLED
 MAX_OUTPUT_TOKENS = 3000  # minimal effort reasons for ~450 tokens; a turn is ~600-1,000 output tokens
 MAX_CONTENT_CHARS = 40_000
 _FORMAT = response_format(ENABLED)  # constrained decoding cannot emit kinds this slice cannot render
+_FORMAT_NO_INK = response_format(ENABLED - {"point"})  # a point indexes an ink crop; without one it cannot land
+
+
+def _has_images(messages: list[dict]) -> bool:
+    return any(isinstance(part, dict) and part.get("type") == "image_url"
+               for m in messages if isinstance(m.get("content"), list) for part in m["content"])
 
 
 class MetaTutor:
@@ -51,7 +57,7 @@ class MetaTutor:
 
     def _body(self, messages: list[dict], stream: bool, max_tokens: int, fmt: dict | None = None) -> dict:
         body = {"model": self.model, "messages": messages,
-                "response_format": fmt or _FORMAT, "max_tokens": max_tokens, "stream": stream}
+                "response_format": fmt or (_FORMAT if _has_images(messages) else _FORMAT_NO_INK), "max_tokens": max_tokens, "stream": stream}
         if self.effort:
             body["reasoning_effort"] = self.effort
         if stream:

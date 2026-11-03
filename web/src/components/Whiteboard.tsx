@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type {
+  AppState,
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
@@ -11,14 +12,15 @@ import type {
 } from "@excalidraw/excalidraw/element/types";
 import type { InterfaceMode } from "@/lib/interface-mode";
 import { BoardController } from "@/lib/board-controller";
+import { installFrameProbe } from "@/lib/frame-probe";
+import { toolOf, toolSettings, type ToolId } from "@/lib/board-tools";
 import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/WidgetHost";
 import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
 
-const Excalidraw = dynamic(
-  async () => (await import("@excalidraw/excalidraw")).Excalidraw,
-  { ssr: false },
-);
+const Excalidraw = dynamic(() => import("@/components/BoardCanvas"), { ssr: false });
+/** Routine save states stay quiet; the chip shows only while restoring or when work needs attention. */
+const QUIET = new Set(["Board saved", "Saving board…"]);
 
 // Dynamic export scale. The model's vision encoder downsamples to a fixed
 // resolution, so what matters is pixels-per-content, not a fixed multiplier.
@@ -89,6 +91,9 @@ export interface WhiteboardHandle {
    * can't be found or the canvas isn't mounted.
    */
   getElementScreenRect: (id: string) => DOMRect | null;
+  /** Y's tool dock: pick a tool (with its pen style) and follow tool changes made elsewhere (shortcuts). */
+  setTool: (tool: ToolId, ink: string) => void;
+  onToolChange: (listener: (tool: ToolId | null) => void) => () => void;
 }
 
 interface Props {
@@ -231,7 +236,27 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       const h = el.height * z;
       return new DOMRect(x, y, w, h);
     },
+    setTool(tool, ink) {
+      const api = apiRef.current;
+      if (!api) return;
+      const { type, style } = toolSettings(tool, ink);
+      if (style) api.updateScene({ appState: style as Pick<AppState, "currentItemStrokeColor"> });
+      api.setActiveTool({ type } as Parameters<ExcalidrawImperativeAPI["setActiveTool"]>[0]);
+    },
+    onToolChange(listener) {
+      const api = apiRef.current;
+      if (!api) return () => {};
+      // onChange fires on every scene change (each pen point); report only when the tool itself changes.
+      let last: ToolId | null | undefined;
+      return api.onChange((_elements, appState) => {
+        const tool = toolOf(appState.activeTool.type, appState.currentItemOpacity);
+        if (tool !== last) { last = tool; listener(tool); }
+      });
+    },
   }), []);
+
+  // `?fps=1` frame-time probe and `?glass=0` opaque chrome, for the glass performance check.
+  useEffect(() => installFrameProbe(window.location.search), []);
 
   useEffect(() => {
     if (loaded && apiRef.current && onReady) {
@@ -281,13 +306,14 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
             currentItemStrokeColor: "#111111",
           },
         }}
+        onBackup={loaded ? () => { void boardRef.current?.exportRecovery(); } : undefined}
       />
-      <div className="pointer-events-auto absolute bottom-2 right-3 z-20 max-w-md rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700" role="status">
+      {(!loaded || !QUIET.has(saveStatus)) && <div className="pointer-events-auto absolute bottom-2 right-3 z-20 max-w-md rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700" role="status">
         {saveStatus}
         {!loaded && saveStatus.includes("failed") && <button className="ml-2 underline" onClick={() => { setLoaded(false); setRetry(value => value + 1); }}>Retry restore</button>}
         {loaded && !saveStatus.includes("saved") && <button className="ml-2 underline" onClick={() => { void boardRef.current?.flush().catch(() => {}); }}>Retry save</button>}
         {loaded && <button className="ml-2 underline" onClick={() => { void boardRef.current?.exportRecovery(); }}>Export backup</button>}
-      </div>
+      </div>}
     </div>
   );
 }

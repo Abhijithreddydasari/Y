@@ -49,9 +49,19 @@ const sentence = (text: string) => {
 };
 export const regionOf = (concept: string) => (concept.includes(".") ? concept.split(".")[0] : "general");
 export const regionLabel = (region: string) => REGION_NAMES[region] ?? (region === "general" ? "General" : sentence(region));
-export function conceptLabel(concept: string): string {
+/**
+ * A readable name from the concept id. Words the learner's questions spell with capitals inside them
+ * keep that spelling ("transformer.ffn-role" with "What does the FFN do?" reads "FFN role", not "Ffn role").
+ */
+export function conceptLabel(concept: string, texts: string[] = []): string {
   const tail = concept.includes(".") ? concept.slice(concept.indexOf(".") + 1) : concept;
-  return sentence(tail).slice(0, 80);
+  const label = sentence(tail).slice(0, 80);
+  if (!texts.length) return label;
+  const spelled = new Map<string, string>();
+  for (const word of texts.join(" ").match(/[A-Za-z][A-Za-z0-9]*/g) ?? []) {
+    if (/[A-Z]/.test(word.slice(1)) && !spelled.has(word.toLowerCase())) spelled.set(word.toLowerCase(), word);
+  }
+  return label.replace(/[A-Za-z][A-Za-z0-9]*/g, (word) => spelled.get(word.toLowerCase()) ?? word);
 }
 
 export function nodeState(dims: (number | null)[], misconceptions: MindMisconception[], due: boolean): NodeState {
@@ -95,9 +105,13 @@ export function frameOf(revision: ProfileRevision, events: Record<string, Profil
     node(m.concept).misconceptions.push({ id: m.id, description: m.description, status: m.status,
       strength: m.strength ?? 1, evidence: m.evidence });
   }
+  const asked: Record<string, string[]> = {};
   for (const id of revision.observation_ids) {
     const event = events[id];
-    if (event && nodes[event.concept]) nodes[event.concept].evidence.push(id);
+    if (event && nodes[event.concept]) { nodes[event.concept].evidence.push(id); (asked[event.concept] ??= []).push(event.question); }
+  }
+  for (const n of Object.values(nodes)) {
+    if (asked[n.id]) n.label = conceptLabel(n.id, [...asked[n.id], ...n.misconceptions.map((m) => m.description ?? "")]);
   }
   // Cap by evidence weight; misconception-only concepts keep their place by strength.
   const ranked = Object.values(nodes).sort((a, b) => (b.weight + b.misconceptions.length) - (a.weight + a.misconceptions.length) || a.id.localeCompare(b.id));

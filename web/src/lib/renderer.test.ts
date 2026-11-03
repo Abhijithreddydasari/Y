@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LessonRenderer } from "./renderer";
+import { cardNote, LessonRenderer } from "./renderer";
 
 describe("LessonRenderer card", () => {
   it("draws a framed question with lettered options under the previous line", async () => {
@@ -24,5 +24,20 @@ describe("LessonRenderer chip", () => {
     const next = (await renderer.render({ tag: "text", args: { content: "Next" } })).skeletons[0] as unknown as { y: number };
     expect(next.y).toBeGreaterThanOrEqual(230);
     expect((await renderer.render({ tag: "chip", args: { text: "" } })).skeletons).toEqual([]);
+  });
+});
+
+describe("cardNote", () => {
+  it("wraps the answer to the card width and grows the card by its lines", () => {
+    const note = cardNote("You answered: Positive, because distance is always positive (65% sure)");
+    expect(note.text.split("\n").length).toBe(2);
+    expect(note.text.replace("\n", " ")).toContain("always positive (65% sure)");
+    expect(note.extra).toBe(Math.ceil(18 * 1.25 * 3));
+  });
+
+  it("keeps a long typed answer to three lines", () => {
+    const note = cardNote(`You answered: ${"word ".repeat(80)}`);
+    expect(note.text.split("\n")).toHaveLength(3);
+    expect(note.text.endsWith("…")).toBe(true);
   });
 });

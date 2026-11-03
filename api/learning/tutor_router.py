@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sse_starlette.sse import EventSourceResponse
 from starlette.concurrency import run_in_threadpool
 
-from . import image_jobs, observations, profile, study
+from . import image_jobs, observations, pointing, profile, study, trace
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
 from .consolidate import NOTES_MODEL, NotesWriter, bridges, evidence_payload, keep_cited, keep_links, keep_named
@@ -195,6 +195,17 @@ async def evidence_trace(sid: UUID, owner=Depends(require_owner), evidence=Depen
     sealed = await call_store(profiles.for_session, owner, str(sid))
     return {"observations": rows, "profile_updated": sealed is not None,
             "profile_revision": sealed["revision"].revision if sealed else None}
+
+
+@router.get("/sessions/{sid}/trace")
+async def session_trace(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor_store),
+                        evidence=Depends(get_evidence), profiles=Depends(get_profiles), studies=Depends(get_study)):
+    """Trace drawer: per-stage models and latency for this session, from timings the stages already store."""
+    turns = await call_store(store.history, owner, str(sid))
+    entries = await call_store(evidence.entries, owner, str(sid))
+    hints = await call_store(studies.hint_timings, str(sid))
+    sealed = await call_store(profiles.for_session, owner, str(sid))
+    return trace.session_trace(turns, hints, entries, sealed and sealed["close"], NOTES_MODEL)
 
 
 @router.get("/sessions/{sid}/memory")
@@ -404,13 +415,14 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
     concept = await call_store(studies.session_concept, str(sid)) if body.kind == "exit" else None
     run = None
     try:
-        packet, images = None, []
+        packet, images, sent = None, [], []
         if body.board is not None:
             packet = ContextPacket.model_validate(await call_store(boards.capture_context, owner, sid, body.board))
             for crop in packet.crops:
                 if crop.purpose == "initial" and len(images) < 2:
                     asset = await call_store(boards.get_asset, owner, sid, crop.asset_hash)
                     images.append((asset["mime"], asset["content"]))
+                    sent.append(crop.model_dump(mode="json"))
         await call_store(store.reserve, owner)
         messages = build_messages(profile.render_brief(brief), session_memory(history), board_focus(packet),
                                   this_turn(body, question, outcome, concept), images)
@@ -442,6 +454,9 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
                 async for index, move in run.events():
                     if move["type"] == "image":
                         await illustrate(move)
+                    elif move["type"] == "point":
+                        # Stored with the move, so a replay draws the same ring with no new call.
+                        move.update(pointing.resolve(move, sent[move["crop"]], packet.focused))
                     qid = f"{body.turn_id}.{index}" if index == run.question_index else None
                     yield _event("move", {"index": index, "move": public_move(move, qid)})
         except TimeoutError:

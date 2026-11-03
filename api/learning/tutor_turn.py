@@ -27,15 +27,16 @@ from .tutor_stream import MoveStreamParser, MoveSyntaxError
 log = logging.getLogger("y.tutor")
 POLICY_VERSION = "tutor-v1"
 SYSTEM_PREFIX = (Path(__file__).resolve().parents[1] / "prompts" / f"{POLICY_VERSION}.md").read_text(encoding="utf-8")
-# Kinds the board renders; pointing arrives with H8. `because` must cite the session's brief.
+# Kinds the board renders. `because` must cite the session's brief; `point` needs an ink crop.
 ENABLED = frozenset({"seg", "write", "equation", "diagram", "widget", "image", "say", "predict", "check",
-                     "because", "turn_end"})
+                     "because", "point", "turn_end"})
 ONE_PER_TURN = ("diagram", "widget", "image")
+MAX_POINTS = 2
 MEMORY_BUDGET = 12 * 1024
 RECENT_TURNS = 3
 MAX_REPAIRS = 2
 _NO_REPAIR = ("move after turn_end", "turn exceeds", "kind not enabled", "question must be the last move", "only one",
-              "because cites")
+              "because cites", "point references", "at most")
 
 
 class TurnInput(Contract):
@@ -213,6 +214,8 @@ class TurnRun:
             raise MoveError("question must be the last move")
         if kind in ONE_PER_TURN and any(m["type"] == kind for m in self.moves):
             raise MoveError(f"only one {kind} per turn")
+        if kind == "point" and sum(m["type"] == "point" for m in self.moves) >= MAX_POINTS:
+            raise MoveError(f"at most {MAX_POINTS} points per turn")
 
     async def _accept(self, element) -> dict | None:
         raw, value, error = element.raw, element.value, element.error
@@ -304,4 +307,6 @@ def question_of(run: TurnRun, turn_id: str, origin: str | None = None) -> dict |
 
 def summary(run: TurnRun) -> dict:
     return {"schema": MOVES_SCHEMA_VERSION, "policy": POLICY_VERSION, "moves": len(run.moves),
-            "dropped": run.dropped[:10], "repairs": run.repairs, "error": run.error, **run.timing}
+            "dropped": run.dropped[:10], "repairs": run.repairs, "error": run.error,
+            "points": [{"snap": m.get("snap"), "line": m["line"], "lines": m.get("lines")} for m in run.moves
+                       if m["type"] == "point"], **run.timing}

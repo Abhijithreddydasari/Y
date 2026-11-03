@@ -432,7 +432,8 @@ def _view(row) -> dict:
             "modality": row["modality"], "key_status": row["key_status"], "error": row["error"],
             "duplicates": row["duplicates"], "label_ms": row["label_ms"] and round(row["label_ms"]),
             "verifier": json.loads(row["verifier_json"]).get("verifier"), "observation": observation,
-            "fields": (label or {}).get("fields")}
+            "fields": (label or {}).get("fields"),
+            "label": label and {k: label.get(k) for k in ("provider", "model", "provider_ms", "queue_ms", "images")}}
 
 
 class ObservationStore:

@@ -36,10 +36,10 @@ export async function loadHistory(signal?: AbortSignal): Promise<ProfileHistory>
   return response.json() as Promise<ProfileHistory>;
 }
 
-/** The learner's choice, else the system setting. */
+/** The learner's choice, else Night (dark is the default, 2026-11-03). */
 function initialTheme(): MindTheme {
   try { const saved = localStorage.getItem(THEME_KEY); if (saved === "light" || saved === "dark") return saved; } catch { /* storage blocked */ }
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return "dark";
 }
 
 const readSeen = () => { try { return Number(localStorage.getItem(SEEN_KEY) ?? 0); } catch { return 0; } };
@@ -232,7 +232,7 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
       {!still && frame && (
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           {Object.values(frame.nodes).map((n) => (
-            <span key={n.id} ref={(el) => { labels.current[n.id] = el; }} className="absolute left-0 top-0 whitespace-nowrap text-[12px] text-[var(--mind-text-2)] opacity-0 [text-shadow:0_1px_6px_var(--mind-bg)]" style={{ color: n.mean == null ? palette.unseen : undefined }}>{n.label}</span>
+            <span key={n.id} ref={(el) => { labels.current[n.id] = el; }} className="absolute left-0 top-0 whitespace-nowrap text-[12px] text-[var(--mind-text-2)] opacity-0 will-change-transform [text-shadow:0_1px_6px_var(--mind-bg)]" style={{ color: n.mean == null ? palette.unseen : undefined }}>{n.label}</span>
           ))}
         </div>
       )}
@@ -240,7 +240,7 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
         <div className="pointer-events-none absolute inset-0">
           {map.regions.map((r) => (
             <button key={r.id} type="button" ref={(el) => { regionLabels.current[r.id] = el; }} onClick={() => control.current?.flyTo(r.id)}
-              className="absolute left-0 top-0 min-h-11 rounded-xl border border-[var(--mind-line)] bg-[var(--mind-glass)] px-3 py-1 text-left opacity-0 backdrop-blur-md">
+              className="absolute left-0 top-0 min-h-11 rounded-xl border border-[var(--mind-line)] bg-[var(--mind-glass)] px-3 py-1 text-left opacity-0 will-change-transform">
               <span className="block text-[12px] font-semibold text-[var(--mind-text)]">{r.label}</span>
               <span className="block text-[11px] text-[var(--mind-muted)]">{r.nodes.length} idea{r.nodes.length === 1 ? "" : "s"}</span>
             </button>

@@ -42,7 +42,7 @@ class TutorStore:
                 "input": json.loads(row["input"]), "moves": json.loads(row["moves"]),
                 "question": json.loads(row["question"]) if row["question"] else None,
                 "outcome": json.loads(row["outcome"]) if row["outcome"] else None,
-                "timing": json.loads(row["timing"]) if row["timing"] else None}
+                "timing": json.loads(row["timing"]) if row["timing"] else None, "at": row["created_at"]}
 
     def begin(self, owner: str, sid: str, turn_id: str, kind: str, value: dict, request_hash: str) -> dict | None:
         """Claim a new turn (returns None) or return the finished turn with this ID for replay."""

@@ -1,6 +1,6 @@
 // Client side of a tutor turn: stream moves from the API and map each onto a board primitive.
 // Moves have passed server validation; questions arrive without their answer key.
-import { BoardError, readEvents, type ContextRequest } from "./board-api";
+import { BoardError, readEvents, type ContextRequest, type Rect } from "./board-api";
 import type { TutorMove } from "./tutor-moves";
 import type { TutorTrace } from "./tutor-options";
 import type { PrimitiveTag } from "./types";
@@ -15,7 +15,9 @@ export interface ReviewItem { concept: string; reason: "misconception" | "fading
 /** A saved session (Canvas) to resume. */
 export interface Canvas { session_id: string; title: string; sealed: boolean; created_at: number; turns: number }
 export type PublicMove =
-  | Exclude<TutorMove, { type: "predict" | "check" | "image" }>
+  | Exclude<TutorMove, { type: "predict" | "check" | "image" | "point" }>
+  /** The server maps the crop point to the board and snaps it to the learner's ink line (`at`). */
+  | (Extract<TutorMove, { type: "point" }> & { at?: Rect; raw?: { x: number; y: number }; snap?: "line" | "nearest" | "raw"; lines?: number })
   /** The server adds the id of the illustration job it started for this move. */
   | { type: "image"; prompt: string; alt: string; image_id?: string }
   | { type: "predict" | "check"; kind: "mcq" | "free"; q: string; options: string[]; qid: string | null };
@@ -81,6 +83,9 @@ export function tutorErrorMessage(error: unknown): string {
 }
 
 export const cardId = (qid: string) => `y-card-${qid}`;
+/** Sent when the learner presses Ask with an empty box and their question is on the board. */
+export const BOARD_QUESTION = "Answer the question I wrote on the board. If it shows my working, check it step by step.";
+export const pointId = (turnId: string, index: number) => `y-point-${turnId}-${index}`;
 
 /** Board primitive for a move, or null for moves that do not draw (say, turn_end) or are not rendered yet. */
 export function moveToPrimitive(move: PublicMove): PrimitiveTag | null {
@@ -95,8 +100,8 @@ export function moveToPrimitive(move: PublicMove): PrimitiveTag | null {
     case "predict":
     case "check":
       if (!move.qid) return null;
-      return { tag: "card", args: { id: cardId(move.qid), label: move.type === "predict" ? "Predict" : "Check", q: move.q,
-        options: move.options.join("\n") } };
+      // The board keeps the question as a record and an anchor; its options live on the answer card beside it.
+      return { tag: "card", args: { id: cardId(move.qid), label: move.type === "predict" ? "Predict" : "Check", q: move.q, options: "" } };
     default: return null;
   }
 }

@@ -112,6 +112,13 @@ class StudyStore:
                                 .order_by(hints.c.level))
             return [{"level": level, "text": text} for level, text in rows]
 
+    def hint_timings(self, sid: str) -> list[dict]:
+        """Every hint given this session with its call timing (trace drawer)."""
+        with self.engine.connect() as conn:
+            rows = conn.execute(select(hints.c.qid, hints.c.level, hints.c.timing, hints.c.created_at)
+                                .where(hints.c.session_id == sid).order_by(hints.c.created_at))
+            return [{"qid": qid, "level": level, "at": at, **json.loads(timing or "{}")} for qid, level, timing, at in rows]
+
     def keep_hint(self, sid: str, qid: str, level: int, text: str, timing: dict) -> list[dict]:
         """Insert once; a concurrent duplicate keeps the first text."""
         try:
@@ -129,15 +136,21 @@ class StudyStore:
                                   .where(sessions.c.owner_id == owner).order_by(sessions.c.created_at.desc())
                                   .limit(CANVAS_LIMIT)).mappings().all()
             ids = [r["session_id"] for r in listed]
-            titles, counts = {}, Counter()
+            titles, warmups, counts = {}, {}, Counter()
             if ids:
-                for session_id, kind, value in conn.execute(select(turns.c.session_id, turns.c.kind, turns.c.input)
-                                                            .where(turns.c.session_id.in_(ids)).order_by(turns.c.seq)):
+                for session_id, kind, value, moves in conn.execute(
+                        select(turns.c.session_id, turns.c.kind, turns.c.input, turns.c.moves)
+                        .where(turns.c.session_id.in_(ids)).order_by(turns.c.seq)):
                     counts[session_id] += 1
                     if kind == "question" and session_id not in titles:
                         titles[session_id] = json.loads(value).get("text", "")[:80]
+                    elif kind == "review" and session_id not in warmups:
+                        # A canvas that only reviewed is named by the check it re-asked.
+                        asked = next((m["q"] for m in json.loads(moves or "[]") if m.get("type") in ("check", "predict")), "")
+                        warmups[session_id] = f"Warm-up: {asked}"[:80] if asked else ""
         return [{"session_id": r["session_id"], "sealed": r["status"] == "closed", "created_at": r["created_at"],
-                 "title": titles.get(r["session_id"]) or "Untitled canvas", "turns": counts[r["session_id"]]}
+                 "title": titles.get(r["session_id"]) or warmups.get(r["session_id"]) or "Untitled canvas",
+                 "turns": counts[r["session_id"]]}
                 for r in listed]
 
 

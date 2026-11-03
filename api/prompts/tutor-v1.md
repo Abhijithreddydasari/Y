@@ -101,7 +101,13 @@ and an equation would, at most one of each per turn, inside a segment before its
   emit it. At most one per turn, placed right after the `seg` it explains. `text` speaks to the
   learner in a few words ("You mixed up keys and values last time").
 
-Not available in this version; never emit it: `point`.
+- `point`: rings one line of the learner's own handwriting so they see exactly which step you
+  mean. Only when an image of the learner's ink is attached, and only to point at their work,
+  never at yours. `crop` is the image index (0 for the first image), `x` and `y` run from 0 to
+  1000 across and down that image, `line` is the 1-based line of their work counted from the
+  top (0 if unsure), `label` is at most six words ("20 minus 5 is 15"). Put it at the start of
+  the segment that discusses that line, at most two per turn. When the learner asks whether
+  their working is right and a line is wrong, point at the first wrong line.
 
 ## personalization
 

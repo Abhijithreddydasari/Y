@@ -81,9 +81,9 @@ describe("LessonPlayer segment pacing", () => {
     expect(captions).toEqual(["Look how the sums grow.", "So we divide.", "Your turn."]);
   });
 
-  it("by default draws at most one segment ahead of the voice", async () => {
-    expect(SEGMENTS_AHEAD).toBe(1);
-    const p = player();
+  it("with segmentsAhead 1 draws at most one segment ahead of the voice (the default is 0)", async () => {
+    expect(SEGMENTS_AHEAD).toBe(0);
+    const p = player([], 1);
     p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Why scale" } }); p.say("Look how the sums grow.");
     p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Divide" } }); p.say("So we divide.");
     p.beginSegment(); p.enqueue({ tag: "title", args: { text: "Check" } }); p.say("Your turn.");

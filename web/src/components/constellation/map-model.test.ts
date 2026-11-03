@@ -134,6 +134,9 @@ describe("profile → learner map", () => {
     expect(nodeState([0.8, null, null, null, null], [], true)).toBe("shaky");
     expect(nodeState([0.5, null, null, null, null], [], false)).toBe("learning");
     expect(conceptLabel("attention.scaled_dot-product")).toBe("Scaled dot product");
+    expect(conceptLabel("transformer.ffn-role", ["What does the FFN do at each position?"])).toBe("FFN role");
+    expect(conceptLabel("attention.kv-cache", ["Why does the KV cache grow?", "kv again"])).toBe("KV cache");
+    expect(conceptLabel("attention.scaling", ["Why Scale BY root d?"])).toBe("Scaling");
     expect(regionLabel("prob")).toBe("Probability");
     expect(regionLabel("transformer")).toBe("Transformer");
   });

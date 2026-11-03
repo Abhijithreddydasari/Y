@@ -64,6 +64,8 @@ const GRAPH_GAP_Y = 80;
 const GRAPH_COLS = 3;
 const STROKE = "#111111";
 const CHIP_FONT = 14;
+const CARD_CHARS = 52;
+const CARD_NOTE_LINES = 3;
 const CHIP_H = 30;
 const CHIP_STROKE = "#4338ca";
 const CHIP_FILL = "#eef2ff";
@@ -543,8 +545,9 @@ export class LessonRenderer {
     const q = asStr(args.q);
     if (!id || !q) return { skeletons: [] };
     const options = asStr(args.options).split("\n").filter(Boolean);
-    const body = [wrapText(`${asStr(args.label, "Check")}: ${q}`, 52),
-      ...options.map((option, i) => wrapText(`${String.fromCharCode(65 + i)}. ${option}`, 52))].join("\n");
+    // The board is plain text: drop inline-math dollar signs rather than show them.
+    const body = [wrapText(`${asStr(args.label, "Check")}: ${q.replace(/\$/g, "")}`, CARD_CHARS),
+      ...options.map((option, i) => wrapText(`${String.fromCharCode(65 + i)}. ${option}`, CARD_CHARS))].join("\n");
     const lines = body.split("\n").length;
     const pad = 16;
     const height = Math.ceil(NARRATION_FONT * NARRATION_LINE_H * lines) + pad * 2;
@@ -624,6 +627,16 @@ export class LessonRenderer {
     };
     return { skeletons: [skel] };
   }
+}
+
+/**
+ * A line added to a drawn card once it is answered: wrapped to the card's width and kept to three lines
+ * (the full answer is the server's record), with the height the card must grow by.
+ */
+export function cardNote(label: string): { text: string; extra: number } {
+  const lines = wrapText(label, CARD_CHARS).split("\n");
+  const kept = lines.length > CARD_NOTE_LINES ? [...lines.slice(0, CARD_NOTE_LINES - 1), `${lines[CARD_NOTE_LINES - 1].slice(0, CARD_CHARS - 1)}…`] : lines;
+  return { text: kept.join("\n"), extra: Math.ceil(NARRATION_FONT * NARRATION_LINE_H * (kept.length + 1)) };
 }
 
 export function wrapText(text: string, maxChars: number): string {

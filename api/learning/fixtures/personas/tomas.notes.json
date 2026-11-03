@@ -1,0 +1,215 @@
+{
+ "model": "muse-spark-1.3",
+ "recorded_at": "2026-11-03",
+ "sessions": [
+  {
+   "notes": [
+    {
+     "text": "Re-check the output-size formula next time by having the learner contrast the stride-1 case they answered as 32 with the stride-2 case they also answered as 32.",
+     "cites": [
+      "#2",
+      "#3"
+     ]
+    },
+    {
+     "text": "Build on their correct weighted-sum description of convolution to teach stride 2 as computing that sum at every second position.",
+     "cites": [
+      "#1",
+      "#3"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Next time have the learner compute output sizes with combined padding plus stride greater than 1 including floor cases, since the formula recall and basic stride-1 and stride-2 applications were correct.",
+     "cites": [
+      "#0",
+      "#1",
+      "#2"
+     ]
+    },
+    {
+     "text": "Build on the correct 7-pixel receptive field for three 3x3 stride-1 convs by asking for deeper stacks or stride-2 layers next.",
+     "cites": [
+      "#4"
+     ]
+    },
+    {
+     "text": "Re-check pooling by asking when shift tolerance helps versus hurts localization, since only a single correct recognition of that idea was shown.",
+     "cites": [
+      "#3"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner compute both eigenvectors of [[1,1],[0,2]] and dot them to check they are not orthogonal.",
+     "cites": [
+      "#2"
+     ]
+    },
+    {
+     "text": "Use the correct Av=lambda v definition and diagonal-matrix success to practice finding eigenvectors of triangular matrices.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Push the correct biggest-eigenvalue-grows-fastest intuition for power iteration to compare growth by |lambda|^k and dependence on the starting vector.",
+     "cites": [
+      "#4"
+     ]
+    },
+    {
+     "text": "Build on the solid zero-determinant-as-squashing picture to introduce zero eigenvalue with the collapsed direction as its eigenvector.",
+     "cites": [
+      "#3"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Re-teach that singular values are not eigenvalues of A by deriving them as square roots of eigenvalues of A^T A starting from the correct U Sigma V^T form.",
+     "cites": [
+      "#1",
+      "#0"
+     ]
+    },
+    {
+     "text": "Confront the non-orthogonality claim by contrasting eigenvectors of the symmetric covariance matrix with general eigenvectors while reaffirming the greatest-variance direction.",
+     "cites": [
+      "#4",
+      "#2"
+     ]
+    },
+    {
+     "text": "Build on the correct squared-singular-value variance calculation to connect SVD to PCA explained variance next time.",
+     "cites": [
+      "#3"
+     ]
+    }
+   ],
+   "links": [
+    {
+     "cites": [
+      "#1"
+     ],
+     "from": "linalg.svd",
+     "kind": "confused_with",
+     "to": "linalg.eigenvectors",
+     "why": "Learner described singular values as the eigenvalues of A."
+    },
+    {
+     "cites": [
+      "#3"
+     ],
+     "from": "linalg.svd",
+     "kind": "builds_on",
+     "to": "ml.pca",
+     "why": "Learner correctly used squared singular values to compute variance kept by PCs."
+    }
+   ]
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner compute 2-3 successive updates for L=w^2 with η=1.1 to see oscillation/divergence and contrast it with their correct single step at η=0.1.",
+     "cites": [
+      "#2",
+      "#1"
+     ]
+    },
+    {
+     "text": "Build on the learner's correct steep-curvature answer to derive the stability limit from curvature 100 and re-apply it to explain why η=1.1 diverges.",
+     "cites": [
+      "#4",
+      "#2"
+     ]
+    },
+    {
+     "text": "Use the learner's correct running-average description of momentum to show how damping zig-zags differs from simply increasing the learning rate.",
+     "cites": [
+      "#3",
+      "#2"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner recompute the drone P(drone|fire) from their recalled conditional formula by expanding numerator and denominator with the 1% base rate.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Give a new low-base-rate Bayes problem requiring an explicit total-probability denominator to verify they no longer report sensitivity as the posterior.",
+     "cites": [
+      "#1"
+     ]
+    },
+    {
+     "text": "Re-teach why MLE variance divides by n and underestimates true variance, building on their correct sample-mean MLE, since the variance item was left unanswered after reveal.",
+     "cites": [
+      "#3",
+      "#4"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Next time re-check that one homography fits only a single plane by having the learner contrast the tilted pad plane versus the background hill depth.",
+     "cites": [
+      "#3"
+     ]
+    },
+    {
+     "text": "Build on solid recall of 4 correspondences and perspective-division nonlinearity to derive the 2-equations-per-point DLT setup.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Build on correct selection of the smallest right singular vector to have the learner walk through full Ah=0 estimation next.",
+     "cites": [
+      "#2"
+     ]
+    },
+    {
+     "text": "Use the correct 128 to 32 double stride-2 calculation as a warm-up anchor before introducing new conv sizing variants.",
+     "cites": [
+      "#4"
+     ]
+    }
+   ],
+   "links": [
+    {
+     "cites": [
+      "#2"
+     ],
+     "from": "linalg.svd",
+     "kind": "builds_on",
+     "to": "cv.homography",
+     "why": "Learner applied smallest right singular vector to solve the homography DLT system."
+    }
+   ]
+  }
+ ]
+}

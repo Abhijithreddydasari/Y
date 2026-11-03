@@ -48,7 +48,8 @@ class Observation(Contract):
     assistance: Assistance = Field(default_factory=Assistance)
     # Learner-reported confidence from the check card; None when not asked.
     confidence: Probability | None = None
-    labeler: Literal["deterministic", "baseten", "openai", "none"] = "none"
+    # "seed": authored demo-persona history (personas.py), never a live model label.
+    labeler: Literal["deterministic", "baseten", "openai", "seed", "none"] = "none"
     label_confidence: Probability | None = None
     # The decision model's full distributions (H5 soft update). `outcome_p` is None when a verifier decided.
     outcome_p: dict[Outcome, Probability] | None = None
@@ -143,7 +144,7 @@ class ConceptLink(Contract):
     why: str = Field(min_length=1, max_length=240)
     strength: float = Field(ge=0, le=1000)
     evidence: tuple[UUID, ...] = Field(min_length=1, max_length=16)
-    provenance: Literal["model", "system"]
+    provenance: Literal["model", "system", "seed"]
     first_revision: int = Field(ge=1)
 
     @model_validator(mode="after")

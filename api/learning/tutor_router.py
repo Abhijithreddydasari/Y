@@ -21,7 +21,8 @@ from pydantic import Field
 from .contracts import Contract, canonical, digest
 from .decisions import ProviderFailure, evidence_labeler
 from .learner_contracts import LearnerBrief
-from .router import call_store, get_store, private_response, require_owner
+from .personas import PersonaStore
+from .router import call_store, get_store, private_response, require_owner, require_viewer
 from .storage import StoreError
 from .tutor_models import OptionUnavailable, resolve, tutor_options, voice_options
 from .tutor_moves import TurnValidator
@@ -75,6 +76,11 @@ def get_notes_writer(request: Request):
 
 class MemoryInput(Contract):
     memory: bool
+
+
+class CloseInput(Contract):
+    # Which of the viewer's minds keeps this session: "own", or a persona key the viewer has (or gets) a copy of.
+    into: str | None = Field(default=None, pattern=r"^(own|[a-z]{1,32})$")
 
 
 class HintInput(Contract):
@@ -205,7 +211,8 @@ async def session_trace(sid: UUID, owner=Depends(require_owner), store=Depends(g
     entries = await call_store(evidence.entries, owner, str(sid))
     hints = await call_store(studies.hint_timings, str(sid))
     sealed = await call_store(profiles.for_session, owner, str(sid))
-    return trace.session_trace(turns, hints, entries, sealed and sealed["close"], NOTES_MODEL)
+    close = sealed and sealed["close"]
+    return trace.session_trace(turns, hints, entries, close, "seed" if close and close.get("seed") else NOTES_MODEL)
 
 
 @router.get("/sessions/{sid}/memory")
@@ -301,10 +308,20 @@ def _summary(revision, found, left, relabel, notes_trace, started) -> dict:
 
 
 @router.post("/sessions/{sid}/close")
-async def close(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor_store), evidence=Depends(get_evidence),
+async def close(sid: UUID, body: CloseInput | None = None, owner=Depends(require_owner), viewer=Depends(require_viewer),
+                capture=Depends(get_store), store=Depends(get_tutor_store), evidence=Depends(get_evidence),
                 labeler=Depends(get_labeler), profiles=Depends(get_profiles), writer=Depends(get_notes_writer)):
-    """Seal the session once: re-label what is open, reduce, add cited notes, write one revision. Replays change nothing."""
+    """Seal the session once: re-label what is open, reduce, add cited notes, write one revision. Replays change nothing.
+    `into` first moves the open session to another of the viewer's minds (their own, or a persona copy)."""
     started = time.perf_counter()
+    if body is not None and body.into is not None:
+        personas = PersonaStore(capture)
+        target = viewer if body.into == "own" else await call_store(personas.ensure_copy, viewer, body.into)
+        if target != owner:
+            sealed = await call_store(profiles.for_session, owner, str(sid))
+            if sealed is None:
+                await call_store(personas.transfer, str(sid), owner, target)
+                owner = target
     state = await call_store(profiles.begin_close, owner, str(sid))
     if state == "closed":
         stored = await call_store(profiles.for_session, owner, str(sid))
@@ -359,7 +376,8 @@ async def close(sid: UUID, owner=Depends(require_owner), store=Depends(get_tutor
         revision, summary, replayed = await call_store(profiles.write, owner, str(sid), build)
         log.info("session %s sealed revision=%s observations=%s notes=%s in %s ms", sid, revision.revision,
                  len(found), len(revision.notes), summary["ms"])
-        return {**summary, "profile_updated": True, "replayed": replayed}
+        mind = await call_store(PersonaStore(capture).name_of, owner)
+        return {**summary, "profile_updated": True, "replayed": replayed, "persona": mind}
     except BaseException:
         with anyio.CancelScope(shield=True):
             await run_in_threadpool(profiles.abort_close, str(sid))

@@ -11,6 +11,7 @@ from fastapi import FastAPI
 
 from .router import router
 from .board_router import router as board_router
+from .persona_router import router as persona_router
 from .tutor_router import router as tutor_router
 from .voice_router import prefetch_speech, router as voice_router
 
@@ -29,6 +30,7 @@ app = FastAPI(title="Y learning capture", version="0.2.0", lifespan=lifespan)
 app.include_router(router)
 app.include_router(board_router)
 app.include_router(tutor_router)
+app.include_router(persona_router)
 app.include_router(voice_router)
 
 

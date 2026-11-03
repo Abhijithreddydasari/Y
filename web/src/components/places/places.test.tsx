@@ -77,6 +77,41 @@ describe("SettingsSheet", () => {
   });
 });
 
+describe("Try as… (demo personas)", () => {
+  const listing = { active: "priya", personas: [
+    { key: "priya", name: "Priya Nair", blurb: "MSc ML student", topics: ["KV cache"], copied: true },
+    { key: "amara", name: "Amara Okafor", blurb: "Physics PhD student", topics: [], copied: false }] };
+
+  it("marks the active learner, switches profile and picks the mind End session saves to", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(listing), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const reload = vi.fn();
+    vi.stubGlobal("location", { ...window.location, reload });
+    const state = tutor({ saveTo: { value: null, set: vi.fn() } } as never);
+    const session = { tutor: state, ttsEnabled: true, toggleTts: vi.fn() } as unknown as TutorSession;
+    render(<SettingsSheet session={session} interfaceMode={{ mode: "studio", setMode: vi.fn(), useAutomaticMode: vi.fn() } as never}
+      onClose={vi.fn()} personas={{ listing, error: "" }} />);
+    expect(screen.getByRole("radio", { name: /Priya Nair/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Reset Priya" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "End session saves to" }), { target: { value: "own" } });
+    expect(state.saveTo.set).toHaveBeenCalledWith({ into: "own", name: "your own mind" });
+    fireEvent.click(screen.getByRole("radio", { name: /Your own/ }));
+    await vi.waitFor(() => expect(reload).toHaveBeenCalled());
+    expect(fetchMock).toHaveBeenCalledWith("/api/learning/personas/active", expect.objectContaining({ method: "PUT", body: JSON.stringify({ persona: null }) }));
+    expect(localStorage.getItem("y_profile_v1")).toBeNull();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps one board session per profile", async () => {
+    const { sessionKey, setProfileKey } = await import("@/lib/personas");
+    expect(sessionKey(null)).toBe("y_board_session_v1");
+    setProfileKey("tomas");
+    expect(sessionKey()).toBe("y_board_session_v1:tomas");
+    setProfileKey(null);
+    expect(sessionKey()).toBe("y_board_session_v1");
+  });
+});
+
 describe("Tool dock", () => {
   it("maps dock tools onto Excalidraw tools and back", () => {
     expect(toolSettings("pen", "#1d4ed8")).toEqual({ type: "freedraw", style: { currentItemStrokeColor: "#1d4ed8", currentItemOpacity: 100, currentItemStrokeWidth: 2 } });

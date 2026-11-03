@@ -47,6 +47,8 @@ export interface TurnMemory { on: boolean; revision: number | null; items: { id:
 export interface CloseSummary {
   revision: number | null; sealed: number; profile_updated: boolean; replayed: boolean;
   misconceptions?: string[]; notes?: string[]; beliefs?: { concept: string; dimension: string; mean: number }[];
+  /** The demo persona whose mind kept this session; null for your own. */
+  persona?: string | null;
 }
 export interface TutorTurnEvents {
   onTurn?: (value: { turn_id: string; outcome: { qid: string; result: string } | null }) => void;
@@ -145,8 +147,10 @@ export async function fetchTutorState(session: string): Promise<TutorState> {
   return response.json() as Promise<TutorState>;
 }
 
-export async function closeSession(session: string): Promise<CloseSummary> {
-  const response = await fetch(`/api/learning/sessions/${session}/close`, { method: "POST", credentials: "same-origin" });
+/** Seal the session; `into` ("own" or a persona key) first moves it to another of this browser's minds. */
+export async function closeSession(session: string, into?: string): Promise<CloseSummary> {
+  const response = await fetch(`/api/learning/sessions/${session}/close`, { method: "POST", credentials: "same-origin",
+    ...(into ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ into }) } : {}) });
   if (!response.ok) throw await failure(response);
   return response.json() as Promise<CloseSummary>;
 }

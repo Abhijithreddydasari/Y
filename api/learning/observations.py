@@ -14,6 +14,7 @@ import math
 import random
 import re
 import time
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import anyio
@@ -445,8 +446,10 @@ class ObservationStore:
 
     def capture_answer(self, owner: str, sid: str, turn_id: str, question: dict, answer: str, graded: dict,
                        modality: str, history: list[dict], element_ids: tuple[str, ...] = (),
-                       crops: tuple[str, ...] = (), hint_ids: tuple[str, ...] = ()) -> tuple[dict, bool]:
-        """Insert-or-get on (session_id, qid). Returns (row view, created); a repeat only counts a duplicate."""
+                       crops: tuple[str, ...] = (), hint_ids: tuple[str, ...] = (), at: float | None = None) -> tuple[dict, bool]:
+        """Insert-or-get on (session_id, qid). Returns (row view, created); a repeat only counts a duplicate.
+        `at` backdates the answer (seeded demo history only)."""
+        stamp = time.time() if at is None else at
         concept, dimension = concept_of(question, history)
         revealed = graded["result"] == "revealed"
         verifier = {"result": graded.get("verified"), "method": graded.get("method"),
@@ -455,11 +458,12 @@ class ObservationStore:
                  None if graded.get("confidence") is None else graded["confidence"] / 100,
                  "format_weight": format_weight(question, modality, revealed), "element_ids": list(element_ids),
                  "crop_hashes": list(crops[:MAX_CROPS]), "hint_ids": list(hint_ids),
-                 "verifier": verifier, "created_at": now_iso()}
+                 "verifier": verifier, "created_at": now_iso() if at is None else
+                 datetime.fromtimestamp(stamp, timezone.utc).isoformat()}
         row = {"observation_id": str(uuid4()), "session_id": sid, "owner_id": owner, "qid": question["qid"],
                "turn_id": turn_id, "modality": modality, "question_json": canonical(question), "answer_text": answer,
                "verifier_json": canonical(value), "key_status": graded.get("key_status", "ok"), "duplicates": 0,
-               "lease_until": 0, "created_at": time.time()}
+               "lease_until": 0, "created_at": stamp}
         # Revealed: nothing to label. Otherwise a deterministic result is recorded now and Elephant refines it.
         deterministic = "unanswered" if revealed else verifier["result"]
         row["status"] = "deterministic" if revealed else "pending"

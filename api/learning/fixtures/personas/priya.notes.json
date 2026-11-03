@@ -1,0 +1,198 @@
+{
+ "model": "muse-spark-1.3",
+ "recorded_at": "2026-11-03",
+ "sessions": [
+  {
+   "notes": [
+    {
+     "text": "Re-teach that softmax preserves sum-to-1 while amplifying differences by working through [2,1,0] to show the largest stays largest.",
+     "cites": [
+      "#4",
+      "#3"
+     ]
+    },
+    {
+     "text": "Build on accurate dot-product calculation and same-direction interpretation to frame attention scores as similarity before softmax.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Have the learner apply row-wise softmax to the correct 5x5 QK^T to show each row sums to 1 yet stays peaked.",
+     "cites": [
+      "#2",
+      "#4"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Next time contrast scaling versus softmax by pointing to the learner's correct formula and asking which operation creates probabilities versus controls magnitude.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Next time build on the correct divide-by-8 for d_k=64 to teach that scaling prevents large dot-products from saturating softmax.",
+     "cites": [
+      "#2",
+      "#0"
+     ]
+    },
+    {
+     "text": "Next time re-check softmax sharpness by computing exp(4)/(exp(4)+1) ~0.98 to confront the 0.8 estimate for scores [4,0].",
+     "cites": [
+      "#3"
+     ]
+    }
+   ],
+   "links": [
+    {
+     "cites": [
+      "#0"
+     ],
+     "from": "attention.scaling",
+     "kind": "confused_with",
+     "to": "attention.softmax",
+     "why": "Learner attributed softmax's probability normalization role to the scaling division."
+    }
+   ]
+  },
+  {
+   "notes": [
+    {
+     "text": "Re-teach why sinusoidal encodings use many frequencies to capture relative position at multiple scales, since the learner knows attention is order-blind but chose faster training as the reason.",
+     "cites": [
+      "#4",
+      "#5"
+     ]
+    },
+    {
+     "text": "Build on the learner's correct variance-64 and sharper-softmax answers to have them derive the 1/sqrt(d_k) rescaling next time.",
+     "cites": [
+      "#2",
+      "#3"
+     ]
+    },
+    {
+     "text": "Build on the correct 64-dim calculation and different-patterns idea by asking the learner to explain how heads are concatenated and projected next time.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner hand-compute softmax for [10,1,1,1] to confront the 40% estimate and see the top token approaches 100%.",
+     "cites": [
+      "#5"
+     ]
+    },
+    {
+     "text": "Push the partial batch-size answer next time to articulate per-token normalization and variable sequence length as the reason for layer norm.",
+     "cites": [
+      "#1",
+      "#0"
+     ]
+    },
+    {
+     "text": "Use the solid cross-entropy results for p=0.25 and p going to 0 to link confident softmax outputs to low loss.",
+     "cites": [
+      "#3",
+      "#4"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Next time confront the idea that queries come from values by having the learner trace where the single current-step query comes from versus reused past keys and values.",
+     "cites": [
+      "#2"
+     ]
+    },
+    {
+     "text": "Re-check KV-cache sizing by having the learner explicitly multiply 2 for K and V times layers times d_model times bytes, since the answer was half the correct size.",
+     "cites": [
+      "#3"
+     ]
+    },
+    {
+     "text": "Build on the correct one-token-at-a-time and causal-mask counting to explain why all past keys and values must stay cached while only one query is needed.",
+     "cites": [
+      "#0",
+      "#4",
+      "#1"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner plug y_i near 1 into their own y_i - y_i^2 formula to see why saturated softmax gradients vanish.",
+     "cites": [
+      "#1",
+      "#2"
+     ]
+    },
+    {
+     "text": "Re-ask the learner to explain why the softmax Jacobian has negative off-diagonal terms since they left it blank after seeing the solution.",
+     "cites": [
+      "#3"
+     ]
+    },
+    {
+     "text": "Use the learner's correct chain-rule and wasted-head answers to trace how saturated attention in one head limits gradient flow to earlier weights.",
+     "cites": [
+      "#0",
+      "#4"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Next time build on the learner's correct recall that the N x N matrix is the memory bottleneck and FlashAttention avoids storing it to introduce how tiling keeps it in SRAM.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Re-teach online softmax with running max and rescaled denominator because the learner proposed averaging per-tile softmaxes.",
+     "cites": [
+      "#2"
+     ]
+    },
+    {
+     "text": "Re-check that FlashAttention is exact, not approximate, by contrasting exact recomputation with approximation methods.",
+     "cites": [
+      "#4"
+     ]
+    },
+    {
+     "text": "Re-practice grouped-query cache sizing as 32/8 = 4x smaller because the learner answered 8x.",
+     "cites": [
+      "#3"
+     ]
+    }
+   ],
+   "links": []
+  }
+ ]
+}

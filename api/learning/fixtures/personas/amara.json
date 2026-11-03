@@ -1,0 +1,71 @@
+{
+  "key": "amara",
+  "name": "Amara Okafor",
+  "blurb": "First-year physics PhD student taking graduate quantum and statistical mechanics.",
+  "topics": ["Wavefunctions and commutators", "Uncertainty", "Ladder operators", "Partition functions", "Entropy and quantum statistics"],
+  "beliefs": {
+    "uncertainty-disturbance": {"concept": "qm.uncertainty", "text": "thinks the uncertainty principle comes from the measurement disturbing the particle"},
+    "entropy-disorder": {"concept": "stat.entropy", "text": "treats entropy as visual disorder rather than the log of the number of microstates"},
+    "energy-kt-always": {"concept": "stat.equipartition", "text": "thinks the average energy is kT for any system at any temperature"}
+  },
+  "sessions": [
+    {"days_ago": 20.2, "title": "What does a wavefunction tell you?", "checks": [
+      {"c": "math.complex-numbers", "d": "recall", "q": "What is $|3 + 4i|^2$?", "k": "25", "a": "25", "conf": 95},
+      {"c": "math.derivatives", "d": "apply", "q": "What is $\\frac{d}{dx} e^{ikx}$?", "o": ["$ik\\,e^{ikx}$", "$k\\,e^{ikx}$", "$e^{ikx}$"], "k": "$ik\\,e^{ikx}$", "a": "$ik\\,e^{ikx}$", "conf": 95},
+      {"c": "qm.born-rule", "d": "understand", "q": "What does $|\\psi(x)|^2\\,dx$ give?", "o": ["The probability of finding the particle between x and x + dx", "The particle's energy", "The particle's momentum"], "k": "The probability of finding the particle between x and x + dx", "a": "The probability of finding the particle between x and x + dx", "conf": 95},
+      {"c": "qm.born-rule", "d": "apply", "q": "$\\psi = (|0\\rangle + i|1\\rangle)/\\sqrt{2}$. Probability of measuring 1?", "k": "0.5", "a": "0.5", "conf": 65},
+      {"c": "qm.normalization", "d": "apply", "q": "$\\psi(x) = A$ on $[0, 4]$, zero elsewhere. What is A?", "k": "0.5", "a": "0.25", "conf": 65, "r": 0.4}
+    ]},
+    {"days_ago": 17.3, "title": "Commutators and the uncertainty principle", "checks": [
+      {"c": "qm.commutators", "d": "recall", "q": "What is $[\\hat x, \\hat p]$?", "o": ["$i\\hbar$", "0", "$\\hbar$"], "k": "$i\\hbar$", "a": "$i\\hbar$", "conf": 95},
+      {"c": "qm.commutators", "d": "understand", "q": "Two observables commute. What does that allow?", "o": ["A shared set of eigenstates, so both have definite values together", "Faster measurements", "Nothing physical"], "k": "A shared set of eigenstates, so both have definite values together", "a": "A shared set of eigenstates, so both have definite values together", "conf": 65},
+      {"c": "qm.uncertainty", "d": "understand", "q": "Where does $\\Delta x\\,\\Delta p \\ge \\hbar/2$ come from?", "o": ["The state itself: x and p don't commute, so no state is sharp in both", "The measuring photon kicks the particle", "Limits of our instruments"], "k": "The state itself: x and p don't commute, so no state is sharp in both", "a": "The measuring photon kicks the particle", "mis": "uncertainty-disturbance", "mp": 0.85, "conf": 95, "r": 0.3},
+      {"c": "qm.uncertainty", "d": "apply", "q": "An electron is confined to $\\Delta x = 1$ nm. Minimum $\\Delta p$ in units of $\\hbar$ / nm?", "k": "0.5", "a": "0.5", "conf": 65},
+      {"c": "qm.uncertainty", "d": "analyze", "q": "A Gaussian wavepacket is made narrower in x. What happens to its momentum spread, and why?", "k": "It grows, because a narrower packet needs more plane-wave components (Fourier width)", "a": "It grows because measuring position more precisely disturbs it more", "out": "partial", "mis": "uncertainty-disturbance", "mp": 0.55, "conf": 65, "r": 0.4}
+    ]},
+    {"days_ago": 13.4, "title": "The harmonic oscillator with ladder operators", "checks": [
+      {"c": "qm.harmonic-oscillator", "d": "recall", "q": "Energy levels of the quantum harmonic oscillator?", "o": ["$\\hbar\\omega(n + 1/2)$", "$\\hbar\\omega n$", "$n^2 \\hbar\\omega$"], "k": "$\\hbar\\omega(n + 1/2)$", "a": "$\\hbar\\omega(n + 1/2)$", "conf": 95},
+      {"c": "qm.ladder-operators", "d": "understand", "q": "What does $\\hat a$ do to $|n\\rangle$?", "o": ["$\\sqrt{n}\\,|n-1\\rangle$", "$|n+1\\rangle$", "$n|n\\rangle$"], "k": "$\\sqrt{n}\\,|n-1\\rangle$", "a": "$\\sqrt{n}\\,|n-1\\rangle$", "conf": 65},
+      {"c": "qm.ladder-operators", "d": "apply", "q": "What is $[\\hat a, \\hat a^\\dagger]$?", "k": "1", "a": "1", "conf": 65},
+      {"c": "qm.ladder-operators", "d": "analyze", "q": "Why must the ladder stop at a ground state?", "k": "Energy is bounded below, so lowering must eventually give a|0> = 0", "a": "Because energy can't be negative, a|0> has to vanish", "out": "correct", "conf": 65, "r": 0.85},
+      {"c": "qm.harmonic-oscillator", "d": "transfer", "q": "A diatomic molecule's vibration at room temperature is mostly in which state?", "o": ["The ground state, since ħω is much larger than kT", "Spread evenly over many levels", "The first excited state"], "k": "The ground state, since ħω is much larger than kT", "a": "Spread evenly over many levels", "mis": "energy-kt-always", "mp": 0.5, "conf": 30}
+    ]},
+    {"days_ago": 10.2, "title": "Spin-½ and perturbation theory", "checks": [
+      {"c": "qm.spin-half", "d": "recall", "q": "How many outcomes does measuring $S_z$ on a spin-½ give?", "k": "2", "a": "2", "conf": 95},
+      {"c": "qm.spin-half", "d": "apply", "q": "Spin up along z, measured along x. Probability of +ħ/2?", "o": ["1/2", "1", "0"], "k": "1/2", "a": "1/2", "conf": 65},
+      {"c": "qm.perturbation-theory", "d": "understand", "q": "First-order energy shift from a perturbation V?", "o": ["$\\langle n | V | n \\rangle$", "$\\langle n | V | m \\rangle$ summed over m", "Zero always"], "k": "$\\langle n | V | n \\rangle$", "a": "$\\langle n | V | n \\rangle$", "conf": 65},
+      {"c": "qm.perturbation-theory", "d": "analyze", "q": "Why does second-order theory push the ground state down?", "k": "Every term has a negative denominator E_0 - E_m, so each contribution lowers the energy", "a": "", "reveal": true},
+      {"c": "qm.uncertainty", "d": "transfer", "q": "Why can't a spin be sharp along both x and z at once?", "o": ["$S_x$ and $S_z$ don't commute, so no state is an eigenstate of both", "Measuring z disturbs x", "It can, with a careful measurement"], "k": "$S_x$ and $S_z$ don't commute, so no state is an eigenstate of both", "a": "Measuring z disturbs x", "mis": "uncertainty-disturbance", "mp": 0.6, "conf": 65}
+    ]},
+    {"days_ago": 6.3, "title": "The Boltzmann distribution and partition functions", "checks": [
+      {"c": "stat.boltzmann", "d": "recall", "q": "Probability of a state with energy E at temperature T is proportional to...", "o": ["$e^{-E/kT}$", "$E/kT$", "$e^{E/kT}$"], "k": "$e^{-E/kT}$", "a": "$e^{-E/kT}$", "conf": 95},
+      {"c": "stat.partition-function", "d": "apply", "q": "Two levels at 0 and ε with $\\varepsilon = kT \\ln 3$. What is Z?", "k": "4/3", "a": "1.333", "out": "correct", "conf": 65, "r": 0.8},
+      {"c": "stat.partition-function", "d": "understand", "q": "How do you get ⟨E⟩ from Z?", "o": ["$-\\partial \\ln Z / \\partial \\beta$", "$\\ln Z / \\beta$", "$Z\\,kT$"], "k": "$-\\partial \\ln Z / \\partial \\beta$", "a": "$-\\partial \\ln Z / \\partial \\beta$", "hint": true, "conf": 30},
+      {"c": "stat.equipartition", "d": "understand", "q": "When does each quadratic degree of freedom carry kT/2?", "o": ["When kT is large compared with the level spacing", "Always", "Only at absolute zero"], "k": "When kT is large compared with the level spacing", "a": "When kT is large compared with the level spacing", "conf": 65, "r": 0.75},
+      {"c": "stat.equipartition", "d": "apply", "q": "A 3D classical ideal gas: ⟨E⟩ per atom in units of kT?", "k": "1.5", "a": "1.5", "conf": 95, "r": 0.8}
+    ]},
+    {"days_ago": 3.2, "title": "Entropy and free energy", "checks": [
+      {"c": "stat.entropy", "d": "recall", "q": "Boltzmann's entropy formula?", "o": ["$S = k \\ln \\Omega$", "$S = \\Omega / k$", "$S = kT$"], "k": "$S = k \\ln \\Omega$", "a": "$S = k \\ln \\Omega$", "conf": 95},
+      {"c": "stat.entropy", "d": "understand", "q": "Oil and water separate on their own. Did total entropy fall?", "o": ["No; hydrogen bonding of water raises the entropy of the whole system", "Yes, the mixture became more ordered", "Entropy doesn't apply to liquids"], "k": "No; hydrogen bonding of water raises the entropy of the whole system", "a": "Yes, the mixture became more ordered", "mis": "entropy-disorder", "mp": 0.4, "conf": 65, "r": 0.3},
+      {"c": "stat.free-energy", "d": "recall", "q": "Helmholtz free energy in terms of Z?", "o": ["$F = -kT \\ln Z$", "$F = kT Z$", "$F = \\ln Z / kT$"], "k": "$F = -kT \\ln Z$", "a": "$F = -kT \\ln Z$", "conf": 65},
+      {"c": "stat.free-energy", "d": "analyze", "q": "At fixed T and V, why does a system minimise F rather than E?", "k": "Minimising F = E - TS maximises the total entropy of system plus reservoir", "a": "Because entropy also matters at finite T", "out": "partial", "conf": 30, "r": 0.5},
+      {"c": "stat.entropy", "d": "apply", "q": "Ω goes from $10^{20}$ to $10^{21}$. What is ΔS in units of k (to 2 decimals)?", "k": "2.30", "a": "2.3", "out": "correct", "conf": 65}
+    ]},
+    {"days_ago": 1.3, "title": "Fermions, bosons and the quantum statistics", "checks": [
+      {"c": "stat.fermi-dirac", "d": "recall", "q": "Fermi–Dirac occupation of a level at E = μ?", "k": "0.5", "a": "0.5", "conf": 95},
+      {"c": "stat.fermi-dirac", "d": "understand", "q": "Why does the Fermi–Dirac occupation never exceed 1?", "o": ["Pauli exclusion: at most one fermion per state", "Fermions are heavy", "The chemical potential is negative"], "k": "Pauli exclusion: at most one fermion per state", "a": "Pauli exclusion: at most one fermion per state", "conf": 95},
+      {"c": "stat.bose-einstein", "d": "understand", "q": "What happens to Bose–Einstein occupation as E − μ → 0⁺?", "o": ["It diverges, the start of condensation", "It goes to 1", "It goes to 0"], "k": "It diverges, the start of condensation", "a": "It goes to 1", "conf": 30},
+      {"c": "stat.fermi-dirac", "d": "transfer", "q": "Why do metal electrons add almost nothing to heat capacity at room temperature?", "o": ["Only electrons within about kT of the Fermi level can be excited", "Electrons have no kinetic energy", "Each electron carries 3kT/2"], "k": "Only electrons within about kT of the Fermi level can be excited", "a": "Each electron carries 3kT/2", "mis": "energy-kt-always", "mp": 0.45, "conf": 65, "r": 0.35},
+      {"c": "stat.equipartition", "d": "transfer", "q": "Why does a solid's heat capacity drop below 3Nk at low temperature?", "o": ["Vibrational modes freeze out when kT falls below ħω", "Atoms stop moving", "Equipartition always holds"], "k": "Vibrational modes freeze out when kT falls below ħω", "a": "Vibrational modes freeze out when kT falls below ħω", "conf": 65, "r": 0.8}
+    ]}
+  ],
+  "links": [
+    {"session": 0, "from": "math.complex-numbers", "to": "qm.born-rule", "kind": "builds_on", "why": "Used the squared modulus of a complex amplitude to get a probability.", "cites": ["math.complex-numbers/recall", "qm.born-rule/apply"]},
+    {"session": 1, "from": "qm.commutators", "to": "qm.uncertainty", "kind": "builds_on", "why": "Got the minimum momentum spread from the x–p commutator bound.", "cites": ["qm.uncertainty/apply", "qm.commutators/recall"]},
+    {"session": 2, "from": "qm.commutators", "to": "qm.ladder-operators", "kind": "builds_on", "why": "Computed the ladder commutator directly.", "cites": ["qm.ladder-operators/apply"]},
+    {"session": 4, "from": "qm.harmonic-oscillator", "to": "stat.equipartition", "kind": "confused_with", "why": "Now limits equipartition to kT above the level spacing, after giving a stiff vibration kT earlier.", "cites": ["stat.equipartition/understand"]},
+    {"session": 4, "from": "stat.boltzmann", "to": "stat.partition-function", "kind": "builds_on", "why": "Summed Boltzmann factors to get the two-level Z.", "cites": ["stat.partition-function/apply", "stat.boltzmann/recall"]},
+    {"session": 5, "from": "stat.entropy", "to": "stat.free-energy", "kind": "builds_on", "why": "Explained free-energy minimisation through total entropy.", "cites": ["stat.free-energy/analyze"]},
+    {"session": 6, "from": "stat.equipartition", "to": "stat.fermi-dirac", "kind": "confused_with", "why": "Gave every electron 3kT/2, as equipartition would, instead of Fermi–Dirac occupation.", "cites": ["stat.fermi-dirac/transfer", "stat.equipartition/transfer"]}
+  ]
+}

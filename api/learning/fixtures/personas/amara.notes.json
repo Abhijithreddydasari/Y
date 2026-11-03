@@ -1,0 +1,222 @@
+{
+ "model": "muse-spark-1.3",
+ "recorded_at": "2026-11-03",
+ "sessions": [
+  {
+   "notes": [
+    {
+     "text": "Re-check normalization for psi(x)=A on [0,4] next time by having the learner write integral of |A|^2 equals 1 to see why A is 1/2 not 0.25.",
+     "cites": [
+      "#3"
+     ]
+    },
+    {
+     "text": "Build on the correct |3+4i|^2 calculation to reteach the missed normalization step that the constant A must be squared before integrating.",
+     "cites": [
+      "#0",
+      "#3"
+     ]
+    },
+    {
+     "text": "Use the correct |psi(x)|^2 dx probability idea to frame normalization as total probability equals 1 when revisiting the [0,4] problem.",
+     "cites": [
+      "#2",
+      "#3"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Next time build on their correct recall of [x,p]=i hbar and shared eigenstates to derive uncertainty as intrinsic non-commutation, explicitly contrasting it with the photon-kick story they gave.",
+     "cites": [
+      "#0",
+      "#1",
+      "#2"
+     ]
+    },
+    {
+     "text": "Re-teach the Gaussian wavepacket narrowing by having them explain momentum broadening via intrinsic Fourier spread, confronting their 'more precise measurement disturbs it more' explanation.",
+     "cites": [
+      "#4"
+     ]
+    },
+    {
+     "text": "Use their correct Delta-p calculation to reconnect the formula to commutators and state-spread, checking they can apply it without invoking disturbance.",
+     "cites": [
+      "#3",
+      "#2"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner compare vibrational spacing hbar-omega to room-temperature kT to re-check why the ground state dominates.",
+     "cites": [
+      "#4",
+      "#0"
+     ]
+    },
+    {
+     "text": "Build on correct lowering action and commutator to practice evaluating number-operator and energy expectations in excited states.",
+     "cites": [
+      "#1",
+      "#2"
+     ]
+    },
+    {
+     "text": "Re-ask for the norm argument behind a|0>=0 to consolidate the correct ladder-termination reasoning.",
+     "cites": [
+      "#3"
+     ]
+    }
+   ],
+   "links": [
+    {
+     "cites": [
+      "#3"
+     ],
+     "from": "qm.harmonic-oscillator",
+     "kind": "builds_on",
+     "to": "qm.ladder-operators",
+     "why": "Learner justified that a|0> must vanish by appealing to non-negative energy."
+    }
+   ]
+  },
+  {
+   "notes": [
+    {
+     "text": "Build on correctly recalled 2 Sz outcomes and 1/2 probability for x-measurement from z-up to teach general spin-1/2 rotation probabilities next time.",
+     "cites": [
+      "#0",
+      "#1"
+     ]
+    },
+    {
+     "text": "Re-teach why second-order theory lowers the ground state from scratch next time, building on the correctly recalled first-order shift, since the analyze question was left unanswered even after the solution was shown.",
+     "cites": [
+      "#2",
+      "#3"
+     ]
+    },
+    {
+     "text": "Confront the disturbance explanation for x-z incompatibility by contrasting measurement disturbance with intrinsic indeterminacy using commutators and re-check with a new transfer example.",
+     "cites": [
+      "#4"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Have the learner compute <E> for the 0-epsilon two-level system using Z=4/3 and the -d ln Z/d beta rule to consolidate partition-function application.",
+     "cites": [
+      "#1",
+      "#2"
+     ]
+    },
+    {
+     "text": "Ask the learner to predict what happens to average energy when kT is no longer large versus level spacing to extend the correct equipartition condition.",
+     "cites": [
+      "#3",
+      "#4"
+     ]
+    },
+    {
+     "text": "Re-check recall of the e^{-E/kT} Boltzmann weight in a three-level calculation before introducing new statistical-mechanics material.",
+     "cites": [
+      "#0"
+     ]
+    }
+   ],
+   "links": []
+  },
+  {
+   "notes": [
+    {
+     "text": "Confront the oil-and-water answer next time by asking the learner to account for water and energy changes so total entropy is seen to rise despite local ordering.",
+     "cites": [
+      "#1"
+     ]
+    },
+    {
+     "text": "Build on the correct recall of S = k ln Ω and correct ΔS calculation next time by having the learner compute entropy changes for other Ω ratios.",
+     "cites": [
+      "#0",
+      "#4"
+     ]
+    },
+    {
+     "text": "Build on the correct F = -kT ln Z recall and partial entropy-matters explanation next time by deriving F = E - TS minimization explicitly at fixed T and V.",
+     "cites": [
+      "#2",
+      "#3"
+     ]
+    }
+   ],
+   "links": [
+    {
+     "cites": [
+      "#3"
+     ],
+     "from": "stat.entropy",
+     "kind": "builds_on",
+     "to": "stat.free-energy",
+     "why": "Learner explained F-minimization by appealing to entropy mattering at finite T."
+    }
+   ]
+  },
+  {
+   "notes": [
+    {
+     "text": "Re-teach Bose-Einstein divergence as E-mu approaches 0 by contrasting it with the correctly recalled Fermi-Dirac cap at 1 from Pauli exclusion.",
+     "cites": [
+      "#2",
+      "#1"
+     ]
+    },
+    {
+     "text": "Confront the 3kT/2-per-electron idea next time by reusing the learner's own Pauli-exclusion reasoning to show only states near mu can be thermally excited.",
+     "cites": [
+      "#3",
+      "#1"
+     ]
+    },
+    {
+     "text": "Build on the correct vibrational freeze-out explanation to teach electronic heat capacity as an analogous freeze-out where kT is far below the Fermi energy.",
+     "cites": [
+      "#4",
+      "#3"
+     ]
+    }
+   ],
+   "links": [
+    {
+     "cites": [
+      "#3"
+     ],
+     "from": "stat.equipartition",
+     "kind": "confused_with",
+     "to": "stat.fermi-dirac",
+     "why": "Learner explained suppressed metal electronic heat capacity with classical 3kT/2 per electron."
+    },
+    {
+     "cites": [
+      "#4"
+     ],
+     "from": "qm.harmonic-oscillator",
+     "kind": "builds_on",
+     "to": "stat.equipartition",
+     "why": "Learner explained low-temperature heat-capacity drop by mode freeze-out when kT falls below hbar omega."
+    }
+   ]
+  }
+ ]
+}

@@ -46,6 +46,8 @@ export interface TutorTurnState {
   /** End session: offers the exit ticket first when the session has answered checks, otherwise seals at once. */
   endSession: () => void;
   ending: boolean;
+  /** Which mind End session saves to: null is the board's own (the profile it was opened in). */
+  saveTo: { value: SaveTarget | null; set: (target: SaveTarget | null) => void };
   /** Warm-up reviews due from earlier sessions; never blocks asking. `visible` is false once skipped or asked past. */
   warmup: { items: ReviewItem[]; visible: boolean; started: boolean; start: () => void; skip: () => void };
   /** The exit-ticket offer shown after End session: take it, or end straight away. */
@@ -59,12 +61,16 @@ export interface TutorTurnState {
 
 const LAST_CLOSE = "y_last_close";
 
-export function closeMessage(summary: CloseSummary): string {
+/** Another of this browser's minds: "own", or a demo persona key, with the name shown when it is saved. */
+export interface SaveTarget { into: string; name: string }
+
+export function closeMessage(summary: CloseSummary, mind?: string): string {
   if (!summary.profile_updated) return "Session ended. No answered checks to learn from, so your profile is unchanged.";
   const parts = [`${summary.sealed} answer${summary.sealed === 1 ? "" : "s"} sealed`];
   if (summary.misconceptions?.length) parts.push(`${summary.misconceptions.length} misconception${summary.misconceptions.length === 1 ? "" : "s"} noted`);
   if (summary.notes?.length) parts.push(`${summary.notes.length} teaching note${summary.notes.length === 1 ? "" : "s"}`);
-  return `Session saved to your profile (revision ${summary.revision}): ${parts.join(", ")}. This is a new session.`;
+  const kept = mind ?? (summary.persona ? `${summary.persona.split(" ")[0]}'s mind` : "your profile");
+  return `Session saved to ${kept} (revision ${summary.revision}): ${parts.join(", ")}. This is a new session.`;
 }
 
 interface CachedLesson {
@@ -213,6 +219,7 @@ export function useTutorSession(): TutorSession {
   const [memoryOn, setMemoryOn] = useState(true);
   const [turnMemory, setTurnMemory] = useState<TurnMemory | null>(null);
   const [ending, setEnding] = useState(false);
+  const [saveTo, setSaveTo] = useState<SaveTarget | null>(null);
   const [reviews, setReviews] = useState<ReviewItem[]>([]);
   const [warmupOpen, setWarmupOpen] = useState(true);
   const [warmupStarted, setWarmupStarted] = useState(false);
@@ -662,8 +669,8 @@ export function useTutorSession(): TutorSession {
   const closeNow = useCallback(() => {
     setEnding(true); setTutorError(""); setExitOffered(false);
     setStatus("Saving this session to your learner profile…");
-    void boardSession().then(closeSession).then((summary) => {
-      const message = closeMessage(summary);
+    void boardSession().then((session) => closeSession(session, saveTo?.into)).then((summary) => {
+      const message = closeMessage(summary, saveTo?.name);
       try { sessionStorage.setItem(LAST_CLOSE, message); } catch { /* the status is shown once anyway */ }
       startNextBoardSession();
       window.location.reload();
@@ -671,7 +678,7 @@ export function useTutorSession(): TutorSession {
       const message = tutorErrorMessage(error);
       setTutorError(message); setStatus(message); setEnding(false);
     });
-  }, []);
+  }, [saveTo]);
 
   const answer = useCallback((value: TutorAnswer) => {
     if (!question) return;
@@ -849,6 +856,7 @@ export function useTutorSession(): TutorSession {
       setDraft, ask, answer, cardRect, hush,
       picker: { options: tutorOptions, prefs, trace, setModel: (model) => choose({ model }), setVoice: (voice) => choose({ voice }) },
       memory: { on: memoryOn, set: setMemory, turn: turnMemory }, endSession, ending,
+      saveTo: { value: saveTo, set: setSaveTo },
       warmup: { items: reviews, visible: warmupOpen && !sealed && reviews.length > 0, started: warmupStarted, start: startReview,
         skip: () => setWarmupOpen(false) },
       exit: { offered: exitOffered, take: takeExit, skip: closeNow },

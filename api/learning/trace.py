@@ -24,8 +24,8 @@ def turn_row(turn: dict) -> dict:
             "usage": {k: v for k, v in (timing.get("usage") or {}).items() if k in _USAGE},
             "moves": len(turn["moves"]), "dropped": len(timing.get("dropped") or []), "repairs": timing.get("repairs", 0),
             "error": timing.get("error"), "points": timing.get("points") or [],
-            # A warm-up review is drawn from a stored check with no model call.
-            "model_call": turn["kind"] != "review"}
+            # A warm-up review is drawn from a stored check with no model call; seeded demo history has none either.
+            "model_call": turn["kind"] != "review" and not timing.get("seed"), "seed": bool(timing.get("seed"))}
 
 
 def hint_row(hint: dict) -> dict:
@@ -50,7 +50,7 @@ def close_row(close: dict | None, model: str) -> dict | None:
     return {"stage": "close", "revision": close.get("revision"), "ms": close.get("ms"), "sealed": close.get("sealed"),
             "notes_model": model, "notes": {k: notes[k] for k in ("kept", "dropped", "named", "names_dropped", "links",
                                                                    "links_dropped", "error") if k in notes},
-            "relabel": close.get("relabel")}
+            "relabel": close.get("relabel"), "seed": bool(close.get("seed"))}
 
 
 def session_trace(turns: list[dict], hints: list[dict], entries: list[dict], close: dict | None, notes_model: str) -> dict:

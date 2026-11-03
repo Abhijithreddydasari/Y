@@ -80,7 +80,7 @@ function tutor(overrides: Partial<TutorTurnState> = {}): TutorTurnState {
   return { configured: true, busy: false, draft: "", question: null, caption: "", error: "", timing: null, narrating: false,
     setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, hush: vi.fn(),
     picker: { options: null, prefs: { model: "spark-1.3", voice: "kokoro_af_heart" }, trace: null, setModel: vi.fn(), setVoice: vi.fn() },
-    memory: { on: true, set: vi.fn(), turn: null }, endSession: vi.fn(), ending: false,
+    memory: { on: true, set: vi.fn(), turn: null }, endSession: vi.fn(), ending: false, saveTo: { value: null, set: vi.fn() },
     warmup: { items: [], visible: false, started: false, start: vi.fn(), skip: vi.fn() },
     exit: { offered: false, take: vi.fn(), skip: vi.fn() },
     hints: { given: [], busy: false, next: vi.fn() }, sealed: false, newSession: vi.fn(),

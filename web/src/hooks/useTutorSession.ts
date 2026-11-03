@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WhiteboardHandle } from "@/components/Whiteboard";
 import type { ModelChoice, SampleSubject } from "@/components/Toolbar";
 import { fetchHealth, fetchLearner, resetLearner, streamAssessment, streamChat, streamLesson } from "@/lib/api";
+import { legacyApiConfigured } from "@/lib/legacy-api";
 import { lessonContext, primitiveToMarkdown } from "@/lib/chat";
 import { getAnswerRegion, getStudentBbox } from "@/lib/layout";
 import { LessonPlayer } from "@/lib/lesson-player";
@@ -235,7 +236,7 @@ export function useTutorSession(): TutorSession {
 
   const refreshLearner = useCallback(async () => {
     const id = userIdRef.current;
-    if (!id || id === "anon") return;
+    if (!id || id === "anon" || !legacyApiConfigured()) return;
     const snapshot = await fetchLearner(id);
     if (snapshot) setLearnerSnapshot((current) => applyLearnerSnapshot(current, snapshot));
   }, []);
@@ -252,6 +253,7 @@ export function useTutorSession(): TutorSession {
     let cancelled = false;
     // Legacy model health speaks only until the tutor service has reported its own state.
     const legacyStatus = (text: string) => { if (!tutorKnownRef.current) setStatus(text); };
+    if (!legacyApiConfigured()) return;
     void fetchHealth().then((health) => {
       if (cancelled) return;
       if (!health) {

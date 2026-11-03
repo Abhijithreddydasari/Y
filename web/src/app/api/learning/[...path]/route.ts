@@ -21,6 +21,9 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   }
   const base = (process.env.LEARNING_API_BASE ?? "http://127.0.0.1:8000").replace(/\/$/, "");
   const headers = new Headers({ "Content-Type": path.endsWith("/assets") ? "application/octet-stream" : audio ? "audio/wav" : "application/json" });
+  // Production API accepts only this proxy; the secret is server configuration and never reaches the browser.
+  const secret = process.env.LEARNING_PROXY_SECRET;
+  if (secret) headers.set("X-Y-Proxy-Secret", secret);
   const identity = request.cookies.get("y_learning_identity")?.value;
   if (identity && /^[A-Za-z0-9_-]{43}$/.test(identity)) {
     headers.set("Cookie", `y_learning_identity=${identity}`);

@@ -155,9 +155,9 @@ async def speech(body: SpeechInput, owner=Depends(require_owner), capture=Depend
             audio = await cloud.synthesize(body.text, body.voice)
             return _audio(audio, body.voice, "deepgram", False, started)
         except HTTPException:
-            log.info("speech budget exhausted, using Kokoro")
+            log.warning("speech budget exhausted, using Kokoro")
         except SpeechError as exc:
-            log.info("deepgram speech failed, using Kokoro: %s", exc)
+            log.warning("deepgram speech failed, using Kokoro: %s", exc)
     engine = get_speech_engine()
     if not engine.available:
         raise HTTPException(503, "speech_unavailable")

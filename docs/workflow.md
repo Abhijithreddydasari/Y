@@ -58,6 +58,9 @@
   reduce and close path from authored sessions, with notes recorded from Muse Spark 1.3, and labelled seeded.
   Reset, Your own, and End session into another mind all work. Live: Tomás 7 → 8 with OpenAI labels, and the next
   turn cited his history. Next: H9.
+- H9 deployed ([handoff](handoffs/H9.md)) on `feature/deploy`: https://ask-y-event.vercel.app → Modal `y-learning` → Neon.
+  A fresh-browser identity race was found live and fixed. One live voiced turn worked; persona switch and End
+  session were not yet run live. Next: H10.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -80,7 +83,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H8 Pointing, trace drawer, polish | done (branch `feature/pointing-polish`) | `f422141`, `37885fe` | [H8](handoffs/H8.md) |
 | H8 follow-up: board UI (Places arc, tool dock, card) | done (branch `feature/board-ui`) | see handoff | [H8 board UI](handoffs/H8-board-ui.md) |
 | Personas ("Try as…" demo learners) | done (branch `feature/personas`) | `5d75994`, `b1e42dd` | [personas](handoffs/personas.md) |
-| H9–H10 | planned | — | — |
+| H9 Deployment (Vercel + Modal + Neon, Deepgram narration) | deployed; live check partial (branch `feature/deploy`) | `36144f5`, `75ebe94`, `35eb728` | [H9](handoffs/H9.md) |
+| H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 

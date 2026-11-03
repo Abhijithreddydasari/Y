@@ -8,10 +8,12 @@ import { useTutorSession } from "@/hooks/useTutorSession";
 import PracticePanel from "@/components/PracticePanel";
 import { useCallback, useState } from "react";
 import type { WhiteboardHandle } from "@/components/Whiteboard";
+import { useClassicTools } from "@/lib/classic";
 
 export default function AppPage() {
   const session = useTutorSession();
   const interfaceMode = useInterfaceMode();
+  const classic = useClassicTools();
   const [board, setBoard] = useState<WhiteboardHandle | null>(null);
   const onWhiteboardReady = session.onWhiteboardReady;
   const ready = useCallback((handle: WhiteboardHandle) => { onWhiteboardReady(handle); setBoard(handle); }, [onWhiteboardReady]);
@@ -19,11 +21,11 @@ export default function AppPage() {
   return (
     <main className="relative h-dvh w-full overflow-hidden bg-[#fafafa]">
       <Whiteboard mode={interfaceMode.mode} onReady={ready} />
-      <PracticePanel board={board} />
+      {classic && <PracticePanel board={board} />}
       {interfaceMode.mode === "mobile" ? (
         <MobileShell session={session} interfaceMode={interfaceMode} />
       ) : (
-        <StudioShell session={session} interfaceMode={interfaceMode} />
+        <StudioShell session={session} interfaceMode={interfaceMode} board={board} />
       )}
     </main>
   );

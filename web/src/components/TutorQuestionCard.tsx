@@ -23,8 +23,10 @@ interface Props {
 }
 
 const HINT_LABELS = ["Hint", "Show a step"];
+/** "How sure?" in three steps; the server still receives a percentage. */
+const SURE = [{ label: "Guessing", value: 30 }, { label: "Fairly sure", value: 65 }, { label: "Certain", value: 95 }];
 
-const WIDTH = 360;
+const WIDTH = 380;
 /** Room kept free at the bottom for the composer and its caption line. */
 const COMPOSER_CLEARANCE = 164;
 
@@ -74,6 +76,8 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
   const docked = variant === "mobile" || !place;
   const position = docked ? undefined : { left: place!.left, top: place!.top, width: WIDTH };
 
+  const tag = question.origin === "review" ? "Warm-up" : question.origin === "exit" ? "Exit check" : question.kind === "predict" ? "Predict" : "Check";
+
   return (
     <section
       ref={sectionRef}
@@ -81,63 +85,75 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
       aria-label={question.kind === "predict" ? "Your prediction" : "Check your understanding"}
       data-testid="tutor-question"
       style={position}
-      className={docked
+      className={`pointer-events-auto fixed y-glass-strong flex flex-col gap-3 rounded-[22px] p-4 ${docked
         ? variant === "mobile"
-          ? "pointer-events-auto fixed bottom-[calc(16.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-[55] max-h-[45dvh] overflow-y-auto y-glass-strong rounded-2xl p-3 ring-1 ring-violet-200/70"
-          : "pointer-events-auto fixed bottom-36 left-1/2 z-40 w-[min(360px,calc(100vw-2rem))] -translate-x-1/2 y-glass-strong rounded-2xl p-3 ring-1 ring-violet-200/70"
-        : "pointer-events-auto fixed z-40 y-glass-strong rounded-2xl p-3 ring-1 ring-violet-200/70"}
+          ? "bottom-[calc(16.75rem+env(safe-area-inset-bottom))] left-3 right-3 z-[55] max-h-[45dvh] overflow-y-auto"
+          : "bottom-36 left-1/2 z-40 w-[min(380px,calc(100vw-2rem))] -translate-x-1/2"
+        : "z-40"}`}
     >
-      {question.origin && (
-        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-violet-500">
-          {question.origin === "review" ? "Warm-up from last time" : "Exit ticket"}
-        </p>
-      )}
-      {docked && <p className="mb-2 text-sm font-medium text-slate-900">{question.q}</p>}
+      <div className="flex items-center gap-2 text-xs">
+        <span className="rounded-full bg-violet-100 px-2 py-0.5 font-bold uppercase tracking-wider text-violet-800">{tag}</span>
+        {question.origin === "review" && <span className="text-slate-500">Warm-up from last time</span>}
+        <span className="ml-auto flex gap-1" aria-label={`Hints used: ${hints.length} of ${HINT_LABELS.length}`}>
+          {HINT_LABELS.map((label, index) => (
+            <span key={label} className={`h-1.5 w-1.5 rounded-full ${index < hints.length ? "bg-amber-500" : "bg-slate-300"}`} />
+          ))}
+        </span>
+      </div>
+      {docked && <p className="text-[15px] font-semibold leading-snug text-slate-900">{question.q}</p>}
       {free ? (
         <textarea aria-label="Your answer" value={text} onChange={(event) => setText(event.target.value)} rows={2} maxLength={2000}
-          placeholder="Type your answer…" className="w-full resize-none rounded-xl border border-slate-200 px-2 py-1.5 text-sm outline-none focus:border-violet-400" />
+          placeholder="Type your answer, or hold the mic and say it…" className="w-full resize-none rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-violet-400" />
       ) : (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {question.options.map((option, index) => (
             <button key={option} type="button" aria-pressed={choice === option} onClick={() => setChoice(option)}
-              className={`rounded-xl border px-3 py-2 text-left text-sm transition ${choice === option ? "border-violet-500 bg-violet-50 text-violet-900" : "border-slate-200 bg-white text-slate-800 hover:border-violet-300"}`}>
-              <span className="mr-2 font-semibold">{String.fromCharCode(65 + index)}.</span>{option}
+              className={`flex min-h-12 items-center gap-3 rounded-2xl border px-3 py-2 text-left text-sm transition ${choice === option ? "border-violet-600 bg-violet-50 text-violet-950" : "border-slate-200 bg-white/80 text-slate-800 hover:border-violet-300"}`}>
+              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg text-xs font-bold ${choice === option ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-600"}`}>
+                {String.fromCharCode(65 + index)}
+              </span>
+              {option}
             </button>
           ))}
         </div>
       )}
-      <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-        <span className="shrink-0">How sure?</span>
-        <input type="range" min={0} max={100} step={5} value={confidence ?? 50} aria-label="Confidence"
-          onChange={(event) => setConfidence(Number(event.target.value))} className="flex-1 accent-violet-600" />
-        <span className="w-12 text-right tabular-nums">{confidence === null ? "—" : `${confidence}%`}</span>
-      </label>
       {hints.length > 0 && (
-        <ol className="mt-2 space-y-1" aria-label="Hints" data-testid="hints">
+        <ol className="flex flex-col gap-1.5" aria-label="Hints" data-testid="hints">
           {hints.map((hint) => (
-            <li key={hint.level} className="rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-900 ring-1 ring-amber-200">
+            <li key={hint.level} className="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
               <span className="mr-1 font-semibold">{hint.level === 1 ? "Nudge:" : "Step:"}</span>{hint.text}
             </li>
           ))}
         </ol>
       )}
       {(heard || voice.error) && (
-        <p role="status" className="mt-2 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-800">
+        <p role="status" className="rounded-xl bg-amber-50 px-3 py-1.5 text-xs text-amber-800">
           {voice.error || `Heard "${heard}". Tap the option you mean.`}
         </p>
       )}
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <button type="button" disabled={busy} onClick={() => onAnswer({ reveal: true, confidence: null })}
-          className="text-xs font-medium text-slate-500 underline-offset-2 hover:underline disabled:opacity-40">Just tell me</button>
+      <div className="flex items-center gap-2">
+        <div role="radiogroup" aria-label="How sure are you?" className="flex rounded-xl bg-slate-900/5 p-0.5 text-xs font-semibold">
+          {SURE.map((level) => (
+            <button key={level.label} type="button" role="radio" aria-checked={confidence === level.value}
+              onClick={() => setConfidence(confidence === level.value ? null : level.value)}
+              className={`rounded-[10px] px-2.5 py-1.5 transition ${confidence === level.value ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}>
+              {level.label}
+            </button>
+          ))}
+        </div>
+        <button type="button" disabled={!ready} onClick={() => onAnswer(free ? { text: text.trim(), confidence } : { choice: choice!, confidence })}
+          className="ml-auto min-h-10 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white disabled:opacity-40">Submit</button>
+      </div>
+      <div className="flex items-center gap-3 border-t border-slate-900/5 pt-2 text-xs">
         {onHint && hints.length < HINT_LABELS.length && (
           <button type="button" disabled={busy || hintBusy} onClick={onHint}
-            className="min-h-9 rounded-xl border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 disabled:opacity-40">
+            className="min-h-8 font-semibold text-amber-700 disabled:opacity-40">
             {hintBusy ? "Thinking…" : HINT_LABELS[hints.length]}
           </button>
         )}
+        <button type="button" disabled={busy} onClick={() => onAnswer({ reveal: true, confidence: null })}
+          className="min-h-8 text-slate-500 hover:text-slate-800 disabled:opacity-40">Just tell me</button>
         <MicButton voice={voice} disabled={busy} label={free ? "Hold to answer by voice" : "Hold and say a letter or an option"} className="ml-auto min-h-9 min-w-9" />
-        <button type="button" disabled={!ready} onClick={() => onAnswer(free ? { text: text.trim(), confidence } : { choice: choice!, confidence })}
-          className="min-h-9 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white disabled:opacity-40">Submit</button>
       </div>
     </section>
   );

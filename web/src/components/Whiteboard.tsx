@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type {
+  AppState,
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
@@ -12,6 +13,7 @@ import type {
 import type { InterfaceMode } from "@/lib/interface-mode";
 import { BoardController } from "@/lib/board-controller";
 import { installFrameProbe } from "@/lib/frame-probe";
+import { toolOf, toolSettings, type ToolId } from "@/lib/board-tools";
 import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/WidgetHost";
 import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
@@ -90,6 +92,9 @@ export interface WhiteboardHandle {
    * can't be found or the canvas isn't mounted.
    */
   getElementScreenRect: (id: string) => DOMRect | null;
+  /** Y's tool dock: pick a tool (with its pen style) and follow tool changes made elsewhere (shortcuts). */
+  setTool: (tool: ToolId, ink: string) => void;
+  onToolChange: (listener: (tool: ToolId | null) => void) => () => void;
 }
 
 interface Props {
@@ -231,6 +236,23 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       const w = el.width * z;
       const h = el.height * z;
       return new DOMRect(x, y, w, h);
+    },
+    setTool(tool, ink) {
+      const api = apiRef.current;
+      if (!api) return;
+      const { type, style } = toolSettings(tool, ink);
+      if (style) api.updateScene({ appState: style as Pick<AppState, "currentItemStrokeColor"> });
+      api.setActiveTool({ type } as Parameters<ExcalidrawImperativeAPI["setActiveTool"]>[0]);
+    },
+    onToolChange(listener) {
+      const api = apiRef.current;
+      if (!api) return () => {};
+      // onChange fires on every scene change (each pen point); report only when the tool itself changes.
+      let last: ToolId | null | undefined;
+      return api.onChange((_elements, appState) => {
+        const tool = toolOf(appState.activeTool.type, appState.currentItemOpacity);
+        if (tool !== last) { last = tool; listener(tool); }
+      });
     },
   }), []);
 

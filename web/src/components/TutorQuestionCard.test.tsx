@@ -34,9 +34,10 @@ describe("TutorQuestionCard", () => {
     expect(screen.getByText(mcq.q)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: /the mean/ }));
-    fireEvent.change(screen.getByRole("slider", { name: "Confidence" }), { target: { value: "80" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Certain" }));
+    expect(screen.getByRole("radio", { name: "Certain" })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(screen.getByRole("button", { name: "Submit" }));
-    expect(onAnswer).toHaveBeenCalledWith({ choice: "the mean", confidence: 80 });
+    expect(onAnswer).toHaveBeenCalledWith({ choice: "the mean", confidence: 95 });
     fireEvent.click(screen.getByRole("button", { name: "Just tell me" }));
     expect(onAnswer).toHaveBeenLastCalledWith({ reveal: true, confidence: null });
   });
@@ -139,21 +140,17 @@ describe("Study loop (H7)", () => {
   });
 });
 
-describe("Memory and End session", () => {
-  it("toggles memory, shows what the brief contributed and ends the session", () => {
+describe("Memory in the composer", () => {
+  it("shows what the brief contributed, and nothing with Memory off", () => {
     const state = tutor({ memory: { on: true, set: vi.fn(), turn: { on: true, revision: 1,
       items: [{ id: "M1", kind: "misconception", text: "On attention.scaling: believes the mean" }] } } });
-    const { rerender } = render(<TutorComposer tutor={state} onStop={vi.fn()} />);
+    const { rerender } = render(<TutorComposer tutor={state} onStop={vi.fn()} status="Thinking…" />);
     expect(screen.getByTestId("memory-used")).toHaveTextContent("Using 1 item from earlier sessions");
-    fireEvent.click(screen.getByRole("switch", { name: "Memory" }));
-    expect(state.memory.set).toHaveBeenCalledWith(false);
-    fireEvent.click(screen.getByRole("button", { name: "End session" }));
-    expect(state.endSession).toHaveBeenCalled();
+    // The switch and End session moved to Settings and the Places arc.
+    expect(screen.queryByRole("switch", { name: "Memory" })).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Thinking…");
     rerender(<TutorComposer tutor={tutor({ memory: { on: false, set: vi.fn(), turn: { on: false, revision: null, items: [] } } })} onStop={vi.fn()} />);
     expect(screen.queryByTestId("memory-used")).toBeNull();
-    expect(screen.getByText("Memory off")).toBeInTheDocument();
-    rerender(<TutorComposer tutor={tutor({ busy: true })} onStop={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "End session" })).toBeDisabled();
   });
 });
 

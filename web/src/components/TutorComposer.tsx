@@ -1,7 +1,6 @@
 "use client";
 
 import MicButton from "@/components/MicButton";
-import TraceButton from "@/components/trace/TraceButton";
 import TutorPicker from "@/components/TutorPicker";
 import type { TutorTurnState } from "@/hooks/useTutorSession";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
@@ -12,10 +11,12 @@ interface Props {
   blocked?: boolean;
   onStop: () => void;
   variant?: "studio" | "mobile";
+  /** The board's status line ("Thinking…", "Your turn…"), shown when Y is not speaking. */
+  status?: string;
 }
 
 /** Question box: type or push-to-talk. A transcript asks exactly like typed text and stays editable if the turn fails. */
-export default function TutorComposer({ tutor, blocked = false, onStop, variant = "studio" }: Props) {
+export default function TutorComposer({ tutor, blocked = false, onStop, variant = "studio", status = "" }: Props) {
   const voice = useVoiceInput(tutor.ask, tutor.hush);
   const unavailable = tutor.configured === false || tutor.sealed;
   const disabled = blocked || unavailable || tutor.busy;
@@ -27,10 +28,10 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
   return (
     <div className={variant === "mobile" ? "w-full" : "pointer-events-auto fixed bottom-4 left-1/2 z-40 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2"}
       data-testid="tutor-composer">
-      {(tutor.caption || notice) && (
-        <p className={`mb-1.5 rounded-xl px-3 py-1.5 text-xs shadow-sm ${notice ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "y-glass text-slate-600"}`}
-          role={notice ? "alert" : "status"}>
-          {notice || `Y: ${tutor.caption}`}
+      {(tutor.caption || notice || status) && (
+        <p className={`mb-1.5 w-fit max-w-full rounded-xl px-3 py-1.5 text-xs shadow-sm ${notice ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "y-glass text-slate-600"}`}
+          role={notice ? "alert" : "status"} aria-live="polite">
+          {notice || (tutor.caption ? `Y: ${tutor.caption}` : status)}
         </p>
       )}
       {tutor.exit.offered && !tutor.busy && (
@@ -62,24 +63,14 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           <button type="button" onClick={tutor.newSession} className="min-h-8 rounded-lg bg-slate-900 px-3 font-semibold text-white">New session</button>
         </div>
       )}
-      <div className="mb-1.5 flex items-center justify-end gap-2 text-xs">
-        {tutor.memory.on && tutor.memory.turn?.items.length ? (
-          <span className="truncate rounded-full bg-indigo-50 px-2.5 py-1 text-indigo-700 ring-1 ring-indigo-200" data-testid="memory-used"
+      {tutor.memory.on && tutor.memory.turn?.items.length ? (
+        <div className="mb-1.5 flex justify-end">
+          <span className="truncate rounded-full bg-indigo-50 px-2.5 py-1 text-xs text-indigo-700 ring-1 ring-indigo-200" data-testid="memory-used"
             title={tutor.memory.turn.items.map((item) => `${item.id}: ${item.text}`).join("\n")}>
             Using {tutor.memory.turn.items.length} item{tutor.memory.turn.items.length === 1 ? "" : "s"} from earlier sessions
           </span>
-        ) : null}
-        <label className="flex cursor-pointer items-center gap-1.5 y-glass rounded-full px-2.5 py-1 text-slate-600">
-          <input type="checkbox" role="switch" aria-label="Memory" checked={tutor.memory.on} disabled={tutor.busy}
-            onChange={(event) => tutor.memory.set(event.target.checked)} className="accent-indigo-600" />
-          Memory {tutor.memory.on ? "on" : "off"}
-        </label>
-        <button type="button" onClick={tutor.endSession} disabled={tutor.busy || tutor.ending || unavailable}
-          className="y-glass rounded-full px-2.5 py-1 font-semibold text-slate-700 disabled:opacity-40">
-          {tutor.ending ? "Saving…" : "End session"}
-        </button>
-        <TraceButton timing={tutor.timing} />
-      </div>
+        </div>
+      ) : null}
       <form className="relative flex items-end gap-2 y-glass rounded-2xl p-2"
         onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <textarea

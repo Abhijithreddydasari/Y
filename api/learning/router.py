@@ -60,11 +60,19 @@ async def call_store(method, *args):
         raise HTTPException(exc.status, exc.code) from exc
 
 
-def require_owner(request: Request, store: CaptureStore = Depends(get_store)) -> str:
+def require_viewer(request: Request, store: CaptureStore = Depends(get_store)) -> str:
+    """The cookie's own owner, whatever persona it is trying (persona routes)."""
     owner = store.owner_for_token(request.cookies.get(COOKIE, ""))
     if owner is None:
         raise HTTPException(401, "learning_identity_required")
     return owner
+
+
+def require_owner(viewer: str = Depends(require_viewer), store: CaptureStore = Depends(get_store)) -> str:
+    """The owner requests act as: the viewer's active demo-persona copy, else the viewer. Every owner check
+    downstream runs against it, so a copy is reachable only through the viewer that holds it."""
+    from .personas import PersonaStore  # imported late: personas loads the tutor and profile stores
+    return PersonaStore(store).effective(viewer)
 
 
 @router.post("/identity")
@@ -75,7 +83,8 @@ def identity(request: Request, response: Response, store: CaptureStore = Depends
         response.set_cookie(COOKIE, token, httponly=True, samesite="strict", max_age=30 * 86400,
                             secure=os.environ.get("LEARNING_COOKIE_SECURE") == "1", path="/")
     response.headers["Cache-Control"] = "no-store"
-    return {"ready": True}
+    from .personas import PersonaStore
+    return {"ready": True, "persona": PersonaStore(store).active(store.owner_for_token(token))}
 
 
 @router.get("/catalog")

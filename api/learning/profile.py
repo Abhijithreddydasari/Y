@@ -211,7 +211,7 @@ def carry_links(previous: ProfileRevision | None, links: list[dict], weights: di
         fresh = [UUID(e) for e in cites if UUID(e) not in entry["evidence"]]
         entry.update(why=item["why"][:240], strength=round(entry["strength"] + sum(weights[str(e)] for e in fresh), 6),
                      evidence=[*entry["evidence"], *fresh][-16:],
-                     provenance="model" if "model" in (entry["provenance"], item["provenance"]) else "system")
+                     provenance=next(p for p in ("model", "system", "seed") if p in (entry["provenance"], item["provenance"])))
         merged[key] = entry
     return tuple(ConceptLink(**v) for _, v in sorted(merged.items()))
 

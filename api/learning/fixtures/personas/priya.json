@@ -1,0 +1,72 @@
+{
+  "key": "priya",
+  "name": "Priya Nair",
+  "blurb": "MSc ML student writing a small LLM inference engine in her spare time.",
+  "topics": ["Softmax and attention", "Multi-head attention", "Layer norm", "KV cache", "FlashAttention"],
+  "beliefs": {
+    "softmax-equalizes": {"concept": "attention.softmax", "text": "thinks softmax makes the attention weights roughly equal instead of sharpening the largest scores"},
+    "sqrt-d-normalises": {"concept": "attention.scaling", "text": "thinks dividing by the square root of d turns the scores into probabilities"},
+    "kv-cache-stores-queries": {"concept": "inference.kv-cache", "text": "thinks the KV cache must also keep the queries of earlier tokens"}
+  },
+  "sessions": [
+    {"days_ago": 20.4, "title": "What does a dot product measure?", "checks": [
+      {"c": "linalg.dot-product", "d": "recall", "q": "What is $[1, 2, 3] \\cdot [4, 0, -1]$?", "k": "1", "a": "1", "conf": 95},
+      {"c": "linalg.dot-product", "d": "understand", "q": "Two unit vectors have a dot product near 1. What does that say?", "o": ["They point in almost the same direction", "They are orthogonal", "They point in opposite directions"], "k": "They point in almost the same direction", "a": "They point in almost the same direction", "conf": 95},
+      {"c": "linalg.matrix-shapes", "d": "apply", "q": "Q and K are both 5-by-64 (5 tokens, 64 dimensions). What shape is $QK^T$?", "o": ["5 × 5", "64 × 64", "5 × 64"], "k": "5 × 5", "a": "5 × 5", "conf": 65},
+      {"c": "attention.softmax", "d": "recall", "q": "What do the outputs of softmax always sum to?", "k": "1", "a": "1", "conf": 95},
+      {"c": "attention.softmax", "d": "understand", "q": "Scores [2, 1, 0] go through softmax. What happens to the largest score?", "o": ["It gets the biggest share, about 0.67", "All three get about one third", "It becomes exactly 1"], "k": "It gets the biggest share, about 0.67", "a": "All three get about one third", "mis": "softmax-equalizes", "mp": 0.85, "conf": 65, "r": 0.35}
+    ]},
+    {"days_ago": 17.1, "title": "Why divide attention scores by √d?", "checks": [
+      {"c": "attention.scaling", "d": "understand", "q": "Why are attention scores divided by $\\sqrt{d_k}$?", "o": ["To keep the variance of the scores near 1 so softmax doesn't saturate", "To turn the scores into probabilities", "To make the computation faster"], "k": "To keep the variance of the scores near 1 so softmax doesn't saturate", "a": "To turn the scores into probabilities", "mis": "sqrt-d-normalises", "mp": 0.8, "conf": 65},
+      {"c": "attention.scaled-dot-product", "d": "recall", "q": "Write the scaled dot-product attention formula.", "k": "softmax(QK^T / sqrt(d_k)) V", "a": "softmax(QK^T/sqrt(d_k))V", "out": "correct", "conf": 95},
+      {"c": "attention.scaled-dot-product", "d": "apply", "q": "With $d_k = 64$, what number do we divide $QK^T$ by?", "k": "8", "a": "8", "conf": 95},
+      {"c": "attention.softmax", "d": "apply", "q": "Scores [4, 0] go through softmax. Roughly what weight does the first token get?", "o": ["About 0.98", "About 0.5", "About 0.8"], "k": "About 0.98", "a": "About 0.8", "out": "partial", "mis": "softmax-equalizes", "mp": 0.6, "conf": 30, "r": 0.4},
+      {"c": "linalg.matrix-shapes", "d": "apply", "q": "Weights are $5 \\times 5$, V is $5 \\times 64$. What shape is the attention output?", "o": ["5 × 64", "5 × 5", "64 × 5"], "k": "5 × 64", "a": "5 × 64", "hint": true, "conf": 65}
+    ]},
+    {"days_ago": 14.2, "title": "How does multi-head attention split the work?", "checks": [
+      {"c": "attention.multi-head", "d": "understand", "q": "Why use 8 heads of size 64 instead of one head of size 512?", "o": ["Each head can attend to a different pattern", "It uses 8 times fewer parameters", "It removes the need for softmax"], "k": "Each head can attend to a different pattern", "a": "Each head can attend to a different pattern", "conf": 65},
+      {"c": "attention.multi-head", "d": "apply", "q": "d_model is 768 with 12 heads. What is each head's dimension?", "k": "64", "a": "64", "conf": 95},
+      {"c": "attention.scaling", "d": "understand", "q": "If $d_k$ doubles and we forget to rescale, what happens to the softmax?", "o": ["It gets sharper, closer to one-hot", "Nothing changes", "It gets flatter"], "k": "It gets sharper, closer to one-hot", "a": "It gets sharper, closer to one-hot", "conf": 65, "r": 0.75},
+      {"c": "attention.scaling", "d": "analyze", "q": "Random q and k entries have variance 1. What is the variance of $q \\cdot k$ when $d_k = 64$?", "k": "64", "a": "64", "conf": 65, "r": 0.8},
+      {"c": "transformer.positional-encoding", "d": "recall", "q": "Without positional encodings, what is self-attention blind to?", "o": ["The order of the tokens", "The meaning of the tokens", "The batch size"], "k": "The order of the tokens", "a": "The order of the tokens", "conf": 95},
+      {"c": "transformer.positional-encoding", "d": "understand", "q": "Why do sinusoidal encodings use many frequencies?", "o": ["So nearby and distant positions are both distinguishable", "To make the model train faster", "So every position gets the same vector"], "k": "So nearby and distant positions are both distinguishable", "a": "To make the model train faster", "conf": 30}
+    ]},
+    {"days_ago": 10.3, "title": "Layer norm, residuals and the loss", "checks": [
+      {"c": "transformer.layer-norm", "d": "recall", "q": "Layer norm normalises across which axis of a token's activations?", "o": ["Its feature dimension", "The batch", "The sequence"], "k": "Its feature dimension", "a": "Its feature dimension", "conf": 95},
+      {"c": "transformer.layer-norm", "d": "understand", "q": "Why do transformers prefer layer norm over batch norm?", "k": "It does not depend on batch statistics, so it works for any batch size and sequence length", "a": "Because batch size changes", "out": "partial", "conf": 65, "r": 0.45},
+      {"c": "transformer.residual", "d": "understand", "q": "What does the residual connection give the gradient?", "o": ["A direct path around each block", "A larger learning rate", "Fewer parameters"], "k": "A direct path around each block", "a": "A direct path around each block", "conf": 65},
+      {"c": "ml.cross-entropy", "d": "apply", "q": "The model gives the right token probability 0.25. What is the cross-entropy loss (natural log)?", "k": "1.386", "a": "1.39", "out": "correct", "conf": 65},
+      {"c": "ml.cross-entropy", "d": "understand", "q": "What happens to the loss as the right token's probability goes to 0?", "o": ["It goes to infinity", "It goes to 0", "It stays at 1"], "k": "It goes to infinity", "a": "It goes to infinity", "conf": 95},
+      {"c": "attention.softmax", "d": "analyze", "q": "A head's scores for 4 tokens are [10, 1, 1, 1]. Which best describes its attention?", "o": ["Almost all weight on the first token", "Weights spread roughly evenly", "The first token gets about 40%"], "k": "Almost all weight on the first token", "a": "The first token gets about 40%", "mis": "softmax-equalizes", "mp": 0.7, "conf": 65, "r": 0.3}
+    ]},
+    {"days_ago": 6.4, "title": "What does the KV cache actually store?", "checks": [
+      {"c": "inference.autoregressive-decoding", "d": "understand", "q": "During generation, what does each new step add?", "o": ["One token, attending to all earlier ones", "A whole new sequence", "One token, attending only to itself"], "k": "One token, attending to all earlier ones", "a": "One token, attending to all earlier ones", "conf": 95},
+      {"c": "inference.kv-cache", "d": "recall", "q": "What does KV in KV cache stand for?", "k": "keys and values", "a": "keys and values", "conf": 95},
+      {"c": "inference.kv-cache", "d": "understand", "q": "Why does the cache not need earlier queries?", "o": ["Only the newest token's query is used at each step", "Queries are recomputed from values", "Queries are stored in the weights"], "k": "Only the newest token's query is used at each step", "a": "Queries are recomputed from values", "mis": "kv-cache-stores-queries", "mp": 0.35, "conf": 30, "r": 0.3},
+      {"c": "inference.kv-cache", "d": "apply", "q": "32 layers, d_model 4096, fp16. How many bytes of KV cache per token?", "k": "524288", "a": "262144", "conf": 65, "r": 0.55},
+      {"c": "transformer.causal-mask", "d": "apply", "q": "In a causal mask for 4 tokens, how many score entries are masked out?", "k": "6", "a": "6", "conf": 65}
+    ]},
+    {"days_ago": 3.1, "title": "Backprop through attention", "checks": [
+      {"c": "ml.backprop", "d": "understand", "q": "What does the chain rule let backprop do?", "o": ["Multiply local gradients along the path to each weight", "Skip layers that are hard to differentiate", "Compute the loss faster"], "k": "Multiply local gradients along the path to each weight", "a": "Multiply local gradients along the path to each weight", "conf": 95},
+      {"c": "ml.backprop", "d": "apply", "q": "y = softmax(s). Give $\\partial y_i / \\partial s_i$ in terms of $y_i$.", "k": "y_i(1 - y_i)", "a": "y_i - y_i^2", "hint": true, "out": "correct", "conf": 30},
+      {"c": "attention.softmax", "d": "transfer", "q": "A saturated softmax (one weight near 1) gets what kind of gradients?", "o": ["Very small ones, so the head learns slowly", "Very large ones", "The same as an unsaturated one"], "k": "Very small ones, so the head learns slowly", "a": "The same as an unsaturated one", "mis": "softmax-equalizes", "mp": 0.5, "conf": 30},
+      {"c": "attention.softmax", "d": "analyze", "q": "Why does the softmax Jacobian have negative off-diagonal terms?", "k": "Raising one score must take probability mass from the others, since the outputs sum to 1", "a": "", "reveal": true},
+      {"c": "attention.multi-head", "d": "analyze", "q": "Two heads learn identical patterns. What is lost?", "o": ["Capacity: one head is wasted", "Nothing", "The model can no longer use softmax"], "k": "Capacity: one head is wasted", "a": "Capacity: one head is wasted", "conf": 65}
+    ]},
+    {"days_ago": 1.2, "title": "Why is FlashAttention faster?", "checks": [
+      {"c": "inference.memory-bandwidth", "d": "understand", "q": "For long sequences, what usually limits plain attention on a GPU?", "o": ["Reading and writing the N × N score matrix to memory", "The number of multiplications", "The size of the vocabulary"], "k": "Reading and writing the N × N score matrix to memory", "a": "Reading and writing the N × N score matrix to memory", "conf": 65},
+      {"c": "inference.flash-attention", "d": "understand", "q": "What does FlashAttention avoid storing?", "o": ["The full N × N attention matrix", "The keys", "The output"], "k": "The full N × N attention matrix", "a": "The full N × N attention matrix", "conf": 65},
+      {"c": "inference.flash-attention", "d": "analyze", "q": "How can softmax be computed tile by tile without seeing all scores first?", "k": "Keep a running max and running sum, and rescale earlier partial results when the max changes", "a": "Compute each tile's softmax and average them", "out": "incorrect", "conf": 30, "r": 0.3},
+      {"c": "inference.kv-cache", "d": "transfer", "q": "With grouped-query attention, 32 query heads share 8 KV heads. How much smaller is the cache?", "o": ["4 times", "8 times", "32 times"], "k": "4 times", "a": "8 times", "out": "partial", "mis": "kv-cache-stores-queries", "mp": 0.3, "conf": 30},
+      {"c": "inference.flash-attention", "d": "transfer", "q": "Does FlashAttention change the attention output?", "o": ["No, it is exact; only the memory access changes", "Yes, it approximates it", "Yes, it drops low scores"], "k": "No, it is exact; only the memory access changes", "a": "Yes, it approximates it", "conf": 30}
+    ]}
+  ],
+  "links": [
+    {"session": 1, "from": "linalg.dot-product", "to": "attention.scaled-dot-product", "kind": "builds_on", "why": "Used the dot product as similarity to explain attention scores.", "cites": ["linalg.dot-product/understand", "attention.scaled-dot-product/recall"]},
+    {"session": 1, "from": "attention.scaling", "to": "attention.softmax", "kind": "confused_with", "why": "Treated the √d scaling and softmax as the same normalising step.", "cites": ["attention.scaling/understand", "attention.softmax/apply"]},
+    {"session": 2, "from": "attention.scaling", "to": "attention.softmax", "kind": "builds_on", "why": "Reasoned about saturation from score variance to explain why softmax sharpens.", "cites": ["attention.scaling/understand", "attention.scaling/analyze"]},
+    {"session": 4, "from": "attention.multi-head", "to": "inference.kv-cache", "kind": "builds_on", "why": "Sized the cache from the head dimensions she computed for multi-head attention.", "cites": ["inference.kv-cache/apply"]},
+    {"session": 6, "from": "inference.memory-bandwidth", "to": "inference.flash-attention", "kind": "builds_on", "why": "Explained FlashAttention's speed through memory traffic, not arithmetic.", "cites": ["inference.memory-bandwidth/understand", "inference.flash-attention/understand"]},
+    {"session": 6, "from": "inference.flash-attention", "to": "inference.kv-cache", "kind": "confused_with", "why": "Mixed up what FlashAttention avoids storing with what the KV cache keeps.", "cites": ["inference.kv-cache/transfer", "inference.flash-attention/transfer"]}
+  ]
+}

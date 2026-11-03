@@ -1,0 +1,71 @@
+{
+  "key": "tomas",
+  "name": "Tomás Ortega",
+  "blurb": "Final-year robotics undergrad who owns the vision stack on his university's drone team.",
+  "topics": ["Convolutions", "Eigenvectors and SVD", "Gradient descent", "Bayes' rule", "Homographies"],
+  "beliefs": {
+    "stride-keeps-size": {"concept": "cv.conv-output-size", "text": "thinks the stride does not change a convolution's output size"},
+    "eigenvectors-orthogonal": {"concept": "linalg.eigenvectors", "text": "thinks the eigenvectors of any matrix are orthogonal"},
+    "base-rate-neglect": {"concept": "prob.bayes-rule", "text": "ignores the base rate and reads P(A given B) as P(B given A)"}
+  },
+  "sessions": [
+    {"days_ago": 21.3, "title": "How big is a convolution's output?", "checks": [
+      {"c": "linalg.matrix-multiply", "d": "recall", "q": "A is $3 \\times 2$ and B is $2 \\times 4$. What shape is AB?", "o": ["3 × 4", "2 × 2", "4 × 3"], "k": "3 × 4", "a": "3 × 4", "conf": 95},
+      {"c": "cv.convolution", "d": "understand", "q": "What does a 3 × 3 convolution compute at each pixel?", "o": ["A weighted sum of the pixel's 3 × 3 neighbourhood", "The maximum of the neighbourhood", "The pixel's gradient direction"], "k": "A weighted sum of the pixel's 3 × 3 neighbourhood", "a": "A weighted sum of the pixel's 3 × 3 neighbourhood", "conf": 95},
+      {"c": "cv.conv-output-size", "d": "apply", "q": "32 × 32 input, 3 × 3 kernel, padding 1, stride 1. Output width?", "k": "32", "a": "32", "conf": 95},
+      {"c": "cv.conv-output-size", "d": "apply", "q": "32 × 32 input, 3 × 3 kernel, padding 1, stride 2. Output width?", "k": "16", "a": "32", "mis": "stride-keeps-size", "mp": 0.85, "conf": 65, "r": 0.3},
+      {"c": "cv.receptive-field", "d": "understand", "q": "Two stacked 3-by-3 convolutions see how large a patch of the input?", "o": ["5 × 5", "3 × 3", "9 × 9"], "k": "5 × 5", "a": "5 × 5", "hint": true, "conf": 30}
+    ]},
+    {"days_ago": 18.2, "title": "Stride, pooling and receptive fields", "checks": [
+      {"c": "cv.conv-output-size", "d": "recall", "q": "Give the output size formula for input n, kernel k, padding p, stride s.", "k": "(n + 2p - k)/s + 1", "a": "(n+2p-k)/s+1", "out": "correct", "conf": 95},
+      {"c": "cv.conv-output-size", "d": "apply", "q": "64 × 64 input, 5 × 5 kernel, no padding, stride 1. Output width?", "k": "60", "a": "60", "conf": 95, "r": 0.8},
+      {"c": "cv.conv-output-size", "d": "apply", "q": "28 × 28 input, 2 × 2 max-pool, stride 2. Output width?", "k": "14", "a": "14", "conf": 95, "r": 0.8},
+      {"c": "cv.pooling", "d": "understand", "q": "What does max pooling give the network?", "o": ["Some tolerance to small shifts", "More parameters", "Exact positions of features"], "k": "Some tolerance to small shifts", "a": "Some tolerance to small shifts", "conf": 65},
+      {"c": "cv.receptive-field", "d": "apply", "q": "Three 3-by-3 convs, stride 1. What is the receptive field width?", "k": "7", "a": "7", "conf": 65}
+    ]},
+    {"days_ago": 14.4, "title": "Eigenvectors and what a matrix does", "checks": [
+      {"c": "linalg.eigenvectors", "d": "recall", "q": "What defines an eigenvector v of A?", "o": ["$Av = \\lambda v$ for some scalar $\\lambda$", "$Av = 0$", "$v^T A v = 1$"], "k": "$Av = \\lambda v$ for some scalar $\\lambda$", "a": "$Av = \\lambda v$ for some scalar $\\lambda$", "conf": 95},
+      {"c": "linalg.eigenvectors", "d": "apply", "q": "What are the eigenvalues of $\\begin{bmatrix}2 & 0\\\\0 & 3\\end{bmatrix}$?", "o": ["2 and 3", "0 and 5", "6 and 1"], "k": "2 and 3", "a": "2 and 3", "conf": 95},
+      {"c": "linalg.eigenvectors", "d": "understand", "q": "For $A = \\begin{bmatrix}1 & 1\\\\0 & 2\\end{bmatrix}$, are the eigenvectors orthogonal?", "o": ["No; only symmetric matrices guarantee that", "Yes, eigenvectors are always orthogonal", "Yes, because the eigenvalues differ"], "k": "No; only symmetric matrices guarantee that", "a": "Yes, eigenvectors are always orthogonal", "mis": "eigenvectors-orthogonal", "mp": 0.85, "conf": 95, "r": 0.25},
+      {"c": "linalg.determinant", "d": "understand", "q": "The determinant of a 2 × 2 matrix is 0. What does the matrix do to the plane?", "o": ["Squashes it onto a line or a point", "Rotates it", "Doubles its area"], "k": "Squashes it onto a line or a point", "a": "Squashes it onto a line or a point", "conf": 65},
+      {"c": "linalg.eigenvectors", "d": "analyze", "q": "Why does repeatedly applying A make most vectors line up with one eigenvector?", "k": "The component along the eigenvector with the largest |eigenvalue| grows fastest and dominates", "a": "Because the biggest eigenvalue grows fastest", "out": "partial", "conf": 30, "r": 0.5}
+    ]},
+    {"days_ago": 11.1, "title": "SVD and PCA for image features", "checks": [
+      {"c": "linalg.svd", "d": "recall", "q": "SVD writes A as which product?", "o": ["$U \\Sigma V^T$", "$Q R$", "$L U$"], "k": "$U \\Sigma V^T$", "a": "$U \\Sigma V^T$", "conf": 95},
+      {"c": "linalg.svd", "d": "understand", "q": "What do the singular values tell you?", "o": ["How much A stretches along each direction", "The eigenvalues of A", "The rank of A squared"], "k": "How much A stretches along each direction", "a": "The eigenvalues of A", "conf": 65},
+      {"c": "ml.pca", "d": "understand", "q": "The first principal component points along...", "o": ["The direction of greatest variance", "The mean of the data", "The smallest eigenvector"], "k": "The direction of greatest variance", "a": "The direction of greatest variance", "conf": 65},
+      {"c": "ml.pca", "d": "apply", "q": "Singular values 4, 2, 1, 1 (squared give variance). What fraction of variance do the first two keep?", "k": "0.909", "a": "0.91", "out": "correct", "conf": 65, "r": 0.8},
+      {"c": "linalg.eigenvectors", "d": "transfer", "q": "Why are PCA's directions orthogonal when general eigenvectors need not be?", "o": ["The covariance matrix is symmetric", "PCA forces them by normalising", "They are not orthogonal"], "k": "The covariance matrix is symmetric", "a": "They are not orthogonal", "mis": "eigenvectors-orthogonal", "mp": 0.4, "conf": 30}
+    ]},
+    {"days_ago": 7.2, "title": "Gradient descent, momentum and the learning rate", "checks": [
+      {"c": "opt.gradient-descent", "d": "recall", "q": "Write the gradient descent update for weights w with learning rate η.", "k": "w - η ∇L(w)", "a": "w = w - lr * grad", "out": "correct", "conf": 95},
+      {"c": "opt.gradient-descent", "d": "apply", "q": "$L = w^2$, w = 3, η = 0.1. What is w after one step?", "k": "2.4", "a": "2.4", "conf": 95},
+      {"c": "opt.learning-rate", "d": "analyze", "q": "$L = w^2$ with η = 1.1. What happens?", "o": ["w oscillates and diverges", "w converges faster", "w stops at 0 after one step"], "k": "w oscillates and diverges", "a": "w converges faster", "conf": 65, "r": 0.3},
+      {"c": "opt.momentum", "d": "understand", "q": "What does momentum add to plain gradient descent?", "o": ["A running average of past gradients, damping zig-zags", "A larger learning rate at the start", "Random noise"], "k": "A running average of past gradients, damping zig-zags", "a": "A running average of past gradients, damping zig-zags", "conf": 65},
+      {"c": "opt.learning-rate", "d": "transfer", "q": "A loss has curvature 100 along x and 1 along y. What limits the learning rate?", "o": ["The steep direction, curvature 100", "The flat direction", "Neither"], "k": "The steep direction, curvature 100", "a": "The steep direction, curvature 100", "hint": true, "conf": 30}
+    ]},
+    {"days_ago": 3.4, "title": "Bayes' rule for a noisy detector", "checks": [
+      {"c": "prob.conditional", "d": "recall", "q": "What is $P(A \\mid B)$ in terms of joint and marginal?", "o": ["$P(A \\cap B) / P(B)$", "$P(A)P(B)$", "$P(B \\mid A)$"], "k": "$P(A \\cap B) / P(B)$", "a": "$P(A \\cap B) / P(B)$", "conf": 95},
+      {"c": "prob.bayes-rule", "d": "apply", "q": "Drones are in 1% of frames. The detector fires on 90% of drone frames and 5% of empty ones. P(drone | fire)?", "o": ["About 15%", "About 90%", "About 50%"], "k": "About 15%", "a": "About 90%", "mis": "base-rate-neglect", "mp": 0.4, "conf": 65, "r": 0.35},
+      {"c": "prob.gaussian", "d": "recall", "q": "About what fraction of a Gaussian lies within one standard deviation of the mean?", "o": ["68%", "95%", "50%"], "k": "68%", "a": "68%", "conf": 95},
+      {"c": "prob.mle", "d": "understand", "q": "The MLE of a Gaussian's mean from samples is...", "o": ["The sample mean", "The median", "The mode of the prior"], "k": "The sample mean", "a": "The sample mean", "conf": 65},
+      {"c": "prob.mle", "d": "analyze", "q": "Why does MLE of the variance divide by n, and what bias does that give?", "k": "Maximising the likelihood gives 1/n, which underestimates the variance; dividing by n-1 removes the bias", "a": "", "reveal": true}
+    ]},
+    {"days_ago": 1.4, "title": "Homographies for the landing pad", "checks": [
+      {"c": "cv.homography", "d": "recall", "q": "How many point correspondences determine a homography?", "k": "4", "a": "4", "conf": 95},
+      {"c": "cv.homography", "d": "understand", "q": "Why does a homography need homogeneous coordinates?", "o": ["Perspective division makes the map nonlinear in ordinary coordinates", "To save memory", "Because images are square"], "k": "Perspective division makes the map nonlinear in ordinary coordinates", "a": "Perspective division makes the map nonlinear in ordinary coordinates", "conf": 65},
+      {"c": "linalg.svd", "d": "apply", "q": "Solving Ah = 0 for a homography, which vector of the SVD gives h?", "o": ["The right singular vector of the smallest singular value", "The left singular vector of the largest", "The first column of U"], "k": "The right singular vector of the smallest singular value", "a": "The right singular vector of the smallest singular value", "conf": 65, "r": 0.8},
+      {"c": "cv.homography", "d": "transfer", "q": "Would one homography map a tilted pad and the hill behind it?", "o": ["No; one homography only maps a single plane", "Yes, for any scene", "Only with 8 points"], "k": "No; one homography only maps a single plane", "a": "Yes, for any scene", "conf": 30},
+      {"c": "cv.conv-output-size", "d": "transfer", "q": "A 128-pixel-wide crop passes conv(3, pad 1, stride 2) then conv(3, pad 1, stride 2). Output width?", "k": "32", "a": "32", "conf": 95, "r": 0.9}
+    ]}
+  ],
+  "links": [
+    {"session": 0, "from": "cv.convolution", "to": "cv.receptive-field", "kind": "builds_on", "why": "Grew the receptive field by stacking the 3 × 3 neighbourhoods he described.", "cites": ["cv.convolution/understand", "cv.receptive-field/understand"]},
+    {"session": 1, "from": "cv.conv-output-size", "to": "cv.pooling", "kind": "builds_on", "why": "Sized the pooling output with the same stride formula.", "cites": ["cv.conv-output-size/apply", "cv.pooling/understand"]},
+    {"session": 3, "from": "linalg.eigenvectors", "to": "linalg.svd", "kind": "confused_with", "why": "Called the singular values the eigenvalues of A.", "cites": ["linalg.svd/understand", "linalg.eigenvectors/transfer"]},
+    {"session": 3, "from": "linalg.svd", "to": "ml.pca", "kind": "builds_on", "why": "Read the variance kept straight off the squared singular values.", "cites": ["ml.pca/apply"]},
+    {"session": 4, "from": "opt.gradient-descent", "to": "opt.learning-rate", "kind": "builds_on", "why": "Worked the divergence case from the update rule he wrote.", "cites": ["opt.learning-rate/transfer", "opt.gradient-descent/apply"]},
+    {"session": 5, "from": "prob.bayes-rule", "to": "prob.conditional", "kind": "confused_with", "why": "Read P(drone | fire) as the detector's hit rate P(fire | drone).", "cites": ["prob.bayes-rule/apply"]},
+    {"session": 6, "from": "linalg.svd", "to": "cv.homography", "kind": "builds_on", "why": "Solved the homography with the smallest singular vector.", "cites": ["linalg.svd/apply", "cv.homography/understand"]}
+  ]
+}

@@ -66,7 +66,7 @@ export function belowCard(elements: readonly Pick<ExcalidrawElement, "id" | "x" 
   cardId: string, area = { w: 900, h: 600 }): { x: number; y: number } | null {
   const card = elements.find((e) => e.id === cardId && !e.isDeleted);
   if (!card) return null;
-  // 90 px leaves room for the "You answered…" line the card gains (46 px) once the answer is accepted.
-  const spot = { x: card.x, y: card.y + Math.abs(card.height) + 90, w: area.w, h: area.h };
+  // 110 px leaves room for the "You answered…" note the card gains (up to 92 px) once the answer is accepted.
+  const spot = { x: card.x, y: card.y + Math.abs(card.height) + 110, w: area.w, h: area.h };
   return elements.some((e) => !e.isDeleted && overlaps(boxOf(e), spot)) ? null : { x: spot.x, y: spot.y };
 }

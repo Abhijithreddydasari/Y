@@ -50,10 +50,10 @@ describe("pointing rings", () => {
 
   it("starts answer feedback under the answered card only when that space is empty", () => {
     const card = { id: "y-card-t.3", x: 800, y: 100, width: 620, height: 180, isDeleted: false };
-    expect(belowCard([card], "y-card-t.3")).toEqual({ x: 800, y: 370 });
+    expect(belowCard([card], "y-card-t.3")).toEqual({ x: 800, y: 390 });
     const later = { id: "w", x: 900, y: 500, width: 200, height: 40, isDeleted: false };
     expect(belowCard([card, later], "y-card-t.3")).toBeNull();
-    expect(belowCard([card, { ...later, isDeleted: true }], "y-card-t.3")).toEqual({ x: 800, y: 370 });
+    expect(belowCard([card, { ...later, isDeleted: true }], "y-card-t.3")).toEqual({ x: 800, y: 390 });
     expect(belowCard([card], "y-card-missing")).toBeNull();
   });
 });

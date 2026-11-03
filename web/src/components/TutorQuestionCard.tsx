@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import MicButton from "@/components/MicButton";
+import { StepText } from "@/components/widgets/StepperWidget";
 import type { TutorAnswer } from "@/hooks/useTutorSession";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
 import type { Hint, TutorQuestion } from "@/lib/tutor-turn";
@@ -101,6 +102,7 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
         </span>
       </div>
       {docked && <p className="text-[15px] font-semibold leading-snug text-slate-900">{question.q}</p>}
+      <p className="-mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{free ? "Your answer" : "Answer choices"}</p>
       {free ? (
         <textarea aria-label="Your answer" value={text} onChange={(event) => setText(event.target.value)} rows={2} maxLength={2000}
           placeholder="Type your answer, or hold the mic and say it…" className="w-full resize-none rounded-2xl border border-slate-200 bg-white/80 px-3 py-2 text-sm outline-none focus:border-violet-400" />
@@ -112,7 +114,7 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
               <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-lg text-xs font-bold ${choice === option ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-600"}`}>
                 {String.fromCharCode(65 + index)}
               </span>
-              {option}
+              <span><StepText text={option} /></span>
             </button>
           ))}
         </div>
@@ -121,7 +123,7 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
         <ol className="flex flex-col gap-1.5" aria-label="Hints" data-testid="hints">
           {hints.map((hint) => (
             <li key={hint.level} className="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
-              <span className="mr-1 font-semibold">{hint.level === 1 ? "Nudge:" : "Step:"}</span>{hint.text}
+              <span className="mr-1 font-semibold">{hint.level === 1 ? "Nudge:" : "Step:"}</span><StepText text={hint.text} />
             </li>
           ))}
         </ol>

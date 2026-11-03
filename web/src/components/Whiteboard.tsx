@@ -18,10 +18,9 @@ import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/Widge
 import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
 
-const Excalidraw = dynamic(
-  async () => (await import("@excalidraw/excalidraw")).Excalidraw,
-  { ssr: false },
-);
+const Excalidraw = dynamic(() => import("@/components/BoardCanvas"), { ssr: false });
+/** Routine save states stay quiet; the chip shows only while restoring or when work needs attention. */
+const QUIET = new Set(["Board saved", "Saving board…"]);
 
 // Dynamic export scale. The model's vision encoder downsamples to a fixed
 // resolution, so what matters is pixels-per-content, not a fixed multiplier.
@@ -307,13 +306,14 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
             currentItemStrokeColor: "#111111",
           },
         }}
+        onBackup={loaded ? () => { void boardRef.current?.exportRecovery(); } : undefined}
       />
-      <div className="pointer-events-auto absolute bottom-2 right-3 z-20 max-w-md rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700" role="status">
+      {(!loaded || !QUIET.has(saveStatus)) && <div className="pointer-events-auto absolute bottom-2 right-3 z-20 max-w-md rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700" role="status">
         {saveStatus}
         {!loaded && saveStatus.includes("failed") && <button className="ml-2 underline" onClick={() => { setLoaded(false); setRetry(value => value + 1); }}>Retry restore</button>}
         {loaded && !saveStatus.includes("saved") && <button className="ml-2 underline" onClick={() => { void boardRef.current?.flush().catch(() => {}); }}>Retry save</button>}
         {loaded && <button className="ml-2 underline" onClick={() => { void boardRef.current?.exportRecovery(); }}>Export backup</button>}
-      </div>
+      </div>}
     </div>
   );
 }

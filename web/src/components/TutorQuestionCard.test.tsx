@@ -138,6 +138,15 @@ describe("Study loop (H7)", () => {
     expect(screen.queryByRole("button", { name: /Hint|Show a step/ })).toBeNull();
     expect(screen.getByRole("button", { name: "Just tell me" })).toBeInTheDocument();
   });
+
+  it("labels the answer choices and typesets inline math in a nudge", () => {
+    render(<TutorQuestionCard question={mcq} busy={false} cardRect={() => null} onAnswer={vi.fn()}
+      hints={[{ level: 1, text: "Each piece $dq = \\sigma dA$ adds $dq / r$." }]} />);
+    expect(screen.getByText("Answer choices")).toBeInTheDocument();
+    const hint = screen.getByTestId("hints");
+    expect(hint.querySelectorAll(".katex")).toHaveLength(2);
+    expect(hint.textContent).not.toContain("$");
+  });
 });
 
 describe("Memory in the composer", () => {

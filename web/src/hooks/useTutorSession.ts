@@ -7,6 +7,7 @@ import { fetchHealth, fetchLearner, resetLearner, streamAssessment, streamChat, 
 import { lessonContext, primitiveToMarkdown } from "@/lib/chat";
 import { getAnswerRegion, getStudentBbox } from "@/lib/layout";
 import { LessonPlayer } from "@/lib/lesson-player";
+import { cardNote } from "@/lib/renderer";
 import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
 import { cancelSpeech } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
@@ -684,7 +685,7 @@ export function useTutorSession(): TutorSession {
       const frame = handle?.getElements().find((e) => e.id === cardId(question.qid));
       const text = handle?.getElements().find((e) => e.id === `${cardId(question.qid)}-text`);
       if (!handle || !frame || !text || text.type !== "text") return;
-      const extra = 46, next = `${text.text}\n\n${label}`;
+      const note = cardNote(label), extra = note.extra, next = `${text.text}\n\n${note.text}`;
       // Cosmetic only: Excalidraw's dev build throws on some older boards' fractional indices, which
       // must never abort the feedback turn (the answer is already recorded).
       try {

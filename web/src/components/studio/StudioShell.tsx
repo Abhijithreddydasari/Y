@@ -49,7 +49,8 @@ export default function StudioShell({ session, interfaceMode, board }: Props) {
         onVoiceChange={session.changeVoice}
         onSwitchInterface={() => interfaceMode.setMode("mobile")}
       />}
-      <LearnerPanel snapshot={session.learnerSnapshot} onReset={() => { void session.resetLearner(); }} />
+      {/* The atlas reads the older teach-mode learner model; Mind (in the arc) is the profile now, so it is a classic tool. */}
+      {classic && <LearnerPanel snapshot={session.learnerSnapshot} onReset={() => { void session.resetLearner(); }} />}
       {classic && <ChatPanel
         messages={session.chatMessages}
         busy={session.chatBusy}

@@ -130,3 +130,24 @@ The Mind page was left as it is, on request, for a later pass.
   - **Review:** two columns, the due checks and the six latest sealed checks (from `GET /learning/profile/revisions`).
   - **Trace:** summary tiles (first move, voice start, models used) and a coloured, lettered stage per row.
 - **Checks:** 167 frontend tests pass, plus tsc, lint, build, and a browser look at Canvases, Review and Trace.
+
+## Second round of tweaks (same day)
+
+- **Composer grows like a chat box.** It is wider (760 px) and taller (48 px), and the box grows with its text up
+  to 200 px (about eight lines), then scrolls. Checked in the browser: 48 → 120 → 200 px.
+- **The knowledge atlas is now a classic tool.** It read the older teach-mode learner model (`GET /learner/{id}`
+  on the legacy service), not the profile Mind shows, so on the board it was a second, staler Mind. Classic tools
+  brings it back (Studio orb, Mobile Learn button).
+- **Mind labels no longer trail while dragging.** The labels were projected with `camera.matrixWorldInverse`,
+  which `lookAt` does not refresh until render, so each label used the previous frame's camera and lagged its
+  neuron by a frame. The frame loop now calls `camera.updateMatrixWorld()` first. Not checked by eye.
+- **Board save chip and backup.** "Board saved" and "Saving board…" no longer show; the chip appears only while
+  restoring or when work needs attention (conflict, not synced, retry). Export backup moved into the board's ☰ menu
+  ("Export board backup"). `BoardCanvas.tsx` loads Excalidraw and its `MainMenu` together, since the menu only
+  replaces the default when it is a direct child.
+- **Question card.** An "Answer choices" (or "Your answer") caption sits above the options. Nudges, steps and
+  options typeset `$…$` math with KaTeX (`StepText`); the board copy drops the dollar signs.
+- **Answered note no longer clipped.** "You answered: …" is wrapped to the card width (three lines at most) and
+  the card grows by its real height (`cardNote`); answer feedback now starts 110 px under the card.
+- **Checks:** 170 frontend tests, tsc, changed-file lint, build; browser check of the composer, the ☰ menu and the
+  atlas removal. The card's math and the wrapped note were checked by tests, not a live turn.

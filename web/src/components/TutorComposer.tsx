@@ -1,9 +1,13 @@
 "use client";
 
+import { useLayoutEffect, useRef } from "react";
 import MicButton from "@/components/MicButton";
 import TutorPicker from "@/components/TutorPicker";
 import type { TutorTurnState } from "@/hooks/useTutorSession";
 import { useVoiceInput } from "@/hooks/useVoiceInput";
+
+/** The box grows with what is typed, like a chat app, up to about eight lines; then it scrolls. */
+const MAX_BOX = 200;
 
 interface Props {
   tutor: TutorTurnState;
@@ -18,6 +22,13 @@ interface Props {
 /** Question box: type or push-to-talk. A transcript asks exactly like typed text and stays editable if the turn fails. */
 export default function TutorComposer({ tutor, blocked = false, onStop, variant = "studio", status = "" }: Props) {
   const voice = useVoiceInput(tutor.ask, tutor.hush);
+  const box = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, MAX_BOX)}px`;
+  }, [tutor.draft]);
   const unavailable = tutor.configured === false || tutor.sealed;
   const disabled = blocked || unavailable || tutor.busy;
   const notice = tutor.error || voice.error;
@@ -27,7 +38,7 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
     : tutor.question ? "Answer the card, or ask something else…" : "Type a question, or just press Ask…";
 
   return (
-    <div className={variant === "mobile" ? "w-full" : "pointer-events-auto fixed bottom-4 left-1/2 z-40 w-[min(640px,calc(100vw-2rem))] -translate-x-1/2"}
+    <div className={variant === "mobile" ? "w-full" : "pointer-events-auto fixed bottom-4 left-1/2 z-40 w-[min(760px,calc(100vw-2rem))] -translate-x-1/2"}
       data-testid="tutor-composer">
       {(tutor.caption || notice || status) && (
         <p className={`mb-1.5 w-fit max-w-full rounded-xl px-3 py-1.5 text-xs shadow-sm ${notice ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "y-glass text-slate-600"}`}
@@ -72,9 +83,10 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           </span>
         </div>
       ) : null}
-      <form className="relative flex items-end gap-2 y-glass rounded-2xl p-2"
+      <form className="relative flex items-end gap-2 y-glass rounded-3xl p-2.5"
         onSubmit={(event) => { event.preventDefault(); submit(); }}>
         <textarea
+          ref={box}
           aria-label="Ask the tutor"
           value={tutor.draft}
           rows={1}
@@ -83,7 +95,7 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
           placeholder={placeholder}
           onChange={(event) => tutor.setDraft(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (tutor.draft.trim()) submit(); } }}
-          className="max-h-32 min-h-10 flex-1 resize-none rounded-xl bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+          className="max-h-[200px] min-h-12 flex-1 resize-none overflow-y-auto rounded-xl bg-transparent px-2 py-3 text-[15px] leading-6 text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
         />
         <TutorPicker options={tutor.picker.options} prefs={tutor.picker.prefs} trace={tutor.picker.trace}
           onModel={tutor.picker.setModel} onVoice={tutor.picker.setVoice} compact={variant === "mobile"} />

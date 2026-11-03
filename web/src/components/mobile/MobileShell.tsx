@@ -59,7 +59,7 @@ export default function MobileShell({ session, interfaceMode }: Props) {
           <TutorComposer variant="mobile" tutor={session.tutor} blocked={session.busy && !session.tutor.busy} onStop={session.stop} />
         </div>
         <div className="mx-auto flex max-w-md items-center gap-2">
-          <button type="button" onClick={() => setProfileOpen(true)} aria-label={`Open learning profile, ${observations} observations`} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-indigo-200 bg-indigo-50 text-xs font-bold text-indigo-700">Learn</button>
+          {classic && <button type="button" onClick={() => setProfileOpen(true)} aria-label={`Open learning profile, ${observations} observations`} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-indigo-200 bg-indigo-50 text-xs font-bold text-indigo-700">Learn</button>}
           <PlacesMenu session={session} interfaceMode={interfaceMode} variant="mobile" />
           {classic && <><button type="button" onClick={primaryAction} className={`min-h-12 flex-1 rounded-2xl px-4 text-base font-bold text-white shadow-lg transition active:scale-[.98] ${session.busy ? "bg-rose-500 shadow-rose-200" : session.checkpoint ? "bg-violet-600 shadow-violet-200" : "bg-emerald-600 shadow-emerald-200"}`}>
             {primaryLabel}

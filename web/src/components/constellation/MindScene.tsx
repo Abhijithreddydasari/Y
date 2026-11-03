@@ -392,6 +392,9 @@ function Rig(props: SceneProps) {
     const d = DIST / cam.zoom;
     camera.position.set(cam.target.x + d * Math.cos(cam.pitch) * Math.sin(cam.yaw), cam.target.y + d * Math.sin(cam.pitch), cam.target.z + d * Math.cos(cam.pitch) * Math.cos(cam.yaw));
     camera.lookAt(cam.target);
+    // lookAt leaves matrixWorldInverse for the renderer to refresh; the DOM labels below project with it, so
+    // without this they used last frame's camera and trailed their neurons by a frame while dragging.
+    camera.updateMatrixWorld();
     const lod = lodOf(cam.zoom);
     const lv = levelOf(lod);
     if (lv !== level.current) { level.current = lv; live.current.onLevel(lv); }

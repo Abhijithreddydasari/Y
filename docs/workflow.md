@@ -45,6 +45,14 @@
   - A hint ladder (nudge, step, then reveal) is recorded as assistance; hints are p50 2.6–2.8 s live.
   - A Canvases list reopens saved sessions; sealed ones open to view only.
   - The gate path ran in the browser. Voice teach-back was cut. Next: H8, H9.
+- H8 done ([handoff](handoffs/H8.md)) on `feature/pointing-polish`:
+  - Y rings the learner's wrong ink line (server-side snap to the reported line). Live: ring on the
+    wrong line 11/11, against 7/11 for the raw point.
+  - A Trace drawer in the composer row shows each stage's model and latency.
+  - Glass chrome had no measurable frame cost; motion respects reduced motion.
+  - Feedback starts under the answered card; Mind labels read "FFN role"; warm-up canvases have
+    titles.
+  - Open: ink turns take 6–7 s to the first move (image reading). Next: H9.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -64,7 +72,8 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H5 Learner model + visible adaptation | done (branch `feature/learner-model`) | `3edc208`, `ecc147a` | [H5](handoffs/H5.md) |
 | H6 Learner map ("Your mind") | done (branch `feature/constellation`) | `f25dfb3`, `216db47` | [H6](handoffs/H6.md) |
 | H7 Study loop extras | done, teach-back cut (branch `feature/study-loop`) | `59f7547`, `e634a3c` | [H7](handoffs/H7.md) |
-| H8–H10 | planned | — | — |
+| H8 Pointing, trace drawer, polish | done (branch `feature/pointing-polish`) | see [H8](handoffs/H8.md) | [H8](handoffs/H8.md) |
+| H9–H10 | planned | — | — |
 
 ## Earlier handoff — 2026-11-01
 

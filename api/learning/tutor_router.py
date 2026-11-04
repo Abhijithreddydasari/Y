@@ -16,7 +16,8 @@ from starlette.concurrency import run_in_threadpool
 from . import image_jobs, observations, pointing, profile, study, trace
 from .board_contracts import ContextPacket
 from .board_router import get_board_store
-from .consolidate import NOTES_MODEL, NotesWriter, bridges, evidence_payload, keep_cited, keep_links, keep_named
+from .consolidate import (NOTES_MODEL, NotesWriter, bridges, evidence_payload, keep_cited, keep_links, keep_named,
+                          moved_links, same_concepts, with_concepts)
 from pydantic import Field
 
 from .contracts import Contract, canonical, digest
@@ -369,12 +370,15 @@ async def close(sid: UUID, body: CloseInput | None = None, owner=Depends(require
         try:
             await call_store(store.reserve, owner)
             answers = await call_store(evidence.answers, str(sid))
-            raw, notes_trace = await writer.write(evidence_payload(found, answers, beliefs, tuple(known)))
+            ledger = tuple(previous.misconceptions) if previous else ()
+            raw, notes_trace = await writer.write(evidence_payload(found, answers, beliefs, tuple(known), ledger))
             notes, notes_trace["dropped"] = keep_cited(raw, {str(o.observation_id) for o in found})
-            named, notes_trace["names_dropped"] = keep_named(raw, found, answers)
-            links, notes_trace["links_dropped"] = keep_links(raw, found, known)
+            moves = same_concepts(raw, found, known)
+            found = with_concepts(found, moves)
+            named, notes_trace["names_dropped"] = keep_named(raw, found, answers, ledger)
+            links, notes_trace["links_dropped"] = keep_links(moved_links(raw, moves), found, known)
             links += bridges(named, found)
-            notes_trace.update(kept=len(notes), named=[n["id"] for n in named], links=len(links))
+            notes_trace.update(kept=len(notes), named=[n["id"] for n in named], links=len(links), same_concepts=moves)
         except (ProviderFailure, HTTPException) as exc:  # the revision is written without notes
             notes_trace = {"error": getattr(exc, "code", None) or str(exc.detail)}
         except Exception as exc:

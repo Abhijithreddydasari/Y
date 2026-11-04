@@ -32,3 +32,23 @@ rewritten `personalization`.
 
 The user's exact turn (a graph of potentials) was not reproduced; the old code drifted in its text but drew a RoPE graph in
 both samples. One new turn wrote a line echoing the prompt ("Say why this matters before the picture"), one sample, not fixed.
+
+## One idea, one entry on the map (API)
+
+**Cause.** The tutor picks concept ids and close picks belief names, and entries only merged on an exact id. Live: a new
+base-rate belief sat beside the seeded one. A fixed topic list cannot work, because a judge can pick any subject.
+
+**Fix.** The existing close call (no extra model call) now gets `known_beliefs` and returns `same_as` per named belief and
+`same_concepts`. The server accepts only a real ledger id, or a session concept moving onto a known id, and refuses chains,
+so a model error can miss a merge but not invent an entry. Teaching side: the concept-name list from Topic focus lets the
+tutor reuse ids. Stored observations keep their original concept; the merge applies when the revision is built.
+
+**Live check (paid, Spark Open on Tomás's profile, each case run twice):**
+
+| Case | Result |
+|---|---|
+| Base-rate answer under new id `stats.base-rate-neglect` | Filed under his existing belief 2 of 2; concept merged 1 of 2 |
+| `cv.cnn-receptive-field` against `cv.receptive-field` | Concept merged 2 of 2 |
+| Variance scaling, a different idea | Stayed separate 2 of 2 |
+
+A missed concept merge can still leave two neurons; a duplicate is reduced, not impossible.

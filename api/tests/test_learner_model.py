@@ -121,6 +121,37 @@ def test_a_focused_brief_holds_only_this_topic_and_names_the_rest():
     assert on.other_concepts == ("stat.equipartition",)
 
 
+def test_close_merges_the_same_belief_and_concept_but_nothing_invented():
+    from learning.consolidate import keep_named, same_concepts, with_concepts
+    seen = obs("incorrect", concept="prob.bayes-rule", misconception="prob.bayes-rule/ignores-base-rate", miss_class="discrimination")
+    rev, _ = profile.reduce(None, {}, [seen, seen.model_copy(update={"observation_id": uuid4()})], S1)
+    known = {b.concept for b in rev.beliefs}
+    new = obs("incorrect", concept="stats.base-rate", misconception="stats.base-rate/ignores-prior", miss_class="discrimination")
+
+    moves = same_concepts({"same_concepts": [{"from": "stats.base-rate", "to": "prob.bayes-rule"},
+                                             {"from": "stats.base-rate", "to": "made.up"},
+                                             {"from": "prob.bayes-rule", "to": "stats.base-rate"},
+                                             {"from": "not.in.session", "to": "prob.bayes-rule"}]}, [new], known)
+    assert moves == {"stats.base-rate": "prob.bayes-rule"}
+    assert same_concepts({"same_concepts": [{"from": "a.b", "to": "made.up"}]}, [new], known) == {}
+    moved = with_concepts([new], moves)
+    assert moved[0].concept == "prob.bayes-rule" and new.concept == "stats.base-rate"
+
+    cite = str(new.observation_id)
+    on_record = rev.misconceptions[0]
+    same, _ = keep_named({"misconceptions": [{"text": "ignores how rare the condition is", "cites": [cite], "same_as": on_record.id}]},
+                         moved, ledger=rev.misconceptions)
+    assert [n["id"] for n in same] == [on_record.id] and same[0]["description"] == on_record.description
+    merged, _ = profile.reduce(rev, {}, moved, S1, named=same)
+    assert [m.id for m in merged.misconceptions] == [on_record.id]
+    assert {b.concept for b in merged.beliefs} == {"prob.bayes-rule"}
+
+    # An id that is not on record opens its own entry, as before.
+    fresh, _ = keep_named({"misconceptions": [{"text": "mixes up the two rates", "cites": [cite], "same_as": "invented/id"}]},
+                          moved, ledger=rev.misconceptions)
+    assert fresh[0]["id"].startswith("prob.bayes-rule/belief-mixes-up")
+
+
 def test_a_turn_continues_or_starts_a_topic():
     from learning.tutor_router import current_topic
     rope = {"kind": "question", "status": "done", "input": {"text": "Explain RoPE embeddings"}}

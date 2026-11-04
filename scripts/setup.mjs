@@ -11,8 +11,12 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const windows = process.platform === "win32";
 const skipInstall = process.argv.includes("--no-install");
 
+// npm is a .cmd script on Windows, which needs a shell; the arguments here are all fixed strings.
+const launch = (command, args) => (windows && command === "npm" ? [[command, ...args].join(" "), []] : [command, args]);
+
 function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { cwd: root, stdio: "inherit", shell: windows && command === "npm", ...options });
+  const [program, rest] = launch(command, args);
+  const result = spawnSync(program, rest, { cwd: root, stdio: "inherit", shell: windows && command === "npm", ...options });
   if (result.error || result.status !== 0) {
     throw new Error(`${command} ${args.join(" ")} failed${result.error ? `: ${result.error.message}` : ""}`);
   }
@@ -26,7 +30,8 @@ function capture(args, cwd) {
 }
 
 function requireTool(command, hint) {
-  const result = spawnSync(command, ["--version"], { stdio: "ignore", shell: windows && command === "npm" });
+  const [program, rest] = launch(command, ["--version"]);
+  const result = spawnSync(program, rest, { stdio: "ignore", shell: windows && command === "npm" });
   if (result.error || result.status !== 0) throw new Error(`${command} was not found. ${hint}`);
 }
 

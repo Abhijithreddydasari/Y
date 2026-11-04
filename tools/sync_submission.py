@@ -32,7 +32,7 @@ EXCLUDE_EVENT = ("docs/legacy/", ".claude/", "tools/", OVERLAY)  # docs/legacy i
 # Pre-event files outside web/ that the app, its tests or its docs still use.
 FOUNDATION_API = {
     "api/pyproject.toml", "api/uv.lock", "api/speech.py", "api/speech_assets.lock.json", "api/transcription.py", "api/teacher.py",
-    "api/parser.py", "api/validator.py", "api/salvage.py", "api/prompts/primitives.md", "api/prompts/system.md",
+    "api/parser.py", "api/validator.py", "api/salvage.py", "api/prompts/primitives.md", "api/prompts/system.md", "schema/primitives.json",
     "api/scripts/prefetch_speech.py", "api/scripts/test_teacher.py", "api/tests/test_speech.py",
     "THIRD_PARTY_NOTICES.md", "docs/architecture.md",
 }

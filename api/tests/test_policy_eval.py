@@ -246,6 +246,7 @@ class FakeClients:
 
 
 def test_adapter_rollout_scores_caches_and_reflects(tmp_path):
+    pytest.importorskip("gepa")  # optional extra: policy-eval
     calls = []
     runner = Runner(tmp_path / "run", cap=50, make_clients=lambda budget: FakeClients(budget, calls),
                     briefs=Briefs(tmp_path / "personas"))

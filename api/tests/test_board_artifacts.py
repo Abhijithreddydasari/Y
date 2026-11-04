@@ -113,7 +113,7 @@ def test_options_report_availability_with_reasons(env, monkeypatch):
     assert all(not m["available"] and m["reason"] for m in value["models"])
     voices = {v["id"]: v for v in value["voices"]}
     assert voices["browser"]["available"] and voices["off"]["available"]
-    assert set(voices) == {"kokoro_af_heart", "kokoro_am_michael", "browser", "off"}
+    assert {"browser", "off"} <= set(voices) and all(o["available"] for o in voices.values())  # never a dead control
     assert [v for v, o in voices.items() if o["default"]] == ["browser"]  # only Meta models unless a learner picks otherwise
     monkeypatch.setenv("MODEL_API_KEY", "k")
     models = {m["id"]: m["available"] for m in client.get("/learning/tutor/options").json()["models"]}
@@ -169,3 +169,15 @@ def test_plot_spec_names_its_axes_within_bounds():
     assert PlotSpec.model_validate(base).yLabel == ""  # earlier graphs carry no names
     with pytest.raises(ValueError):
         PlotSpec.model_validate({**base, "xLabel": "x" * 41})
+
+
+def test_an_optional_voice_that_cannot_speak_is_left_out(monkeypatch):
+    from types import SimpleNamespace
+    from learning.tutor_models import voice_options
+    monkeypatch.delenv("DEEPGRAM_API_KEY", raising=False)
+    assert [v["id"] for v in voice_options(None)] == ["browser", "off"]
+    assert [v["id"] for v in voice_options(SimpleNamespace(available=False))] == ["browser", "off"]
+    ready = voice_options(SimpleNamespace(available=True))
+    assert {"kokoro_af_heart", "kokoro_am_michael"} < {v["id"] for v in ready} and all(v["available"] for v in ready)
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "d")
+    assert "Thalia" in [v["label"] for v in voice_options(None)]

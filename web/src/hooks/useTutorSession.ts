@@ -215,8 +215,10 @@ export function useTutorSession(): TutorSession {
   const tutorAbortRef = useRef<AbortController | null>(null);
   const tutorKnownRef = useRef(false);
   const [tutorOptions, setTutorOptions] = useState<TutorOptions | null>(null);
-  const [prefs, setPrefs] = useState<TutorPrefs>({ model: "spark-1.3", voice: "kokoro_af_heart" });
+  const [prefs, setPrefs] = useState<TutorPrefs>({ model: "spark-1.3", voice: "browser" });
   const prefsRef = useRef(prefs);
+  // What unmuting returns to: the last voice chosen, whichever kind it was.
+  const lastVoiceRef = useRef(prefs.voice);
   const [trace, setTrace] = useState<TutorTrace | null>(null);
   const [memoryOn, setMemoryOn] = useState(true);
   const [turnMemory, setTurnMemory] = useState<TurnMemory | null>(null);
@@ -800,8 +802,9 @@ export function useTutorSession(): TutorSession {
     ttsRef.current = !ttsRef.current;
     setTtsEnabled(ttsRef.current);
     playerRef.current?.setMuted(!ttsRef.current);
-    // Keep the picker truthful: muting is "Off"; unmuting returns to the last Kokoro voice.
-    const voice = ttsRef.current ? (prefsRef.current.voice === "off" ? voiceRef.current : prefsRef.current.voice) : "off";
+    // Keep the picker truthful: muting is "Off"; unmuting returns to the last voice chosen.
+    const voice = ttsRef.current ? lastVoiceRef.current : "off";
+    if (ttsRef.current) playerRef.current?.setBrowserOnly(voice === "browser");
     prefsRef.current = { ...prefsRef.current, voice };
     setPrefs(prefsRef.current);
     savePrefs(prefsRef.current);
@@ -812,6 +815,7 @@ export function useTutorSession(): TutorSession {
   // Voice choice: a Kokoro voice, the browser voice, or off (the same switch as the Narration toggle).
   const applyVoice = useCallback((id: string) => {
     const on = id !== "off";
+    if (on) lastVoiceRef.current = id;
     ttsRef.current = on;
     setTtsEnabled(on);
     playerRef.current?.setMuted(!on);

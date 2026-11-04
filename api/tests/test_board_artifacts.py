@@ -114,6 +114,7 @@ def test_options_report_availability_with_reasons(env, monkeypatch):
     voices = {v["id"]: v for v in value["voices"]}
     assert voices["browser"]["available"] and voices["off"]["available"]
     assert set(voices) == {"kokoro_af_heart", "kokoro_am_michael", "browser", "off"}
+    assert [v for v, o in voices.items() if o["default"]] == ["browser"]  # only Meta models unless a learner picks otherwise
     monkeypatch.setenv("MODEL_API_KEY", "k")
     models = {m["id"]: m["available"] for m in client.get("/learning/tutor/options").json()["models"]}
     assert models == {"spark-1.3": True, "spark-1.3-low": True, "spark-1.2": True, "spark-open": False}

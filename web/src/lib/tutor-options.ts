@@ -44,7 +44,7 @@ function pick(list: TutorOption[], wanted: string | undefined, fallback: string)
 
 /** Stored choices checked against what the server offers now. */
 export function resolvePrefs(options: TutorOptions | null, stored: Partial<TutorPrefs>): TutorPrefs {
-  if (!options) return { model: stored.model ?? "spark-1.3", voice: stored.voice ?? "kokoro_af_heart" };
+  if (!options) return { model: stored.model ?? "spark-1.3", voice: stored.voice ?? "browser" };
   const voice = stored.voice && KOKORO_VOICES.has(stored.voice) && !options.voices.find((v) => v.id === stored.voice)?.available
     ? "browser" : stored.voice;
   return { model: pick(options.models, stored.model, "spark-1.3"), voice: pick(options.voices, voice, "browser") };

@@ -195,7 +195,7 @@ describe("tutor turn flow", () => {
     act(() => result.current.tutor.picker.setVoice("off"));
     expect(result.current.ttsEnabled).toBe(false);
     act(() => result.current.toggleTts());
-    expect(result.current.tutor.picker.prefs.voice).toBe("kokoro_af_heart");
+    expect(result.current.tutor.picker.prefs.voice).toBe("browser"); // unmuting returns to the last voice chosen
     act(() => result.current.tutor.picker.setVoice("kokoro_am_michael"));
     expect(result.current.voice).toBe("kokoro_am_michael");
 
@@ -225,7 +225,7 @@ describe("tutor turn flow", () => {
     expect(body).toMatchObject({ kind: "question", text: "Why divide by root d_k?", board: { request_id: "r" } });
     expect(mocks.enqueued.map((t) => t.tag)).toEqual(["title", "card"]);
     // The say is bound to its segment in the player, which captions it when it is spoken.
-    expect(mocks.voice).toEqual(["pacing:segment", "muted:false", "segment", "say:Watch the sums."]);
+    expect(mocks.voice).toEqual(["pacing:segment", "browser-only", "muted:false", "segment", "say:Watch the sums."]); // the default voice
     expect(result.current.tutor.caption).toBe("Watch the sums.");
     act(() => result.current.toggleTts());
     expect(mocks.voice.at(-1)).toBe("muted:true");

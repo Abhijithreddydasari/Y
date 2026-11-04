@@ -198,3 +198,17 @@ audio started within 25 ms of each other; Thalia in the picker. A graph showing 
 After the Fold, the user marked up their reference image and chose the shaded ribbon drawn from it. `YMark.tsx` draws it, now also
 on the landing page header at the user's request. `app/icon.svg` and a rebuilt `favicon.ico` give every page the dark-tile tab icon.
 Browser: landing header and Y button seen; both icon files load; the tab itself was not seen.
+
+## Browser voice is the default (web, API)
+
+The hackathon rules call for Meta models only, so a new visitor now gets the browser voice and the app makes no speech calls.
+Deepgram stays in the picker as Thalia and Apollo for the recorded demo; a choice persists per browser. Unmuting returns to the last
+voice chosen rather than always to a hosted one. Browser, fresh storage, one paid turn: picker read "Browser voice", the voice was
+Microsoft Zira on Windows, no `/speech` request was made, and sections waited for the voice as before.
+
+**Later (user decision).** The learner-model labels still use OpenAI Decisions (`gpt-6-luna`); replace them with a smaller Meta
+model such as Glimmer. Not done here.
+
+## Deploy state
+
+All of this branch is local: not pushed, not deployed. Deploying needs both API and web, API first (see above).

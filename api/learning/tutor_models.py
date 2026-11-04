@@ -82,9 +82,9 @@ def voice_options(engine) -> list[dict]:
     reason = None if ready else "Kokoro is not installed on this server"
     hosted = os.environ.get("DEEPGRAM_API_KEY", "").strip()
     named = [(vid, *HOSTED_VOICES[vid]) if hosted else (vid, label, note) for vid, label, note in VOICE_OPTIONS]
-    voices = [{"id": vid, "label": label, "note": note, "default": vid == "kokoro_af_heart", "available": ready,
+    voices = [{"id": vid, "label": label, "note": note, "default": False, "available": ready,
                "reason": reason} for vid, label, note in named]
-    return voices + [{"id": "browser", "label": "Browser voice", "note": "Instant, sounds robotic", "default": False,
+    return voices + [{"id": "browser", "label": "Browser voice", "note": "Built into your browser, instant", "default": True,
                       "available": True, "reason": None},
                      {"id": "off", "label": "Off", "note": "Captions only", "default": False, "available": True,
                       "reason": None}]

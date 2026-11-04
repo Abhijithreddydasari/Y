@@ -27,6 +27,49 @@ beforeEach(() => { voice.start.mockReset(); voice.transcribe.mockReset(); });
 
 const mcq = { qid: "t.3", kind: "mcq" as const, q: "What grows with d_k?", options: ["variance", "the mean"] };
 
+describe("TutorQuestionCard placement", () => {
+  const rectAt = (top: number) => new DOMRect(100, top, 300, 60);
+
+  it("sits under its board card when there is room", async () => {
+    render(<TutorQuestionCard question={mcq} busy={false} cardRect={() => rectAt(80)} onAnswer={vi.fn()} />);
+    await waitFor(() => expect(screen.getByTestId("tutor-question")).toHaveStyle({ top: "148px", left: "100px" }));
+  });
+
+  it("brings a new question into view once, then becomes a pill when the learner scrolls it away", async () => {
+    const onReveal = vi.fn();
+    let top = 700;
+    render(<TutorQuestionCard question={mcq} busy={false} cardRect={() => rectAt(top)} onAnswer={vi.fn()} onReveal={onReveal} />);
+    expect(onReveal).not.toHaveBeenCalled(); // waits for the lesson's own closing scroll
+    expect(screen.queryByTestId("tutor-question")).toBeNull();
+    await waitFor(() => expect(onReveal).toHaveBeenCalledWith("t.3"));
+    top = 80;
+    await waitFor(() => expect(screen.getByTestId("tutor-question")).toBeInTheDocument());
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    top = 2000; // scrolled up: the card must not jump over the lesson
+    expect(await screen.findByTestId("question-pill")).toBeInTheDocument();
+    expect(screen.queryByTestId("tutor-question")).toBeNull();
+    expect(onReveal).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes to a pill that keeps the answer in progress, and Back to it reopens", async () => {
+    const onReveal = vi.fn();
+    render(<TutorQuestionCard question={mcq} busy={false} cardRect={() => rectAt(80)} onAnswer={vi.fn()} onReveal={onReveal} />);
+    fireEvent.click(await screen.findByRole("button", { name: /the mean/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Close question" }));
+    expect(screen.queryByTestId("tutor-question")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Back to it" }));
+    expect(onReveal).toHaveBeenCalledWith("t.3");
+    expect(screen.getByRole("button", { name: /the mean/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("stays docked with the question text when no card is on the board", async () => {
+    render(<TutorQuestionCard question={mcq} busy={false} cardRect={() => null} onAnswer={vi.fn()} />);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByText(mcq.q)).toBeInTheDocument();
+    expect(screen.queryByTestId("question-pill")).toBeNull();
+  });
+});
+
 describe("TutorQuestionCard", () => {
   it("submits the chosen option with confidence and offers just tell me", () => {
     const onAnswer = vi.fn();
@@ -78,7 +121,7 @@ describe("TutorQuestionCard", () => {
 
 function tutor(overrides: Partial<TutorTurnState> = {}): TutorTurnState {
   return { configured: true, busy: false, draft: "", question: null, caption: "", error: "", timing: null, narrating: false,
-    setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, hush: vi.fn(),
+    setDraft: vi.fn(), ask: vi.fn(), answer: vi.fn(), cardRect: () => null, revealCard: vi.fn(), hush: vi.fn(),
     picker: { options: null, prefs: { model: "spark-1.3", voice: "kokoro_af_heart" }, trace: null, setModel: vi.fn(), setVoice: vi.fn() },
     memory: { on: true, set: vi.fn(), turn: null }, endSession: vi.fn(), ending: false, saveTo: { value: null, set: vi.fn() },
     warmup: { items: [], visible: false, started: false, start: vi.fn(), skip: vi.fn() },

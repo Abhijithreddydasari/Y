@@ -47,8 +47,20 @@ tutor reuse ids. Stored observations keep their original concept; the merge appl
 
 | Case | Result |
 |---|---|
-| Base-rate answer under new id `stats.base-rate-neglect` | Filed under his existing belief 2 of 2; concept merged 1 of 2 |
+| Base-rate answer under new id `stats.base-rate-neglect` | Filed under the existing belief 2 of 2; concept merged 1 of 2 |
 | `cv.cnn-receptive-field` against `cv.receptive-field` | Concept merged 2 of 2 |
 | Variance scaling, a different idea | Stayed separate 2 of 2 |
 
 A missed concept merge can still leave two neurons; a duplicate is reduced, not impossible.
+
+## Question card stays out of the lesson (web)
+
+**Cause.** When its board card left the screen, the answer card jumped to the bottom centre over whatever was there; near the
+bottom edge it was pushed up over the lesson. There was no way to close it.
+
+**Fix.** The card sits only below its board card, with its own scroll on a short screen. Off screen, without room, or closed
+with the new X, it becomes a "Question waiting · Back to it" pill above the composer. The question stays open and a chosen
+option is kept. A new question scrolls into view once, after the lesson's own closing scroll; later scrolling is respected.
+
+**Browser (1280×800, local web, one paid turn):** under its board card on arrival; pill after scrolling away, a little and far;
+Back to it returned the card under its anchor; X gave the pill. Not run: Mobile width, a short tablet viewport.

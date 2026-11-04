@@ -62,7 +62,7 @@ export default function StudioShell({ session, interfaceMode, board }: Props) {
         onCancel={session.cancelChat}
       />}
       <CheckpointCard checkpoint={session.checkpoint} evidence={session.lastEvidence} />
-      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
+      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onReveal={session.tutor.revealCard} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
         hints={session.tutor.hints.given} hintBusy={session.tutor.hints.busy} onHint={session.tutor.hints.next} />
       <PlacesMenu session={session} interfaceMode={interfaceMode} />
       <TutorComposer tutor={session.tutor} blocked={session.busy && !session.tutor.busy} onStop={session.stop} status={classic ? "" : session.status} />

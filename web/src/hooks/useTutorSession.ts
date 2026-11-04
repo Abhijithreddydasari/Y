@@ -38,6 +38,7 @@ export interface TutorTurnState {
   ask: (text: string) => void;
   answer: (value: TutorAnswer) => void;
   cardRect: (qid: string) => DOMRect | null;
+  revealCard: (qid: string) => void;
   /** Silence the narration only (the learner started talking). */
   hush: () => void;
   picker: { options: TutorOptions | null; prefs: TutorPrefs; trace: TutorTrace | null; setModel: (id: string) => void;
@@ -775,6 +776,7 @@ export function useTutorSession(): TutorSession {
   const newSession = useCallback(() => { startNextBoardSession(); window.location.reload(); }, []);
 
   const cardRect = useCallback((qid: string) => handleRef.current?.getElementScreenRect(cardId(qid)) ?? null, []);
+  const revealCard = useCallback((qid: string) => { handleRef.current?.revealElement(cardId(qid)); }, []);
 
   const resetLearnerProfile = useCallback(async () => {
     const id = userIdRef.current;
@@ -855,7 +857,7 @@ export function useTutorSession(): TutorSession {
     changeModel: setModelChoice, changeVoice, resetLearner: resetLearnerProfile,
     sendChatMessage, cancelChat, clearChat,
     tutor: { configured: tutorConfigured, busy: tutorBusy, draft, question, caption, error: tutorError, timing, narrating,
-      setDraft, ask, answer, cardRect, hush,
+      setDraft, ask, answer, cardRect, revealCard, hush,
       picker: { options: tutorOptions, prefs, trace, setModel: (model) => choose({ model }), setVoice: (voice) => choose({ voice }) },
       memory: { on: memoryOn, set: setMemory, turn: turnMemory }, endSession, ending,
       saveTo: { value: saveTo, set: setSaveTo },

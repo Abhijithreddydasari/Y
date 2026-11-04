@@ -51,7 +51,7 @@ export default function MobileShell({ session, interfaceMode }: Props) {
 
       <CheckpointCard variant="mobile" checkpoint={session.checkpoint} evidence={session.lastEvidence} />
 
-      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} variant="mobile" question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
+      <TutorQuestionCard key={session.tutor.question?.qid ?? "none"} variant="mobile" question={session.tutor.question} busy={session.busy} cardRect={session.tutor.cardRect} onReveal={session.tutor.revealCard} onAnswer={session.tutor.answer} onListen={session.tutor.hush}
         hints={session.tutor.hints.given} hintBusy={session.tutor.hints.busy} onHint={session.tutor.hints.next} />
 
       <div className="pointer-events-auto fixed inset-x-0 bottom-0 z-50 y-glass border-x-0 border-b-0 px-3 pb-[calc(.65rem+env(safe-area-inset-bottom))] pt-2">

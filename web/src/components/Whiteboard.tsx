@@ -91,10 +91,15 @@ export interface WhiteboardHandle {
    * can't be found or the canvas isn't mounted.
    */
   getElementScreenRect: (id: string) => DOMRect | null;
+  /** Scroll so an element sits near the top of the view, leaving room below it. Zoom is unchanged. */
+  revealElement: (id: string) => void;
   /** Y's tool dock: pick a tool (with its pen style) and follow tool changes made elsewhere (shortcuts). */
   setTool: (tool: ToolId, ink: string) => void;
   onToolChange: (listener: (tool: ToolId | null) => void) => () => void;
 }
+
+/** Screen pixels kept above a revealed element: clears the tool dock. */
+const REVEAL_TOP = 72;
 
 interface Props {
   onReady?: (handle: WhiteboardHandle) => void;
@@ -235,6 +240,19 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       const w = el.width * z;
       const h = el.height * z;
       return new DOMRect(x, y, w, h);
+    },
+    revealElement(id) {
+      const api = apiRef.current;
+      const el = api?.getSceneElements().find((e) => e.id === id);
+      if (!api || !el) return;
+      const state = api.getAppState();
+      const z = state.zoom?.value ?? 1;
+      const left = (el.x + state.scrollX) * z;
+      const offside = left < 12 || left + el.width * z > state.width - 12;
+      api.updateScene({ appState: {
+        scrollY: REVEAL_TOP / z - el.y,
+        scrollX: offside ? (state.width / z - el.width) / 2 - el.x : state.scrollX,
+      } });
     },
     setTool(tool, ink) {
       const api = apiRef.current;

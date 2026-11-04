@@ -14,6 +14,7 @@ import type { InterfaceMode } from "@/lib/interface-mode";
 import { BoardController } from "@/lib/board-controller";
 import { installFrameProbe } from "@/lib/frame-probe";
 import { toolOf, toolSettings, type ToolId } from "@/lib/board-tools";
+import { installPenPinch } from "@/lib/pen-pinch";
 import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/WidgetHost";
 import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
@@ -91,10 +92,20 @@ export interface WhiteboardHandle {
    * can't be found or the canvas isn't mounted.
    */
   getElementScreenRect: (id: string) => DOMRect | null;
+  /** Scroll so an element sits near the top of the view, leaving room below it. Zoom is unchanged. */
+  revealElement: (id: string) => void;
   /** Y's tool dock: pick a tool (with its pen style) and follow tool changes made elsewhere (shortcuts). */
-  setTool: (tool: ToolId, ink: string) => void;
+  setTool: (tool: ToolId, ink: string, width?: number) => void;
   onToolChange: (listener: (tool: ToolId | null) => void) => () => void;
+  /** Set the current stroke style without changing tool. */
+  setStyle: (ink: string, width: number) => void;
+  /** The learner changed colour or thickness in Excalidraw's own style panel. */
+  onStyleChange: (listener: (tool: ToolId | null, color: string, width: number) => void) => () => void;
 }
+
+/** Screen pixels kept above a revealed element: clears the tool dock. */
+const REVEAL_TOP = 72;
+const STYLE_QUIET_MS = 120;
 
 interface Props {
   onReady?: (handle: WhiteboardHandle) => void;
@@ -109,6 +120,7 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
   const [saveStatus, setSaveStatus] = useState("Restoring board…");
   const [retry, setRetry] = useState(0);
   const boardRef = useRef<BoardController | null>(null);
+  const styleQuietUntil = useRef(0);
 
   const buildHandle = useCallback((): WhiteboardHandle => ({
     board: boardRef.current ?? undefined,
@@ -236,12 +248,43 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       const h = el.height * z;
       return new DOMRect(x, y, w, h);
     },
-    setTool(tool, ink) {
+    revealElement(id) {
+      const api = apiRef.current;
+      const el = api?.getSceneElements().find((e) => e.id === id);
+      if (!api || !el) return;
+      const state = api.getAppState();
+      const z = state.zoom?.value ?? 1;
+      const left = (el.x + state.scrollX) * z;
+      const offside = left < 12 || left + el.width * z > state.width - 12;
+      api.updateScene({ appState: {
+        scrollY: REVEAL_TOP / z - el.y,
+        scrollX: offside ? (state.width / z - el.width) / 2 - el.x : state.scrollX,
+      } });
+    },
+    setTool(tool, ink, width) {
       const api = apiRef.current;
       if (!api) return;
-      const { type, style } = toolSettings(tool, ink);
+      const { type, style } = toolSettings(tool, ink, width);
+      // Switching tools rewrites the style: that must not read as the learner choosing a new one for the old tool.
+      styleQuietUntil.current = performance.now() + STYLE_QUIET_MS;
       if (style) api.updateScene({ appState: style as Pick<AppState, "currentItemStrokeColor"> });
       api.setActiveTool({ type } as Parameters<ExcalidrawImperativeAPI["setActiveTool"]>[0]);
+    },
+    setStyle(ink, width) {
+      styleQuietUntil.current = performance.now() + STYLE_QUIET_MS;
+      apiRef.current?.updateScene({ appState: { currentItemStrokeColor: ink, currentItemStrokeWidth: width } as Pick<AppState, "currentItemStrokeColor"> });
+    },
+    onStyleChange(listener) {
+      const api = apiRef.current;
+      if (!api) return () => {};
+      // Only a change counts: Excalidraw's starting style must not overwrite what the dock has saved.
+      const start = api.getAppState();
+      let color = start.currentItemStrokeColor, width = start.currentItemStrokeWidth;
+      return api.onChange((_elements, appState) => {
+        if (appState.currentItemStrokeColor === color && appState.currentItemStrokeWidth === width) return;
+        color = appState.currentItemStrokeColor; width = appState.currentItemStrokeWidth;
+        if (performance.now() > styleQuietUntil.current) listener(toolOf(appState.activeTool.type, appState.currentItemOpacity), color, width);
+      });
     },
     onToolChange(listener) {
       const api = apiRef.current;
@@ -257,6 +300,11 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
 
   // `?fps=1` frame-time probe and `?glass=0` opaque chrome, for the glass performance check.
   useEffect(() => installFrameProbe(window.location.search), []);
+
+  useEffect(() => {
+    if (!ready || !apiRef.current || !containerRef.current) return;
+    return installPenPinch(apiRef.current as unknown as Parameters<typeof installPenPinch>[0], containerRef.current);
+  }, [ready]);
 
   useEffect(() => {
     if (loaded && apiRef.current && onReady) {

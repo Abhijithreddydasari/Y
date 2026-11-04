@@ -40,6 +40,15 @@ export const STATE_WORDS: Record<NodeState, string> = {
   solid: "Solid", learning: "Learning", shaky: "Shaky", misconception: "Misconception active", unseen: "Not practised yet",
 };
 
+/** What a neuron's state means, in plain words: the evidence sheet and the legend's tooltips. */
+export const STATE_MEANINGS: Record<NodeState, string> = {
+  solid: "Mostly right, across different kinds of question.",
+  learning: "Some right, not settled yet.",
+  shaky: "Mostly wrong so far.",
+  misconception: "A wrong idea keeps showing up in the answers here.",
+  unseen: "No answers on this idea yet.",
+};
+
 /** Overlay chrome as CSS variables on the dialog root. */
 export const CHROME: Record<MindTheme, Record<string, string>> = {
   dark: {

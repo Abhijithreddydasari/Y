@@ -13,6 +13,8 @@ export type Level = "brain" | "region" | "neurons";
 export interface MindControl { zoom(by: number): void; flyTo(region: string): void; overview(): void; frame(ids: string[]): void }
 export interface SceneProps {
   map: MindMap; frame: MindFrame; replay: { path: string[]; u: number } | null; selected: string | null; palette: Palette;
+  /** Neurons a filter or search keeps lit; the rest dim. Synapses are not affected. Null: all. */
+  focus: ReadonlySet<string> | null;
   onSelect(id: string): void; onLevel(level: Level): void;
   labels: RefObject<Record<string, HTMLElement | null>>; regionLabels: RefObject<Record<string, HTMLElement | null>>;
   control: RefObject<MindControl | null>;
@@ -94,8 +96,8 @@ interface Sim { rest: Record<string, THREE.Vector3>; q: Record<string, THREE.Vec
 
 interface NeuronParts { root: THREE.Group; face: THREE.Group; glow: THREE.Sprite; halo: THREE.Mesh | null; pulse: boolean }
 
-function Neuron({ node, selected, sim, register, detail, glow, palette: p }: {
-  node: MindNode; selected: boolean; sim: Sim; register(id: string, parts: NeuronParts | null): void;
+function Neuron({ node, selected, dimmed, sim, register, detail, glow, palette: p }: {
+  node: MindNode; selected: boolean; dimmed: boolean; sim: Sim; register(id: string, parts: NeuronParts | null): void;
   detail: THREE.MeshBasicMaterial; glow: THREE.Texture; palette: Palette;
 }) {
   const root = useRef<THREE.Group>(null), face = useRef<THREE.Group>(null), sprite = useRef<THREE.Sprite>(null), halo = useRef<THREE.Mesh>(null);
@@ -122,8 +124,8 @@ function Neuron({ node, selected, sim, register, detail, glow, palette: p }: {
       <sprite ref={sprite} scale={[r * 5.5, r * 5.5, 1]}>
         <spriteMaterial map={glow} color={node.mean == null ? p.unseen : stateColor(node.state, p)} transparent opacity={node.mean == null ? 0.18 : p.glow} depthWrite={false} blending={p.additive ? THREE.AdditiveBlending : THREE.NormalBlending} />
       </sprite>
-      <mesh><sphereGeometry args={[r, 18, 14]} /><meshBasicMaterial color={color} /></mesh>
-      <group ref={face}>
+      <mesh><sphereGeometry args={[r, 18, 14]} /><meshBasicMaterial key={dimmed ? "dim" : "lit"} color={color} transparent={dimmed} opacity={dimmed ? 0.14 : 1} /></mesh>
+      <group ref={face} visible={!dimmed}>
         <mesh geometry={dend} material={detail} />
         {ringGeo && <mesh ref={halo} geometry={ringGeo.geometry} material={detail} />}
         {selected && <mesh geometry={select} material={detail} />}
@@ -426,7 +428,7 @@ function Rig(props: SceneProps) {
       g.face.quaternion.copy(camera.quaternion);
       const n = frame.nodes[id];
       const flash = (sim.flash[id] = Math.max(0, (sim.flash[id] ?? 0) - dt * 2.2));
-      (g.glow.material as THREE.SpriteMaterial).opacity = (n?.mean == null ? 0.18 : pal.glow) + (pal.additive ? 0.5 : 0.3) * flash;
+      (g.glow.material as THREE.SpriteMaterial).opacity = live.current.focus && !live.current.focus.has(id) ? 0 : (n?.mean == null ? 0.18 : pal.glow) + (pal.additive ? 0.5 : 0.3) * flash;
       const r = n ? somaRadius(n) : 0.02;
       g.glow.scale.setScalar(r * (5.5 + 5 * flash));
       if (g.halo && g.pulse) g.halo.scale.setScalar(1 + 0.12 * Math.sin(state.clock.elapsedTime * 4));
@@ -479,8 +481,10 @@ function Rig(props: SceneProps) {
       const n = frame.nodes[id];
       const r = n ? somaRadius(n) : 0.02;
       const off = (r + 0.03) * (h / (2 * Math.tan(((camera as THREE.PerspectiveCamera).fov * Math.PI) / 360))) / camera.position.distanceTo(sim.q[id]);
-      const visible = tmp.v.z < 1 && shown.has(id) && lod > 0.4;
-      el.style.opacity = visible ? String(Math.min(1, (lod - 0.4) * 2.5)) : "0";
+      // A filter or search names its neurons at any zoom, and only those.
+      const focus = live.current.focus;
+      const visible = tmp.v.z < 1 && (focus ? focus.has(id) : shown.has(id) && lod > 0.4);
+      el.style.opacity = visible ? (focus ? "1" : String(Math.min(1, (lod - 0.4) * 2.5))) : "0";
       // Whole pixels, centred by measured width: a subpixel or percentage offset makes text shimmer while turning.
       el.style.transform = `translate3d(${Math.round(((tmp.v.x + 1) / 2) * w - el.offsetWidth / 2)}px, ${Math.round(((1 - tmp.v.y) / 2) * h + off)}px, 0)`;
     }
@@ -508,7 +512,7 @@ function Rig(props: SceneProps) {
       <primitive object={pathLine} />
       <sprite ref={head} material={headMat} visible={false} />
       {Object.values(props.frame.nodes).map((n) => (
-        <Neuron key={n.id} node={n} selected={props.selected === n.id} sim={sim} register={register} detail={detail} glow={glow} palette={pal} />
+        <Neuron key={n.id} node={n} selected={props.selected === n.id} dimmed={!!props.focus && !props.focus.has(n.id)} sim={sim} register={register} detail={detail} glow={glow} palette={pal} />
       ))}
     </>
   );

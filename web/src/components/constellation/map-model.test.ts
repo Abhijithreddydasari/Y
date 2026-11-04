@@ -71,7 +71,7 @@ describe("profile → learner map", () => {
     expect(soft.state).toBe("misconception");
     expect(one.nodes["attention.softmax"].state).toBe("shaky"); // suspected does not mark a misconception
     expect(two.nodes["linalg.dot_product"].due).toBe(true); // past its 1 h half-life
-    expect(two.nodes["linalg.dot_product"].state).toBe("shaky");
+    expect(two.nodes["linalg.dot_product"].state).toBe("solid"); // due is shown apart, never as a colour
     expect(map.regions.map((r) => r.label).sort()).toEqual(["Attention", "Linear algebra"]);
     expect(two.changed.sort()).toEqual(["attention.softmax", "linalg.dot_product"]);
   });
@@ -129,10 +129,10 @@ describe("profile → learner map", () => {
   });
 
   it("names states, concepts and regions", () => {
-    expect(nodeState([null, null, null, null, null], [], false)).toBe("unseen");
-    expect(nodeState([0.8, null, null, null, null], [], false)).toBe("solid");
-    expect(nodeState([0.8, null, null, null, null], [], true)).toBe("shaky");
-    expect(nodeState([0.5, null, null, null, null], [], false)).toBe("learning");
+    expect(nodeState([null, null, null, null, null], [])).toBe("unseen");
+    expect(nodeState([0.8, null, null, null, null], [])).toBe("solid");
+    expect(nodeState([0.8, null, null, null, null], [], 0.3)).toBe("shaky"); // the pooled mean decides when given
+    expect(nodeState([0.5, null, null, null, null], [])).toBe("learning");
     expect(conceptLabel("attention.scaled_dot-product")).toBe("Scaled dot product");
     expect(conceptLabel("transformer.ffn-role", ["What does the FFN do at each position?"])).toBe("FFN role");
     expect(conceptLabel("attention.kv-cache", ["Why does the KV cache grow?", "kv again"])).toBe("KV cache");

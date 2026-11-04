@@ -220,16 +220,40 @@ def carry_links(previous: ProfileRevision | None, links: list[dict], weights: di
 # Brief
 
 
+# Words that say what the learner wants done, not what it is about: "give me a graph" names no subject.
+_NOT_A_SUBJECT = frozenset("""
+about again also and answer any are ask because been before being but can check could did does doing done draw drawing
+each else example examples explain explanation explains find for from get give going graph graphs help her here him how
+into just know last let like look lot make many mean means more most much need needs next not now off one only other our
+out over picture pictures plot plots please question questions really same say see she should show showing shows some
+step steps still tell than thanks that the their them then there these they thing things think this those through try two
+understand understanding use used using very want was way ways well were what when where which while who why will with
+work working works would write wrote yes you your board chart charts diagram diagrams figure figures illustration
+visual visualize visualise image images simple simply quick quickly differently another
+""".split())
+
+
 def _words(text: str) -> set[str]:
     return {w for w in re.split(r"[^a-z0-9]+", text.casefold()) if len(w) > 2}
 
 
-def compile_brief(revision: ProfileRevision | None, index: dict, topic: str, now: str | None = None) -> LearnerBrief | None:
-    """A bounded brief for this topic: misconceptions, shaky and known ideas, notes; each item cites evidence."""
+def subject_words(text: str) -> set[str]:
+    """What a piece of text is about: its words minus request words, singular, so `embedding` meets `embeddings`."""
+    return {w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+            for w in _words(text) if w not in _NOT_A_SUBJECT}
+
+
+def compile_brief(revision: ProfileRevision | None, index: dict, topic: str, now: str | None = None,
+                  focused: bool = False) -> LearnerBrief | None:
+    """A bounded brief: misconceptions, shaky and known ideas, notes; each item cites evidence.
+
+    `focused` is a tutor turn: only items about `topic` go in, and other concepts go in by name alone, so an earlier
+    session's material cannot pull the turn off the learner's question. Unfocused lists everything (trace, listings).
+    """
     if revision is None:
         return None
     now = now or now_iso()
-    asked = _words(topic)
+    asked = subject_words(topic)
     candidates = []  # (rank, kind, concept, text, evidence)
     for m in revision.misconceptions:
         if m.status != "resolved":
@@ -260,8 +284,21 @@ def compile_brief(revision: ProfileRevision | None, index: dict, topic: str, now
             candidates.append((2 if score >= 0.7 else 1, "known" if score >= 0.7 else "shaky", concept, text, slot["evidence"]))
     for note in revision.notes:
         candidates.append((3, "note", None, note.text, [str(c) for c in note.cites]))
+    on_topic = {c[2] for c in candidates if c[2] and subject_words(c[2]) & asked}
+
+    def about_topic(candidate) -> bool:
+        concept, text, evidence = candidate[2], candidate[3], candidate[4]
+        if concept in on_topic or len(subject_words(text) & asked) >= 2:
+            return True
+        # A note counts through the answers it cites.
+        return concept is None and any(set(evidence) & set(slot["evidence"]) for key, slot in index.items()
+                                       if key.partition("|")[0] in on_topic or key.partition("|")[2] in on_topic)
+
+    studied = sorted({c[2] for c in candidates if c[2]})
+    if focused:
+        candidates = [c for c in candidates if about_topic(c)]
     # Concepts that share words with the question come first, then by kind.
-    candidates.sort(key=lambda c: (0 if _words(c[2] or c[3]) & asked else 1, c[0]))
+    candidates.sort(key=lambda c: (0 if about_topic(c) else 1, c[0]))
     prefix = {"known": "K", "shaky": "S", "misconception": "M", "note": "N"}
     counts: dict[str, int] = {}
     items, used = [], 0
@@ -273,18 +310,26 @@ def compile_brief(revision: ProfileRevision | None, index: dict, topic: str, now
         items.append(BriefItem(id=f"{prefix[kind]}{counts[kind]}", kind=kind, concept=concept, text=text,
                                evidence=tuple(evidence[-EVIDENCE_KEPT:])))
         used += len(text)
-    if not items:
+    named = {item.concept for item in items}
+    others = tuple(c for c in studied if c not in named)[:60] if focused else ()
+    if not items and not others:
         return None
     return LearnerBrief(brief_id=uuid4(), topic=topic[:160] or "general", profile_revision=revision.revision,
-                        items=tuple(items))
+                        items=tuple(items), other_concepts=others)
 
 
 def render_brief(brief: LearnerBrief | None) -> str:
     """The text the tutor reads; `because` moves cite these ids."""
     if brief is None:
         return ""
-    lines = [f"From earlier sessions (profile revision {brief.profile_revision}). Cite ids in `because`."]
-    lines += [f"{item.id} [{item.kind}] {item.text}" for item in brief.items]
+    lines = []
+    if brief.items:
+        lines.append(f"From earlier sessions, on this topic (profile revision {brief.profile_revision}). Cite ids in `because`.")
+        lines += [f"{item.id} [{item.kind}] {item.text}" for item in brief.items]
+    else:
+        lines.append("Nothing from earlier sessions is on this topic.")
+    if brief.other_concepts:
+        lines.append("OTHER CONCEPTS studied before, not this topic: " + ", ".join(brief.other_concepts))
     return "\n".join(lines)
 
 
@@ -347,11 +392,9 @@ class ProfileStore:
         return self.memory(owner, sid)
 
     def keep_brief(self, sid: str, brief: LearnerBrief) -> None:
-        """The first brief of a session stands for the rest of it; a concurrent first turn keeps the earlier one."""
+        """The brief of the session's latest question: answers and follow-ups on that question reuse it."""
         with self.engine.begin() as conn:
-            conn.execute(update(session_memory).where(session_memory.c.session_id == sid,
-                                                      session_memory.c.brief_json.is_(None))
-                         .values(brief_json=canonical(brief)))
+            conn.execute(update(session_memory).where(session_memory.c.session_id == sid).values(brief_json=canonical(brief)))
 
     def begin_close(self, owner: str, sid: str) -> str:
         """'closed' (already sealed), or 'claimed' for this caller; a close in progress is a 409."""

@@ -64,14 +64,15 @@ export function conceptLabel(concept: string, texts: string[] = []): string {
   return label.replace(/[A-Za-z][A-Za-z0-9]*/g, (word) => spelled.get(word.toLowerCase()) ?? word);
 }
 
-export function nodeState(dims: (number | null)[], misconceptions: MindMisconception[], due: boolean): NodeState {
+/**
+ * A neuron's colour says how well the idea is known. Being due for review is a separate fact, shown in its evidence
+ * sheet and in Review: if it changed the colour, every idea not seen for a few days would read as shaky.
+ */
+export function nodeState(dims: (number | null)[], misconceptions: MindMisconception[], mean: number | null = meanOf(dims)): NodeState {
   if (misconceptions.some((m) => m.status === "active")) return "misconception";
-  const seen = dims.filter((d): d is number => d != null);
-  if (!seen.length) return "unseen";
-  const mean = seen.reduce((a, b) => a + b, 0) / seen.length;
-  if (mean >= SOLID_AT && !due) return "solid";
-  if (mean < SHAKY_BELOW || due) return "shaky";
-  return "learning";
+  if (mean == null) return "unseen";
+  if (mean >= SOLID_AT) return "solid";
+  return mean < SHAKY_BELOW ? "shaky" : "learning";
 }
 
 export const meanOf = (dims: (number | null)[]) => {
@@ -87,6 +88,9 @@ function hoursBetween(earlier: string, later: Date) {
 /** One frame from a full revision. `now` decides which beliefs are due by half-life. */
 export function frameOf(revision: ProfileRevision, events: Record<string, ProfileEvent>, now: Date): MindFrame {
   const nodes: Record<string, MindNode> = {};
+  // All of a concept's answers under one prior. Averaging per dimension gives each its own prior, so three right
+  // answers of three different kinds would still average 0.67 and could never read as solid.
+  const pooled: Record<string, number> = {};
   const node = (concept: string) => (nodes[concept] ??= {
     id: concept, label: conceptLabel(concept), region: regionOf(concept), dims: LEARNING_DIMENSIONS.map(() => null),
     counts: LEARNING_DIMENSIONS.map(() => 0), weight: 0, mean: null, state: "unseen", due: false, misconceptions: [], evidence: [],
@@ -99,6 +103,7 @@ export function frameOf(revision: ProfileRevision, events: Record<string, Profil
     n.dims[i] = beliefMean(belief);
     n.counts[i] = Math.round(absorbed);
     n.weight += absorbed;
+    pooled[belief.concept] = (pooled[belief.concept] ?? 0) + Math.max(0, belief.alpha - PRIOR);
     if (belief.half_life_hours && belief.last_evidence_at && hoursBetween(belief.last_evidence_at, now) > belief.half_life_hours) n.due = true;
   }
   for (const m of revision.misconceptions) {
@@ -117,8 +122,8 @@ export function frameOf(revision: ProfileRevision, events: Record<string, Profil
   const ranked = Object.values(nodes).sort((a, b) => (b.weight + b.misconceptions.length) - (a.weight + a.misconceptions.length) || a.id.localeCompare(b.id));
   const kept: Record<string, MindNode> = {};
   for (const n of ranked.slice(0, MAX_NODES)) {
-    n.mean = meanOf(n.dims);
-    n.state = nodeState(n.dims, n.misconceptions, n.due);
+    n.mean = n.id in pooled ? (pooled[n.id] + PRIOR) / (n.weight + 2 * PRIOR) : null;
+    n.state = nodeState(n.dims, n.misconceptions, n.mean);
     kept[n.id] = n;
   }
   const links: MindLink[] = (revision.links ?? [])
@@ -232,7 +237,8 @@ export function blend(from: MindFrame | null, to: MindFrame, u: number): MindFra
     const misconceptions = (u < 0.5 ? a : b)?.misconceptions ?? [];
     const weight = (a?.weight ?? 0) + ((b?.weight ?? 0) - (a?.weight ?? 0)) * u;
     if (!b && u >= 0.5) continue;
-    nodes[id] = { ...base, dims, weight, misconceptions, mean: meanOf(dims), state: nodeState(dims, misconceptions, base.due) };
+    const mean = lerp(a?.mean ?? null, b?.mean ?? null, u);
+    nodes[id] = { ...base, dims, weight, misconceptions, mean, state: nodeState(dims, misconceptions, mean) };
   }
   const links = to.links.filter((l) => l.first_revision < to.revision || u > 0.4);
   return { ...to, nodes, links };

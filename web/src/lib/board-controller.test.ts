@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppState, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import { BoardController } from "./board-controller";
+import { BoardController, stackingOrder } from "./board-controller";
 import { BoardError, type BoardState } from "./board-api";
 import { performance as clock } from "node:perf_hooks";
 
@@ -25,6 +25,20 @@ function harness(remote = empty()) {
 }
 beforeEach(() => { vi.useFakeTimers(); vi.clearAllMocks(); mocks.read.mockResolvedValue(undefined); mocks.write.mockResolvedValue(undefined); });
 afterEach(() => { controllers.forEach(c => c.dispose()); controllers = []; vi.useRealTimers(); });
+
+describe("stackingOrder", () => {
+  it("restores the saved stack with each label right after its box, whatever the ids", () => {
+    const order = stackingOrder([
+      { id: "5J5-label", index: "a9", containerId: "y-box" },
+      { id: "a-on-top", index: "b5" },
+      { id: "y-box", index: "b1" },
+      { id: "z-below", index: "a0" },
+      { id: "no-index", index: null },
+      { id: "orphan-label", index: "a5", containerId: "gone" },
+    ]).map(e => e.id);
+    expect(order).toEqual(["no-index", "z-below", "orphan-label", "y-box", "5J5-label", "a-on-top"]);
+  });
+});
 
 describe("board recovery and attribution", () => {
   it("debounces edits, performs no inference, and submits the latest version", async () => {

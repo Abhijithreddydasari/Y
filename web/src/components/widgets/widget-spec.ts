@@ -7,7 +7,8 @@ import type { WidgetKind } from "@/lib/tutor-moves";
 export const WIDGET_SCHEME = "y-widget://";
 
 export interface Param { min: number; max: number; value: number }
-export interface PlotSpec { expr: string; x: [number, number]; params: Record<string, Param> }
+/** `xLabel` and `yLabel` name what each axis measures; older graphs have neither and read "x" and "y". */
+export interface PlotSpec { expr: string; x: [number, number]; params: Record<string, Param>; xLabel?: string; yLabel?: string }
 export interface AttentionSpec { tokens: string[]; temp: number }
 export interface MatrixSpec { m: number[][] }
 export interface StepperSpec { steps: string[] }
@@ -20,6 +21,8 @@ export type WidgetSpec =
 const finite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 
+const axisName = (name: unknown) => (typeof name === "string" ? name.trim().slice(0, 40) : "");
+
 /** The parsed spec, or null if it would not render safely. */
 export function parseWidget(kind: WidgetKind | string, raw: string | unknown): WidgetSpec | null {
   let value: unknown = raw;
@@ -28,7 +31,7 @@ export function parseWidget(kind: WidgetKind | string, raw: string | unknown): W
   }
   if (!isObject(value)) return null;
   if (kind === "plot") {
-    const { expr, x, params } = value;
+    const { expr, x, params, xLabel, yLabel } = value;
     if (typeof expr !== "string" || !Array.isArray(x) || x.length !== 2 || !finite(x[0]) || !finite(x[1]) || x[0] >= x[1]) return null;
     if (!isObject(params) || Object.keys(params).length > 6) return null;
     const clean: Record<string, Param> = {};
@@ -39,7 +42,7 @@ export function parseWidget(kind: WidgetKind | string, raw: string | unknown): W
       clean[name] = { min, max, value: v };
     }
     try { compile(expr, ["x", ...Object.keys(clean)]); } catch { return null; }
-    return { kind, spec: { expr, x: [x[0], x[1]], params: clean } };
+    return { kind, spec: { expr, x: [x[0], x[1]], params: clean, xLabel: axisName(xLabel), yLabel: axisName(yLabel) } };
   }
   if (kind === "attention") {
     const { tokens, temp } = value;

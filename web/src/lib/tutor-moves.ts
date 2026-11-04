@@ -42,7 +42,7 @@ export const MOVE_FIELDS: { [K in MoveKind]: readonly (keyof MoveOf<K>)[] } = {
 };
 
 // Widgets compute derived values (attention scores, eigenvalues) themselves.
-export interface PlotSpec { expr: string; x: [number, number]; params: Record<string, { min: number; max: number; value: number }> }
+export interface PlotSpec { expr: string; x: [number, number]; params: Record<string, { min: number; max: number; value: number }>; xLabel?: string; yLabel?: string }
 export interface AttentionSpec { tokens: string[]; temp: number }
 export interface MatrixSpec { m: number[][] }
 export interface StepperSpec { steps: string[] }

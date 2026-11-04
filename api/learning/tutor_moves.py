@@ -160,6 +160,9 @@ class PlotSpec(Contract):
     expr: str = Field(min_length=1, max_length=200, pattern=r"^[A-Za-z0-9_+\-*/^().,\s]+$")
     x: tuple[float, float]
     params: dict[Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_]{0,15}$")], Param] = Field(max_length=6)
+    # What each axis measures, as plain text; shown under and beside the graph.
+    xLabel: str = Field(default="", max_length=40)
+    yLabel: str = Field(default="", max_length=40)
 
     @model_validator(mode="after")
     def domain(self):

@@ -38,11 +38,18 @@ _LINK = {"type": "object", "additionalProperties": False, "required": ["from", "
          "properties": {"from": {"type": "string"}, "to": {"type": "string"},
                         "kind": {"type": "string", "enum": ["builds_on", "confused_with"]},
                         "why": {"type": "string"}, "cites": {"type": "array", "items": {"type": "string"}}}}
+_NAMED = {"type": "object", "additionalProperties": False, "required": ["text", "cites", "same_as"],
+          "properties": {"text": {"type": "string"}, "cites": {"type": "array", "items": {"type": "string"}},
+                         "same_as": {"type": "string"}}}
+MAX_SAME, MAX_KNOWN_BELIEFS = 6, 60
+_SAME = {"type": "object", "additionalProperties": False, "required": ["from", "to"],
+         "properties": {"from": {"type": "string"}, "to": {"type": "string"}}}
 SCHEMA = {"type": "json_schema", "json_schema": {"name": "teaching_notes", "strict": True, "schema": {
-    "type": "object", "additionalProperties": False, "required": ["notes", "misconceptions", "links"],
+    "type": "object", "additionalProperties": False, "required": ["notes", "misconceptions", "links", "same_concepts"],
     "properties": {"notes": {"type": "array", "maxItems": MAX_NOTES, "items": _CITED},
-                   "misconceptions": {"type": "array", "maxItems": MAX_NAMED, "items": _CITED},
-                   "links": {"type": "array", "maxItems": MAX_LINKS, "items": _LINK}}}}}
+                   "misconceptions": {"type": "array", "maxItems": MAX_NAMED, "items": _NAMED},
+                   "links": {"type": "array", "maxItems": MAX_LINKS, "items": _LINK},
+                   "same_concepts": {"type": "array", "maxItems": MAX_SAME, "items": _SAME}}}}}
 SYSTEM = (
     "You write teaching notes for a tutor who will teach this learner again in a later session. Each note is one "
     "actionable sentence about how to teach THIS learner next time (what to build on, what to re-check, which wrong "
@@ -61,7 +68,12 @@ SYSTEM = (
     "citing that answer. Use concept ids exactly as given in the input (`concept` fields or `known_concepts`). "
     "`why` is one short sentence about what the learner did, and `cites` lists the observation ids that show it. Do not link concepts "
     "only because they are related in the subject; no link is better than a guessed one. "
-    "Return {\"notes\": [...], \"misconceptions\": [...], \"links\": [...]}."
+    "`known_beliefs` lists wrong beliefs already on record for this learner. When a misconception you name is the same "
+    "wrong idea as one of them, even in other words or under another concept id, put that entry's id in `same_as`; "
+    "otherwise `same_as` is \"\". In `same_concepts`, when a `concept` in this session's observations is the very same "
+    "idea as another concept id (in `known_concepts` or this session), add {\"from\": that concept, \"to\": the other "
+    "id}. Same idea only: related, broader or narrower ideas stay separate, and a missed merge is better than a wrong one. "
+    "Return {\"notes\": [...], \"misconceptions\": [...], \"links\": [...], \"same_concepts\": [...]}."
 )
 
 
@@ -95,9 +107,11 @@ def flagged(observations: list[Observation], answers: dict[str, dict] | None = N
 
 
 def evidence_payload(observations: list[Observation], answers: dict[str, dict], beliefs: list[dict],
-                     known: tuple[str, ...] = ()) -> dict:
+                     known: tuple[str, ...] = (), ledger: tuple = ()) -> dict:
     marked = flagged(observations, answers)
-    return {"known_concepts": sorted(set(known))[:60], "observations": [{
+    return {"known_concepts": sorted(set(known))[:60],
+            "known_beliefs": [{"id": m.id, "concept": m.concept, "belief": m.description} for m in ledger][:MAX_KNOWN_BELIEFS],
+            "observations": [{
         "id": str(o.observation_id), "concept": o.concept, "dimension": o.dimension, "outcome": o.outcome,
         "misconception": o.misconception, "miss_class": o.miss_class, "answered_by": o.sources[0].modality,
         "solution_revealed": o.assistance.solution_revealed, "key_status": o.key_status,
@@ -107,10 +121,37 @@ def evidence_payload(observations: list[Observation], answers: dict[str, dict], 
     } for o in observations], "beliefs_after_session": beliefs}
 
 
-def keep_named(raw: object, observations: list[Observation], answers: dict[str, dict] | None = None) -> tuple[list[dict], int]:
+def same_concepts(raw: object, observations: list[Observation], known: set[str]) -> dict[str, str]:
+    """{this session's concept: the id it is the same idea as}. Rejects anything but a session concept moving onto a
+    real id, and chains, so a model error can at worst miss a merge, never invent a concept."""
+    session = {o.concept for o in observations}
+    moves: dict[str, str] = {}
+    for item in (raw or {}).get("same_concepts", []) if isinstance(raw, dict) else []:
+        source, target = item.get("from"), item.get("to")
+        if source in session and source not in known and target != source and target in known | session and source not in moves:
+            moves[source] = target
+    return {s: t for s, t in moves.items() if t not in moves}
+
+
+def with_concepts(observations: list[Observation], moves: dict[str, str]) -> list[Observation]:
+    return [o.model_copy(update={"concept": moves[o.concept]}) if o.concept in moves else o for o in observations]
+
+
+def moved_links(raw: object, moves: dict[str, str]) -> object:
+    """The model's links, read after its own concept merges."""
+    if not moves or not isinstance(raw, dict):
+        return raw
+    return {**raw, "links": [{**k, "from": moves.get(k.get("from"), k.get("from")), "to": moves.get(k.get("to"), k.get("to"))}
+                             for k in raw.get("links", [])]}
+
+
+def keep_named(raw: object, observations: list[Observation], answers: dict[str, dict] | None = None,
+               ledger: tuple = ()) -> tuple[list[dict], int]:
     """(misconceptions for the reducer, names dropped). A name must cite flagged answers; each answer joins one name.
-    Its concept is the one most of its answers share (tutors sometimes vary a concept id within a session)."""
+    Its concept is the one most of its answers share (tutors sometimes vary a concept id within a session).
+    `same_as` naming a real ledger entry files the answers under that entry instead of opening a second one."""
     marked = flagged(observations, answers)
+    on_record = {m.id: m for m in ledger}
     kept, dropped = [], 0
     for item in (raw or {}).get("misconceptions", []) if isinstance(raw, dict) else []:
         taken = {e for k in kept for e in k["evidence"]}
@@ -122,9 +163,19 @@ def keep_named(raw: object, observations: list[Observation], answers: dict[str, 
         concepts = [marked[c][0] for c in cites]
         concept = max(dict.fromkeys(concepts), key=concepts.count)
         slug = re.sub(r"[^a-z0-9]+", "-", text.casefold()).strip("-")[:40].strip("-") or "unnamed"
+        entry = on_record.get(item.get("same_as"))
+        mass = round(min(2.0, sum(marked[c][1] for c in cites)), 6)
+        if entry is not None:
+            twin = next((k for k in kept if k["id"] == entry.id), None)
+            if twin:  # two names for one recorded belief are one sighting
+                twin.update(mass=round(min(2.0, twin["mass"] + mass), 6), evidence=[*twin["evidence"], *cites][:16])
+            else:
+                kept.append({"id": entry.id, "concept": entry.concept, "description": entry.description, "mass": mass,
+                             "evidence": cites[:16]})
+            continue
         kept.append({"id": f"{concept}/belief-{slug}"[:120], "concept": concept,
                      "description": f"On {concept}: {text[:NAME_CHARS]}",
-                     "mass": round(min(2.0, sum(marked[c][1] for c in cites)), 6), "evidence": cites[:16]})
+                     "mass": mass, "evidence": cites[:16]})
     return kept, dropped
 
 

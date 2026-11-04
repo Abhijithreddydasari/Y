@@ -7,6 +7,17 @@ import type { Assistance } from "./board-types";
 
 const empty: BoardState = { revision: 0, records: {}, viewport: null, regions: [], active_region: null };
 export function elementStamp(e: ExcalidrawElement): string { return `${e.version}:${e.versionNonce}:${e.isDeleted}`; }
+/**
+ * Saved records come back keyed by id. Put them in their saved stacking order, so what sat on top stays on top, with each
+ * label directly after its container, as Excalidraw requires. Excalidraw renumbers any index left out of order.
+ */
+export function stackingOrder<T extends { id: string; index?: string | null; containerId?: string | null }>(elements: T[]): T[] {
+  const sorted = [...elements].sort((a, b) => { const x = a.index ?? "", y = b.index ?? ""; return x < y ? -1 : x > y ? 1 : 0; });
+  const ids = new Set(sorted.map(e => e.id));
+  const labels = new Map<string, T[]>();
+  for (const e of sorted) if (e.containerId && ids.has(e.containerId)) labels.set(e.containerId, [...labels.get(e.containerId) ?? [], e]);
+  return sorted.flatMap(e => (e.containerId && ids.has(e.containerId) ? [] : [e, ...labels.get(e.id) ?? []]));
+}
 export function viewport(state: AppState): Rect {
   return { x: -state.scrollX, y: -state.scrollY, w: Math.max(1, state.width / state.zoom.value), h: Math.max(1, state.height / state.zoom.value) };
 }
@@ -76,7 +87,7 @@ export class BoardController {
     }
     if (this.disposed) return;
     const { restoreElements } = await import("@excalidraw/excalidraw");
-    const restored = restoreElements([...elements.values()], null);
+    const restored = restoreElements(stackingOrder([...elements.values()] as (ExcalidrawElement & { containerId?: string | null })[]), null);
     for (const e of restored) this.stamps.set(e.id, elementStamp(e));
     this.api.addFiles(Object.values(this.files));
     const v = this.state.viewport;

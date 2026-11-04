@@ -114,6 +114,7 @@ def test_options_report_availability_with_reasons(env, monkeypatch):
     voices = {v["id"]: v for v in value["voices"]}
     assert voices["browser"]["available"] and voices["off"]["available"]
     assert set(voices) == {"kokoro_af_heart", "kokoro_am_michael", "browser", "off"}
+    assert [v for v, o in voices.items() if o["default"]] == ["browser"]  # only Meta models unless a learner picks otherwise
     monkeypatch.setenv("MODEL_API_KEY", "k")
     models = {m["id"]: m["available"] for m in client.get("/learning/tutor/options").json()["models"]}
     assert models == {"spark-1.3": True, "spark-1.3-low": True, "spark-1.2": True, "spark-open": False}
@@ -158,3 +159,13 @@ def test_turn_id_with_a_different_model_is_a_conflict(env, monkeypatch):
     assert first.status_code == 200
     again = client.post(f"/learning/sessions/{sid}/tutor/turns", json={**body, "model": "spark-1.2"})
     assert again.status_code == 409
+
+
+def test_plot_spec_names_its_axes_within_bounds():
+    from learning.tutor_moves import PlotSpec
+
+    base = {"expr": "a*x", "x": [0, 1], "params": {"a": {"min": 0, "max": 1, "value": 0.5}}}
+    assert PlotSpec.model_validate({**base, "xLabel": "time (s)", "yLabel": "height (m)"}).xLabel == "time (s)"
+    assert PlotSpec.model_validate(base).yLabel == ""  # earlier graphs carry no names
+    with pytest.raises(ValueError):
+        PlotSpec.model_validate({**base, "xLabel": "x" * 41})

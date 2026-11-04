@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import ScrollLine from "@/components/ScrollLine";
+import YMark from "@/components/YMark";
 import s from "./landing.module.css";
 
 const topics = ["Pythagorean theorem", "Harmonics", "Normal distribution"];
@@ -16,7 +17,7 @@ export default function LandingPage() {
   return (
     <div className={s.page}><ScrollLine /><div className={s.content}>
       <header className={s.header}>
-        <Link href="/" className={s.logo} aria-label="Y home">Y<span>.</span></Link>
+        <Link href="/" className={s.logo} aria-label="Y home"><YMark size={46} /></Link>
         <nav aria-label="Main navigation"><a className={s.navLink} href="#how">How it works</a><a className={s.navLink} href="#features">Features</a><Link className={s.button} href="/app">Ask Y ↗</Link></nav>
       </header>
       <main>

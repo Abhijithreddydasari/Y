@@ -102,6 +102,73 @@ def test_brief_cites_evidence_ranks_by_topic_and_stays_bounded():
     assert profile.compile_brief(None, {}, "anything") is None
 
 
+def test_a_focused_brief_holds_only_this_topic_and_names_the_rest():
+    mid = "stat.equipartition/kt-always"
+    items = [obs(concept="attention.softmax"), obs("incorrect", concept="stat.equipartition", misconception=mid, miss_class="discrimination")]
+    note = TeachingNote(text="Confront the equipartition idea next time.", cites=(items[1].observation_id,))
+    on_note = TeachingNote(text="Build on their softmax picture.", cites=(items[0].observation_id,))
+    rev, idx = profile.reduce(None, {}, items, S1, notes=[note, on_note])
+
+    off = profile.compile_brief(rev, idx, "Give me a graph so I can understand RoPE embeddings", now="2026-11-01T12:00:00Z", focused=True)
+    assert off.items == () and off.refs == frozenset()
+    assert off.other_concepts == ("attention.softmax", "stat.equipartition")
+    text = profile.render_brief(off)
+    assert "Nothing from earlier sessions is on this topic" in text and "kt" not in text and "Confront" not in text
+
+    on = profile.compile_brief(rev, idx, "How does softmax work?", now="2026-11-01T12:00:00Z", focused=True)
+    assert {i.concept for i in on.items} == {"attention.softmax", None}
+    assert [i.text for i in on.items if i.kind == "note"] == ["Build on their softmax picture."]  # through its citation
+    assert on.other_concepts == ("stat.equipartition",)
+
+
+def test_close_merges_the_same_belief_and_concept_but_nothing_invented():
+    from learning.consolidate import keep_named, same_concepts, with_concepts
+    seen = obs("incorrect", concept="prob.bayes-rule", misconception="prob.bayes-rule/ignores-base-rate", miss_class="discrimination")
+    rev, _ = profile.reduce(None, {}, [seen, seen.model_copy(update={"observation_id": uuid4()})], S1)
+    known = {b.concept for b in rev.beliefs}
+    new = obs("incorrect", concept="stats.base-rate", misconception="stats.base-rate/ignores-prior", miss_class="discrimination")
+
+    moves = same_concepts({"same_concepts": [{"from": "stats.base-rate", "to": "prob.bayes-rule"},
+                                             {"from": "stats.base-rate", "to": "made.up"},
+                                             {"from": "prob.bayes-rule", "to": "stats.base-rate"},
+                                             {"from": "not.in.session", "to": "prob.bayes-rule"}]}, [new], known)
+    assert moves == {"stats.base-rate": "prob.bayes-rule"}
+    assert same_concepts({"same_concepts": [{"from": "a.b", "to": "made.up"}]}, [new], known) == {}
+    moved = with_concepts([new], moves)
+    assert moved[0].concept == "prob.bayes-rule" and new.concept == "stats.base-rate"
+
+    cite = str(new.observation_id)
+    on_record = rev.misconceptions[0]
+    same, _ = keep_named({"misconceptions": [{"text": "ignores how rare the condition is", "cites": [cite], "same_as": on_record.id}]},
+                         moved, ledger=rev.misconceptions)
+    assert [n["id"] for n in same] == [on_record.id] and same[0]["description"] == on_record.description
+    merged, _ = profile.reduce(rev, {}, moved, S1, named=same)
+    assert [m.id for m in merged.misconceptions] == [on_record.id]
+    assert {b.concept for b in merged.beliefs} == {"prob.bayes-rule"}
+
+    # An id that is not on record opens its own entry, as before.
+    fresh, _ = keep_named({"misconceptions": [{"text": "mixes up the two rates", "cites": [cite], "same_as": "invented/id"}]},
+                          moved, ledger=rev.misconceptions)
+    assert fresh[0]["id"].startswith("prob.bayes-rule/belief-mixes-up")
+
+
+def test_a_turn_continues_or_starts_a_topic():
+    from learning.tutor_router import current_topic
+    rope = {"kind": "question", "status": "done", "input": {"text": "Explain RoPE embeddings"}}
+    failed = {"kind": "question", "status": "failed", "input": {"text": "What is entropy?"}}
+    assert current_topic([], "Explain RoPE embeddings") == ("Explain RoPE embeddings", None)
+    for follow_up in ("Can you give me a graph?", "And the heads?", "Why is it sinusoidal?", ""):
+        assert current_topic([rope, failed], follow_up) == ("Explain RoPE embeddings", "Explain RoPE embeddings")
+    assert current_topic([rope], "How does photosynthesis work?") == ("How does photosynthesis work?", None)
+    assert current_topic([], "Can you give me a graph?") == ("", None)
+
+
+def test_request_words_are_not_a_subject():
+    assert profile.subject_words("Can you give me a graph please?") == set()
+    assert profile.subject_words("Answer the question I wrote on the board. If it shows my working, check it step by step.") == set()
+    assert profile.subject_words("RoPE embeddings") == {"rope", "embedding"}
+
+
 def test_brief_marks_due_recall_and_respects_the_budget():
     rev, idx = profile.reduce(None, {}, [obs(), obs(), obs()], S1)
     due = profile.compile_brief(rev, idx, "softmax", now="2026-11-05T00:00:00Z")

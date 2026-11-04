@@ -280,3 +280,17 @@ def test_transcription_budget_is_shared_across_instances(env, monkeypatch):
     with pytest.raises(StoreError) as caught:
         capture.charge("transcribe", owner, 1, 600)
     assert caught.value.code == "transcribe_budget_exhausted"
+
+
+def test_picker_names_the_voice_that_actually_speaks(monkeypatch):
+    from learning.tutor_models import voice_options
+
+    class Engine:
+        available = True
+
+    monkeypatch.setenv("DEEPGRAM_API_KEY", "x")
+    hosted = {v["id"]: v["label"] for v in voice_options(Engine())}
+    assert hosted["kokoro_af_heart"] == "Thalia" and hosted["kokoro_am_michael"] == "Apollo"
+    monkeypatch.delenv("DEEPGRAM_API_KEY")
+    local = {v["id"]: v["label"] for v in voice_options(Engine())}
+    assert local["kokoro_af_heart"] == "Heart" and local["kokoro_am_michael"] == "Michael"

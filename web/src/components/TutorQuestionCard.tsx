@@ -21,6 +21,8 @@ interface Props {
   hints?: Hint[];
   hintBusy?: boolean;
   onHint?: () => void;
+  /** Bring the question's card on the board into view, with room for these controls under it. */
+  onReveal?: (qid: string) => void;
 }
 
 const HINT_LABELS = ["Hint", "Show a step"];
@@ -30,10 +32,25 @@ const SURE = [{ label: "Guessing", value: 30 }, { label: "Fairly sure", value: 6
 const WIDTH = 380;
 /** Room kept free at the bottom for the composer and its caption line. */
 const COMPOSER_CLEARANCE = 164;
+/** Height assumed for the controls while they are collapsed and cannot be measured. */
+const TYPICAL_HEIGHT = 300;
+/** Panning further than this after "Back to it" hands placement back to the normal rule. */
+const OPENED_SLOP = 40;
+const SETTLE_MS = 150;
+/** The lesson's own closing scroll animates for about this long; a reveal made sooner would be overridden. */
+const ARRIVAL_MS = 450;
+/** The board card must hold its place this long before a new question scrolls it into view. */
+const STILL_MS = 250;
 
-/** Answer controls for the waiting predict/check, placed under its card on the board. Key it by qid to reset. */
+type Place = { left: number; top: number; maxHeight: number } | "away" | "arriving" | null;
+
+/**
+ * Answer controls for the waiting predict/check, under its card on the board. They never sit over the lesson: when the
+ * board card is off screen, or there is no room under it, or the learner closes them, they shrink to a pill above the
+ * composer. The question stays open either way. Key it by qid to reset.
+ */
 export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, onListen, variant = "studio", hints = [],
-  hintBusy = false, onHint }: Props) {
+  hintBusy = false, onHint, onReveal }: Props) {
   const [choice, setChoice] = useState<string | null>(null);
   const [text, setText] = useState("");
   const [confidence, setConfidence] = useState<number | null>(null);
@@ -47,9 +64,22 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
     else setHeard(spoken);
   }, [busy, confidence, onAnswer, question]);
   const voice = useVoiceInput(answerByVoice, onListen);
-  const [place, setPlace] = useState<{ left: number; top: number } | null>(null);
+  const [place, setPlace] = useState<Place>(variant === "mobile" ? null : "arriving");
+  const [arrived] = useState(() => performance.now());
+  const [closed, setClosed] = useState(false);
   const placeRef = useRef(place);
   const sectionRef = useRef<HTMLElement | null>(null);
+  const heightRef = useRef(TYPICAL_HEIGHT);
+  const revealedRef = useRef(false);
+  const stillRef = useRef({ top: Number.NaN, since: 0 });
+  // Set by "Back to it": on a short screen the card may not fit under its anchor, so stay until the learner pans away.
+  const openedRef = useRef<{ at: number; top: number | null } | null>(null);
+
+  const reveal = useCallback(() => {
+    if (!question) return;
+    openedRef.current = { at: performance.now(), top: null };
+    onReveal?.(question.qid);
+  }, [onReveal, question]);
 
   // Follow the card through pan and zoom; only re-render when the position actually moves.
   useEffect(() => {
@@ -57,27 +87,67 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
     let frame = 0;
     const tick = () => {
       const rect = cardRect(question.qid);
-      let next: { left: number; top: number } | null = null;
-      if (rect && rect.bottom > 0 && rect.top < window.innerHeight - 160 && rect.right > 0 && rect.left < window.innerWidth) {
-        next = { left: Math.max(12, Math.min(rect.left, window.innerWidth - WIDTH - 12)),
-          // Keep the whole card, including its mic and Submit row, above the composer.
-          top: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - (sectionRef.current?.offsetHeight ?? 260) - COMPOSER_CLEARANCE)) };
+      if (sectionRef.current?.scrollHeight) heightRef.current = sectionRef.current.scrollHeight;
+      let next: Place = null;
+      if (rect) {
+        const opened = openedRef.current;
+        if (opened && performance.now() - opened.at > SETTLE_MS) {
+          opened.top ??= rect.top;
+          if (Math.abs(rect.top - opened.top) > OPENED_SLOP) openedRef.current = null;
+        }
+        const top = Math.max(12, rect.bottom + 8);
+        const room = window.innerHeight - top - COMPOSER_CLEARANCE;
+        const seen = rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth;
+        next = seen && (room >= heightRef.current || (openedRef.current && room > 160))
+          // Always below its board card, never over it; on a short screen the controls scroll inside.
+          ? { left: Math.max(12, Math.min(rect.left, window.innerWidth - WIDTH - 12)), top, maxHeight: room }
+          : "away";
+        // A new question arrives in view once, with room to answer; after that the learner's scrolling is respected.
+        if (!revealedRef.current) {
+          // Wait for the lesson's closing scroll to finish: a reveal made during it would be overridden.
+          const now = performance.now();
+          if (stillRef.current.top !== rect.top) stillRef.current = { top: rect.top, since: now };
+          if (now - arrived < ARRIVAL_MS || now - stillRef.current.since < STILL_MS) next = "arriving";
+          else {
+            revealedRef.current = true;
+            if (next === "away") { reveal(); next = "arriving"; }
+          }
+        }
       }
       const old = placeRef.current;
-      if (next?.left !== old?.left || next?.top !== old?.top) { placeRef.current = next; setPlace(next); }
+      const same = old === next || (old && next && typeof old === "object" && typeof next === "object"
+        && old.left === next.left && old.top === next.top && old.maxHeight === next.maxHeight);
+      if (!same) { placeRef.current = next; setPlace(next); }
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [cardRect, question, variant]);
+  }, [arrived, cardRect, question, reveal, variant]);
 
   if (!question) return null;
+  // The board card is settling into view: show nothing yet, rather than a jump. No board card at all: dock right away.
+  if (place === "arriving" && !closed && cardRect(question.qid)) return null;
   const free = question.kind === "free";
   const ready = !busy && (free ? Boolean(text.trim()) : choice !== null);
-  const docked = variant === "mobile" || !place;
-  const position = docked ? undefined : { left: place!.left, top: place!.top, width: WIDTH };
+  const anchored = variant !== "mobile" && place && typeof place === "object" ? place : null;
+  const docked = !anchored;
+  const position = anchored ? { left: anchored.left, top: anchored.top, maxHeight: anchored.maxHeight, width: WIDTH, overflowY: "auto" as const } : undefined;
 
   const tag = question.origin === "review" ? "Warm-up" : question.origin === "exit" ? "Exit check" : question.kind === "predict" ? "Predict" : "Check";
+
+  if (closed || (variant !== "mobile" && place === "away")) {
+    return (
+      <div role="group" aria-label="Question waiting" data-testid="question-pill"
+        className={`pointer-events-auto fixed y-glass-strong flex items-center gap-2 rounded-full py-1.5 pl-2 pr-1.5 text-sm ${variant === "mobile"
+          ? "bottom-[calc(16.75rem+env(safe-area-inset-bottom))] left-3 z-[55]"
+          : "bottom-[164px] left-1/2 z-40 -translate-x-1/2"}`}>
+        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold uppercase tracking-wider text-violet-800">{tag}</span>
+        <span className="whitespace-nowrap text-slate-700">Question waiting</span>
+        <button type="button" onClick={() => { setClosed(false); reveal(); }}
+          className="min-h-9 whitespace-nowrap rounded-full px-3 font-semibold text-violet-700 hover:bg-violet-50">Back to it</button>
+      </div>
+    );
+  }
 
   return (
     <section
@@ -100,6 +170,10 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
             <span key={label} className={`h-1.5 w-1.5 rounded-full ${index < hints.length ? "bg-amber-500" : "bg-slate-300"}`} />
           ))}
         </span>
+        <button type="button" aria-label="Close question" title="Close; the question stays open" onClick={() => setClosed(true)}
+          className="-my-1 -mr-1 grid h-8 w-8 place-items-center rounded-full text-slate-500 hover:bg-slate-900/5 hover:text-slate-800">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
       </div>
       {docked && <p className="text-[15px] font-semibold leading-snug text-slate-900">{question.q}</p>}
       <p className="-mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">{free ? "Your answer" : "Answer choices"}</p>

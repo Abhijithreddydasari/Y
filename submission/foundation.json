@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/Abhijithreddydasari/Y.git",
+  "tag": "foundation-4b69929443",
+  "commit": "4b6992944334339b12aea0f83d3974c248137793",
+  "pre_event_base": "9f0ca92eb8b2e768d754d7ab18ff724c75ce8025",
+  "kept_files_commit": "19ca65b784603bc4b87334905f3528faea538b04",
+  "note": "Pre-event code this project builds on. kept_files_commit holds it as it was before the event; commit adds this week's edits."
+}

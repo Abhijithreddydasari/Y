@@ -1,6 +1,4 @@
 @import "tailwindcss";
-/* Files laid in by setup are git-ignored in the event repository, and Tailwind skips ignored files unless named here. */
-@source "../";
 
 :root {
   --background: #ffffff;

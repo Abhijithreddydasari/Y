@@ -57,9 +57,7 @@ Thumbs.db
 api/data/
 data/
 deploy/.env.modal
-
-# Pre-event foundation, fetched by `npm run setup` at the commit pinned in foundation.json. Never commit these here.
-"""
+"""  # Never list foundation files here: Tailwind skips ignored files, and the board loses its sizing classes.
 
 
 def git(*args: str, cwd: Path = ROOT, env: dict | None = None, check: bool = True) -> str:
@@ -126,8 +124,7 @@ def write_overlay(foundation: set[str], base: str, tag: str) -> None:
            "note": "Pre-event code this project builds on. kept_files_commit holds it as it was before the event; commit adds this week's edits."}
     overlay = ROOT / OVERLAY
     (overlay / "foundation.json").write_text(json.dumps(pin, indent=2) + "\n", encoding="utf-8", newline="\n")
-    ignore = IGNORE_BASE + "".join(f"/{path}\n" for path in sorted(foundation))
-    (overlay / ".gitignore").write_text(ignore, encoding="utf-8", newline="\n")
+    (overlay / ".gitignore").write_text(IGNORE_BASE, encoding="utf-8", newline="\n")
     git("add", "--", f"{OVERLAY}foundation.json", f"{OVERLAY}.gitignore")
     if git("diff", "--cached", "--name-only", "--", OVERLAY):
         git("commit", "-q", "-m", "chore: pin the foundation for the event repository", "--", f"{OVERLAY}foundation.json", f"{OVERLAY}.gitignore")

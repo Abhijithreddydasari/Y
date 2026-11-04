@@ -61,7 +61,7 @@ function fetchFoundation() {
       mkdirSync(dirname(target), { recursive: true });
       cpSync(join(work, file), target);
     }
-    console.log(`Laid in ${files.length} foundation files. They are git-ignored here.`);
+    console.log(`Laid in ${files.length} foundation files. They show as untracked in git status; that is expected.`);
   } finally {
     rmSync(work, { recursive: true, force: true, maxRetries: 3 });
   }

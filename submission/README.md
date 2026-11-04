@@ -53,8 +53,9 @@ Y began before the event, in the public repository [Abhijithreddydasari/Y](https
 with their original dates.
 
 `npm run setup` fetches the older code from that repository, at the exact commit pinned in [`foundation.json`](foundation.json), and
-lays it in beside this code. Those files are git-ignored here. They are the older board and client shell (`Whiteboard`,
-`renderer`, `tts`, `useTutorSession`, the Studio and Mobile shells), some server helpers and the project configuration.
+lays it in beside this code. They are the older board and client shell (`Whiteboard`, `renderer`, `tts`, `useTutorSession`, the
+Studio and Mobile shells), some server helpers and the project configuration. After setup they show as untracked in `git status`.
+That is expected: they stay out of this repository, and ignoring them would hide their classes from Tailwind.
 
 Some of those files needed changes this week. The pin has two commits so you can see exactly which:
 

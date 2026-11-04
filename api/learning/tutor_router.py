@@ -357,7 +357,7 @@ async def close(sid: UUID, body: CloseInput | None = None, owner=Depends(require
             answers = await call_store(evidence.answers, str(sid))
             raw, notes_trace = await writer.write(evidence_payload(found, answers, beliefs, tuple(known)))
             notes, notes_trace["dropped"] = keep_cited(raw, {str(o.observation_id) for o in found})
-            named, notes_trace["names_dropped"] = keep_named(raw, found)
+            named, notes_trace["names_dropped"] = keep_named(raw, found, answers)
             links, notes_trace["links_dropped"] = keep_links(raw, found, known)
             links += bridges(named, found)
             notes_trace.update(kept=len(notes), named=[n["id"] for n in named], links=len(links))

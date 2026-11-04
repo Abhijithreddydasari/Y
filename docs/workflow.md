@@ -61,6 +61,14 @@
 - H9 deployed ([handoff](handoffs/H9.md)) on `feature/deploy`: https://ask-y-event.vercel.app → Modal `y-learning` → Neon.
   A fresh-browser identity race was found live and fixed. One live voiced turn worked; persona switch and End
   session were not yet run live. Next: H10.
+- H10 done ([handoff](handoffs/H10.md)) on `feature/policy-eval`, offline only. GEPA (150 metric calls) evolved the
+  tutor's `feedback_policy`: validation 0.745 → 0.832, but held-out 0.822 → 0.802 (−0.020, 18 pairs; gpt-6-luna
+  +0.007), so the gate (≥ 0.05) refused it. The live prompt is unchanged. 838 paid calls, Spark 1.3 $2.51.
+  [Report](reports/H10-policy-eval.md).
+- Capture check ([report](reports/capture-check.md)), 2026-11-04. Deployed labels confirmed on one session. `gpt-6-luna`
+  against hand labels: top misconception 26 of 26, outcome 22 of 26 (all 4 generous). Spark Open named a belief from 4 of 4 bare
+  numeric slips; **fixed in code, not deployed** (live re-run: 0 of 4 slips, 6 of 6 real beliefs). Real stylus ink is
+  still untested.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.
@@ -84,7 +92,7 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H8 follow-up: board UI (Places arc, tool dock, card) | done (branch `feature/board-ui`) | see handoff | [H8 board UI](handoffs/H8-board-ui.md) |
 | Personas ("Try as…" demo learners) | done (branch `feature/personas`) | `5d75994`, `b1e42dd` | [personas](handoffs/personas.md) |
 | H9 Deployment (Vercel + Modal + Neon, Deepgram narration) | deployed; live check partial (branch `feature/deploy`) | `36144f5`, `75ebe94`, `35eb728` | [H9](handoffs/H9.md) |
-| H10 | planned | — | — |
+| H10 Policy improvement with GEPA (offline) | done; gate not passed, nothing promoted (branch `feature/policy-eval`) | `31c57f7` + docs commit | [H10](handoffs/H10.md) |
 
 ## Earlier handoff — 2026-11-01
 

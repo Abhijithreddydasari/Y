@@ -340,6 +340,46 @@ def test_wrong_answers_are_grouped_into_one_named_belief_at_close():
     assert marks == [True, False]
 
 
+def _typed(o):
+    return o.model_copy(update={"sources": (o.sources[0].model_copy(update={"modality": "typed"}),)})
+
+
+def test_a_lone_bare_number_slip_is_not_named_as_a_belief():
+    from learning.consolidate import evidence_payload, flagged, keep_named
+    # The four live slips of 2026-11-04, each with its live "another misconception" probability.
+    for text, other in (("54", 0.44), ("26.2", 0.43), ("74", 0.66), ("13", 0.38)):
+        slip = _typed(obs("incorrect", concept="arith.times", misconception_p={}, other_misconception_p=other))
+        sid = str(slip.observation_id)
+        answers = {sid: {"q": "What is 7 times 8?", "answer": text}}
+        assert flagged([slip]) != {}  # without the answer text nothing can be held back
+        assert flagged([slip], answers) == {}
+        assert evidence_payload([slip], answers, [])["observations"][0]["misconception_signal"] is False
+        raw = {"misconceptions": [{"text": "recalls the product of 7 and 8 as 54", "cites": [sid]}]}
+        assert keep_named(raw, [slip], answers) == ([], 1)
+
+
+def test_bare_numbers_still_flag_with_a_second_answer_or_a_listed_belief():
+    from learning.consolidate import flagged
+    first = _typed(obs("incorrect", concept="prob.bayes", misconception_p={}, other_misconception_p=0.5))
+    second = _typed(obs("incorrect", concept="prob.bayes", misconception_p={}, other_misconception_p=0.5, hours=1))
+    elsewhere = _typed(obs("incorrect", concept="arith.times", misconception_p={}, other_misconception_p=0.5, hours=2))
+    worded = _typed(obs("incorrect", concept="arith.roots", misconception_p={}, other_misconception_p=0.5, hours=3))
+    listed = _typed(obs("incorrect", concept="cv.stride", misconception_p={"cv.stride/belief-keeps-size": 0.8},
+                        other_misconception_p=0.0, hours=4))
+    answers = {str(first.observation_id): {"answer": "99"}, str(second.observation_id): {"answer": "0.95"},
+               str(elsewhere.observation_id): {"answer": "54"},
+               str(worded.observation_id): {"answer": "half of the number"}, str(listed.observation_id): {"answer": "32"}}
+    marked = flagged([first, second, elsewhere, worded, listed], answers)
+    assert str(first.observation_id) in marked and str(second.observation_id) in marked  # two on one concept
+    assert str(elsewhere.observation_id) not in marked  # alone on its concept
+    assert str(worded.observation_id) in marked  # an explanation, not a bare number
+    assert str(listed.observation_id) in marked  # the labeler matched it to a known belief
+    # A tapped option is one of the tutor's distractors, so it is never treated as a bare number.
+    tapped = obs("incorrect", concept="arith.times", misconception_p={}, other_misconception_p=0.5)
+    tapped = tapped.model_copy(update={"sources": (tapped.sources[0].model_copy(update={"modality": "tap"}),)})
+    assert str(tapped.observation_id) in flagged([tapped], {str(tapped.observation_id): {"answer": "54"}})
+
+
 def test_reasoning_quality_is_tallied_apart_from_mastery_and_briefed():
     a, b = obs(reasoning=0.4, reasoning_shown=0.9), obs(reasoning=0.2, reasoning_shown=0.5)
     rev, idx = profile.reduce(None, {}, [a, b], S1)

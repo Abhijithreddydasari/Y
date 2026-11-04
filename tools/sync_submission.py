@@ -144,7 +144,8 @@ def build_event(out: Path, event: set[str]) -> None:
     branch = git("rev-parse", "--abbrev-ref", "HEAD")
     git("clone", "-q", "--no-local", "--single-branch", "--branch", branch, str(ROOT), str(out), cwd=ROOT.parent)
     overlay = sorted(git("ls-tree", "-r", "--name-only", "HEAD", "--", OVERLAY).splitlines())
-    lines = sorted(event) + [f"{path}==>{path[len(OVERLAY):]}" for path in overlay]
+    # A rename line alone does not keep a path, so each overlay file is listed to keep it, then to move it.
+    lines = sorted(event) + overlay + [f"{path}==>{path[len(OVERLAY):]}" for path in overlay]
     with tempfile.TemporaryDirectory() as folder:
         listing = Path(folder, "paths.txt")
         listing.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")

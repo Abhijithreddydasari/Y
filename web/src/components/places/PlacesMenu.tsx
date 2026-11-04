@@ -54,7 +54,7 @@ export default function PlacesMenu({ session, interfaceMode, variant = "studio" 
         from={variant === "mobile" ? -95 : 180} to={variant === "mobile" ? -15 : 270} radius={variant === "mobile" ? 150 : 132}
         className={variant === "mobile" ? "relative" : "fixed bottom-16 right-5"}
         button={<span className="relative grid h-10 w-10 place-items-center rounded-full bg-[#17140A]">
-          <YMark size={26} />{(fresh || due > 0) && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-amber-400" />}
+          <YMark size={30} />{(fresh || due > 0) && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-amber-400" />}
         </span>} />
       {place === "mind" && <MindView onClose={close} />}
       {place === "canvases" && <CanvasDialog onClose={close} onNew={tutor.newSession} />}

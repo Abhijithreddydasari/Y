@@ -192,3 +192,9 @@ the widget's size is unchanged, so they still fit.
 equation. **Browser, full lesson on Deepgram through the app:** axes, ticks and fallback names drawn; first clip 1.9 s; caption and
 audio started within 25 ms of each other; Thalia in the picker. A graph showing model-written names through the app was not seen
 (the running API held the older prompt); they are covered by a component test.
+
+## Logo: the soft ribbon (web)
+
+After the Fold, the user marked up their reference image and chose the shaded ribbon drawn from it. `YMark.tsx` draws it, now also
+on the landing page header at the user's request. `app/icon.svg` and a rebuilt `favicon.ico` give every page the dark-tile tab icon.
+Browser: landing header and Y button seen; both icon files load; the tab itself was not seen.

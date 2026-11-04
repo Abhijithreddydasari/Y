@@ -33,7 +33,7 @@ export default function MobileShell({ session, interfaceMode }: Props) {
     <div className="pointer-events-none absolute inset-0 z-40" data-interface="mobile">
       <header className="pointer-events-auto fixed inset-x-0 top-0 z-50 y-glass border-x-0 border-t-0 px-3 pb-2 pt-[calc(.55rem+env(safe-area-inset-top))]">
         <div className="flex items-center gap-2">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#FFC400]"><YMark size={25} tone="ink" /></span>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#FFC400]"><YMark size={28} tone="ink" /></span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-slate-950">Whiteboard tutor</p>
             <p className="truncate text-[11px] text-slate-500" aria-live="polite">{session.status}</p>

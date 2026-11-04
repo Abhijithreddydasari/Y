@@ -107,12 +107,11 @@ export default function SettingsSheet({ session, interfaceMode, onClose, persona
           <p className="py-2 text-xs text-slate-500">Model and voice are in the menu beside Ask.</p>
         </Section>
         <Section title="Layout">
-          <div role="group" aria-label="Layout" className="my-2 grid grid-cols-3 rounded-xl bg-slate-900/5 p-0.5 text-xs font-semibold">
+          <div role="group" aria-label="Layout" className="my-2 grid grid-cols-2 rounded-xl bg-slate-900/5 p-0.5 text-xs font-semibold">
             {(["studio", "mobile"] as const).map((mode) => (
               <button key={mode} type="button" aria-pressed={interfaceMode.mode === mode} onClick={() => interfaceMode.setMode(mode)}
                 className={`rounded-[10px] py-2 capitalize ${interfaceMode.mode === mode ? "bg-white text-slate-900 shadow-sm" : "text-slate-600"}`}>{mode}</button>
             ))}
-            <button type="button" onClick={interfaceMode.useAutomaticMode} className="rounded-[10px] py-2 text-slate-600">Device</button>
           </div>
           <Switch label="Classic tools" detail="Show Teach me, Practice, samples and the old chat" on={classic} onChange={setClassicTools} />
         </Section>

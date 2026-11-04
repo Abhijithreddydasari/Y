@@ -69,6 +69,7 @@ describe("SettingsSheet", () => {
     expect(session.toggleTts).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "mobile" }));
     expect(mode.setMode).toHaveBeenCalledWith("mobile");
+    expect(screen.queryByRole("button", { name: "Device" })).toBeNull();
     const classic = screen.getByRole("switch", { name: "Classic tools" });
     expect(classic).not.toBeChecked();
     fireEvent.click(classic);

@@ -293,3 +293,63 @@ def test_reflection_templates_state_each_cap():
     for name, text in templates.items():
         assert f"at most {int(len(seed[name]) * 1.5)} characters" in text
         assert "<curr_param>" in text and "<side_info>" in text
+
+
+# ---------------------------------------------------------------------------------------------
+# Live labeler check: cases and scoring (the labeler itself is faked)
+
+def test_label_cases_load_and_expected_ids():
+    from policy_eval.label_check import expected_id, load_cases
+    cases = load_cases()
+    assert len(cases) == 42 and len(cases) <= 50
+    a1 = next(c for c in cases if c["id"] == "a1")
+    assert expected_id(a1).startswith("attention.softmax/all-three")
+    for c in cases:
+        if (c["mis"] or "").startswith("earlier:"):
+            assert expected_id(c) in c["earlier"], c["id"]
+
+
+def test_label_check_scores_through_merge_and_sightings(tmp_path):
+    from types import SimpleNamespace
+
+    from learning import observations
+    from learning.storage import CaptureStore, make_engine
+    from learning.tutor_turn import TurnInput, grade
+    from policy_eval.label_check import load_cases, score_case, summarize
+    from uuid import uuid4
+
+    capture = CaptureStore(make_engine(f"sqlite:///{(tmp_path / 'c.db').as_posix()}"))
+    capture.initialize()
+    owner = capture.owner_for_token(capture.issue_identity())
+    sid = str(uuid4())
+    capture.create_session(owner, sid)
+    store = observations.ObservationStore(capture)
+
+    def answer(p):
+        return SimpleNamespace(choice=max(p, key=p.get), probabilities=p)
+
+    def run(case, answers):
+        question = {"kind": "mcq" if case["options"] else "free", "q": case["q"], "options": case["options"], "key": case["key"],
+                    "concept": case["concept"], "dim": "understand", "qid": f"t.{case['id']}"}
+        body = TurnInput(turn_id=uuid4(), kind="answer", question_id=question["qid"],
+                         **({"choice": case["answer"]} if case["options"] else {"text": case["answer"]}))
+        view, _ = store.capture_answer(owner, sid, str(body.turn_id), question, case["answer"], grade(question, body), case["via"], [])
+        row = store.claim(owner, view["observation_id"], charge=False)
+        response = SimpleNamespace(answers=answers, model="fake", usage=SimpleNamespace(model_dump=lambda: {}))
+        observation, trace, _ = observations.merge_labels(row, response, "openai")
+        return score_case(case, observation, trace["fields"], trace["distributions"])
+
+    cases = {c["id"]: c for c in load_cases()}
+    from policy_eval.label_check import expected_id
+    good = run(cases["a1"], {"misconception": answer({expected_id(cases["a1"]): 0.9, "none": 0.05, "other": 0.05})})
+    assert good["match"] and good["outcome_ok"] and good["flagged"] == [expected_id(cases["a1"])]
+    # A correct paraphrase that still names the belief: little mass, because p(miss) is low.
+    calm = run(cases["f1"], {"outcome": answer({"correct": 0.95, "partial": 0.05, "incorrect": 0.0, "unanswered": 0.0}),
+                             "misconception": answer({"belief-softmax-equalizes": 0.2, "none": 0.8, "other": 0.0})})
+    assert calm["outcome_ok"] and calm["match"] and calm["flagged"] == []
+    # A slip wrongly labeled as the belief is a false flag: the verifier says incorrect, so the mass is real.
+    slip = run(cases["e2"], {"misconception": answer({"belief-times-is-add": 0.7, "none": 0.3, "other": 0.0})})
+    assert not slip["match"] and slip["flagged"] == ["belief-times-is-add"]
+    summary = summarize([good, calm, slip, {"id": "x", "group": "slip", "error": "provider_timeout"}])
+    assert summary["failed"] == 1 and summary["false_flags"]["ledger"] == 1
+    assert summary["by_group"]["mcq_belief"] == {"n": 1, "match": 1}

@@ -65,6 +65,9 @@
   tutor's `feedback_policy`: validation 0.745 → 0.832, but held-out 0.822 → 0.802 (−0.020, 18 pairs; gpt-6-luna
   +0.007), so the gate (≥ 0.05) refused it. The live prompt is unchanged. 838 paid calls, Spark 1.3 $2.51.
   [Report](reports/H10-policy-eval.md).
+- Capture check ([report](reports/capture-check.md)), 2026-11-04. Deployed labels confirmed on one session. `gpt-6-luna`
+  against hand labels: top misconception 26 of 26, outcome 22 of 26 (all 4 generous). **Open bug, not fixed:** Spark Open
+  named a belief from 4 of 4 bare numeric slips. Real stylus ink is still untested.
 - Superseded plans (`HACKATHON_PLAN.md`, the B01 brief, the B-numbered feature coverage map)
   moved to `docs/legacy/`.
 - The notes below describe the state before planning and remain accurate for the dirty tree.

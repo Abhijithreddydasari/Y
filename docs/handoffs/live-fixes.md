@@ -105,3 +105,32 @@ browser's own bars.
 
 **Browser (1280×800, local web, sample map, 3D view):** chips with counts, filter dims and labels matching neurons, `?` key,
 "2 changed" button, no full-screen button. Not run: Mobile width, Paper theme by eye, search fly-to by eye (tested with mocks).
+
+## Persona isolation: no change needed
+
+Each browser gets a private copy of a persona, and the template is never changed. **Checked on production** (no model call, two
+new identities and their Priya copies left in Neon): both at revision 7 with 34 beliefs; A's new session returned 200 for A and
+404 for B; canvas counts 8 and 7. Two judges on one browser share a copy; Settings has Reset.
+
+## Checks on this branch
+
+| Check | Result |
+|---|---|
+| Backend `pytest -q tests scripts/test_teacher.py` | 428 passed |
+| Frontend `npm test` | 34 files, 188 passed |
+| `tsc`, `npm run lint`, `npm run build` | exit 0 |
+| One turn, answer and close through the running API, local SQLite (paid) | RoPE turn on topic with 0 brief items for Tomás; close reached revision 8, sealed 1 answer, named one new belief |
+
+Not run: this branch on production; a real tablet (stylus pinch, palm rejection); Mobile width for the card pill and Mind chips.
+
+## Deploy (when asked, repo root, CMD)
+
+**Both.** API first: topic focus, merges and voice names are API changes.
+
+```bat
+python -m modal deploy deploy/modal_learning.py
+deploy\vercel-prod.cmd
+```
+
+Then check `/health`, run one turn, and End one session. `feature/figure-breakdown` is not on this branch, so Break it down stays
+off the live site.

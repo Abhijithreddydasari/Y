@@ -64,3 +64,17 @@ option is kept. A new question scrolls into view once, after the lesson's own cl
 
 **Browser (1280×800, local web, one paid turn):** under its board card on arrival; pill after scrolling away, a little and far;
 Back to it returned the card under its anchor; X gave the pill. Not run: Mobile width, a short tablet viewport.
+
+## Drawing tools remember, and stylus pinch zooms (web)
+
+**Cause.** Picking Pen always forced width 2 and the dock's colour, overwriting anything chosen before. Pinch: once Excalidraw
+sees a stylus it turns on pen mode, and in pen mode on the freedraw tool it fixes the zoom scale at 1, so two fingers only pan
+(`scaleFactor` in Excalidraw 0.18.1).
+
+**Fix.** One ink and a thickness per tool are kept across tools and reloads (`y_tool_memory_v1`), including choices in
+Excalidraw's style panel. New thickness control on the dock. Pen mode is lifted only while two fingers are down
+(`lib/pen-pinch.ts`), so palm rejection stays on otherwise.
+
+**Browser (1280×800, local web):** red and thick survived Eraser and back, and a reload. With synthetic stylus and touch events
+on the real board (pointer capture stubbed), a two-finger spread on the pen tool went 100% to 280%. A real tablet is not
+tested; the user should confirm pinch and palm rejection there.

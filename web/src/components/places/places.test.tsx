@@ -1,10 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ToolDock from "@/components/ToolDock";
 import type { TutorTurnState } from "@/hooks/useTutorSession";
 import type { TutorSession } from "@/hooks/useTutorSession";
-import { toolOf, toolSettings } from "@/lib/board-tools";
+import { toolOf, toolSettings, forgetToolMemory } from "@/lib/board-tools";
 import RadialMenu, { arcPoint } from "./RadialMenu";
 import ReviewSheet from "./ReviewSheet";
 import SettingsSheet from "./SettingsSheet";
@@ -122,18 +122,65 @@ describe("Tool dock", () => {
     expect(toolOf("laser", 100)).toBeNull();
   });
 
+  const dockBoard = () => {
+    const board = {
+      follow: (() => {}) as (tool: string | null) => void,
+      styled: (() => {}) as (tool: string | null, color: string, width: number) => void,
+      setTool: vi.fn(), setStyle: vi.fn(),
+      onToolChange: vi.fn((listener) => { board.follow = listener; return () => {}; }),
+      onStyleChange: vi.fn((listener) => { board.styled = listener; return () => {}; }),
+    };
+    return board;
+  };
+
+  beforeEach(() => { localStorage.removeItem("y_tool_memory_v1"); forgetToolMemory(); });
+
   it("hides Excalidraw's toolbar while mounted, drives the board and follows shortcuts", () => {
-    let follow: (tool: string | null) => void = () => {};
-    const board = { setTool: vi.fn(), onToolChange: vi.fn((listener) => { follow = listener; return () => {}; }) };
+    const board = dockBoard();
     const { unmount } = render(<ToolDock board={board as never} />);
     expect(document.documentElement.dataset.toolDock).toBe("on");
     fireEvent.click(screen.getByRole("button", { name: "Pen (P)" }));
-    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#1e1e1e");
+    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#1e1e1e", 2);
     fireEvent.click(screen.getByRole("button", { name: "Blue ink" }));
-    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#1d4ed8");
-    act(() => follow("eraser"));
+    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#1d4ed8", 2);
+    act(() => board.follow("eraser"));
     expect(screen.getByRole("button", { name: "Eraser (E)" })).toHaveAttribute("aria-pressed", "true");
     unmount();
     expect(document.documentElement.dataset.toolDock).toBeUndefined();
+  });
+
+  it("keeps colour and thickness through other tools and a reload", () => {
+    const board = dockBoard();
+    const { unmount } = render(<ToolDock board={board as never} />);
+    fireEvent.click(screen.getByRole("button", { name: "Red ink" }));
+    fireEvent.click(screen.getByRole("button", { name: "Thick line" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#dc2626", 4);
+    fireEvent.click(screen.getByRole("button", { name: "Eraser (E)" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("eraser", "#dc2626", undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Highlighter" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("highlighter", "#dc2626", 4);
+    fireEvent.click(screen.getByRole("button", { name: "Pen (P)" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#dc2626", 4);
+    unmount();
+
+    forgetToolMemory(); // a reload: only storage is left
+    const next = dockBoard();
+    render(<ToolDock board={next as never} />);
+    expect(next.setStyle).toHaveBeenCalledWith("#dc2626", 4);
+    fireEvent.click(screen.getByRole("button", { name: "Pen (P)" }));
+    expect(next.setTool).toHaveBeenLastCalledWith("pen", "#dc2626", 4);
+  });
+
+  it("remembers a style chosen in Excalidraw's own panel, per tool", () => {
+    const board = dockBoard();
+    render(<ToolDock board={board as never} />);
+    act(() => board.styled("pen", "#123456", 1));
+    fireEvent.click(screen.getByRole("button", { name: "Arrow (A)" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("arrow", "#123456", 2);
+    fireEvent.click(screen.getByRole("button", { name: "Pen (P)" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#123456", 1);
+    act(() => board.styled("highlighter", "#00ff00", 2));
+    fireEvent.click(screen.getByRole("button", { name: "Pen (P)" }));
+    expect(board.setTool).toHaveBeenLastCalledWith("pen", "#123456", 1); // the highlighter's colour stays its own
   });
 });

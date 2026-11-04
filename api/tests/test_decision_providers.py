@@ -65,6 +65,9 @@ def test_baseten_models_use_documented_endpoint_and_preserve_provider_identity(m
 
 def test_provider_selection_is_explicit_and_never_reuses_other_providers_key(monkeypatch):
     monkeypatch.delenv("DECISION_PROVIDER", raising=False)
+    monkeypatch.setenv("BASETEN_API_KEY", "set-but-not-selected")
+    assert configured_provider().api_key == ""  # no setting: nothing non-Meta is called, whatever keys exist
+    monkeypatch.setenv("DECISION_PROVIDER", "baseten")
     monkeypatch.delenv("BASETEN_DECISION_MODEL", raising=False)
     monkeypatch.delenv("BASETEN_API_KEY", raising=False)
     monkeypatch.setenv("TYPESAFE_API_KEY", "typesafe-only")

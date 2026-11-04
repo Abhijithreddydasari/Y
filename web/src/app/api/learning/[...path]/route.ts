@@ -21,7 +21,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   if (request.headers.get("sec-fetch-site") === "cross-site" || (origin && origin !== request.nextUrl.origin)) {
     return Response.json({ detail: "Cross-origin learning request denied" }, { status: 403 });
   }
-  const base = (process.env.LEARNING_API_BASE ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+  const base = (process.env.LEARNING_API_BASE ?? "http://127.0.0.1:8101").replace(/\/$/, "");
   const headers = new Headers({ "Content-Type": path.endsWith("/assets") ? "application/octet-stream" : audio ? "audio/wav" : "application/json" });
   // Production API accepts only this proxy; the secret is server configuration and never reaches the browser.
   const secret = process.env.LEARNING_PROXY_SECRET;

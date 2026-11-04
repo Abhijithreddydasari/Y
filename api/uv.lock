@@ -2219,17 +2219,19 @@ dependencies = [
     { name = "pillow" },
     { name = "pydantic" },
     { name = "python-multipart" },
-    { name = "safetensors" },
     { name = "sqlalchemy" },
     { name = "sse-starlette" },
-    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
-    { name = "torch", version = "2.13.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
 cloud = [
     { name = "google-genai" },
+]
+legacy = [
+    { name = "safetensors" },
+    { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
+    { name = "torch", version = "2.13.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
 ]
 policy-eval = [
     { name = "gepa" },
@@ -2272,15 +2274,15 @@ requires-dist = [
     { name = "psycopg", extras = ["binary"], marker = "extra == 'postgres'", specifier = ">=3.2,<4" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "python-multipart", specifier = ">=0.0.18" },
-    { name = "safetensors", specifier = ">=0.5" },
+    { name = "safetensors", marker = "extra == 'legacy'", specifier = ">=0.5" },
     { name = "sentence-transformers", marker = "extra == 'training'", specifier = ">=3.4" },
     { name = "sqlalchemy", specifier = ">=2.0.36,<3" },
     { name = "sse-starlette", specifier = ">=2.1" },
-    { name = "torch", marker = "sys_platform != 'win32'", specifier = ">=2.5" },
-    { name = "torch", marker = "sys_platform == 'win32'", specifier = ">=2.5", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torch", marker = "sys_platform == 'win32' and extra == 'legacy'", specifier = ">=2.5", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torch", marker = "sys_platform != 'win32' and extra == 'legacy'", specifier = ">=2.5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
-provides-extras = ["postgres", "cloud", "speech", "stt", "policy-eval", "training"]
+provides-extras = ["legacy", "postgres", "cloud", "speech", "stt", "policy-eval", "training"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -15,11 +15,14 @@ dependencies = [
     "httpx>=0.28.1",
     "sqlalchemy>=2.0.36,<3",
     "numpy>=2.0",
-    "torch>=2.5",
-    "safetensors>=0.5",
 ]
 
 [project.optional-dependencies]
+# Only the older main:app learner adapter imports these; the tutor service (learning.app) does not.
+legacy = [
+    "torch>=2.5",
+    "safetensors>=0.5",
+]
 postgres = ["psycopg[binary]>=3.2,<4"]
 # Pull these in when serving the "Cloud (Gemma 4 31B)" toolbar option:
 #   uv pip install -e .[cloud]

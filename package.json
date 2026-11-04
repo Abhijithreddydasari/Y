@@ -4,7 +4,8 @@
   "private": true,
   "description": "Repository commands for the Y whiteboard tutor",
   "scripts": {
-    "setup": "npm --prefix web ci --legacy-peer-deps",
+    "setup": "node scripts/setup.mjs",
+    "api": "node scripts/run-api.mjs",
     "dev": "npm --prefix web run dev --",
     "build": "npm --prefix web run build --",
     "start": "npm --prefix web run start --",

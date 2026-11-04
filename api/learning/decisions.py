@@ -174,8 +174,11 @@ class BasetenDecisionClient(SystemOneClient):
 
 
 def configured_provider() -> DecisionProvider:
-    """Explicit selection only: never send an answer to a fallback provider."""
-    name = os.environ.get("DECISION_PROVIDER", "baseten").strip().lower()
+    """Explicit selection only: never send an answer to a fallback provider. These are not Meta models, so with no
+    setting nothing is called and the older Practice assessor reports `provider_not_configured`."""
+    name = os.environ.get("DECISION_PROVIDER", "").strip().lower()
+    if not name:
+        return BasetenDecisionClient("")
     if name == "baseten":
         return BasetenDecisionClient(os.environ.get("BASETEN_API_KEY", ""),
                                      model=os.environ.get("BASETEN_DECISION_MODEL", BASETEN_MODELS["elephant"]))

@@ -36,6 +36,7 @@ deploy/.env.modal
 /api/uv.lock
 /api/validator.py
 /docs/architecture.md
+/schema/primitives.json
 /web/.gitignore
 /web/AGENTS.md
 /web/CLAUDE.md

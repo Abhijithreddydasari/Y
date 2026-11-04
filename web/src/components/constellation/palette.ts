@@ -44,7 +44,7 @@ export const STATE_WORDS: Record<NodeState, string> = {
 export const STATE_MEANINGS: Record<NodeState, string> = {
   solid: "Mostly right, across different kinds of question.",
   learning: "Some right, not settled yet.",
-  shaky: "Mostly wrong so far, or due for a review.",
+  shaky: "Mostly wrong so far.",
   misconception: "A wrong idea keeps showing up in the answers here.",
   unseen: "No answers on this idea yet.",
 };

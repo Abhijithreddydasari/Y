@@ -145,3 +145,14 @@ off the live site.
   Browser, one paid turn: all 4 diagram labels sat ahead of their boxes in saved order. After a reload, plus a scene change past
   Excalidraw's 60 s validation throttle, no error was logged and the labels showed.
   `feature/figure-breakdown` has a smaller `stackingOrder` in this file; keep this version when merging.
+
+## Mind colours mean what the legend says (web)
+
+**Cause.** Reported as "all red in light mode", but it applied to both themes. Any concept past its review date was forced to
+"shaky", and the seeded history is days old: 15 of 16 of Priya's neurons were shaky for that reason alone, none solid. Removing
+that left all violet, because the score averaged each question type under its own prior, so three right answers of three kinds
+still scored 0.67 and could not reach "solid" at 0.7.
+
+**Fix.** Due for review no longer changes the colour; the evidence sheet and Review still show it. The state uses all of a
+concept's answers under one prior. Priya now reads 5 solid, 8 learning, 2 shaky, 1 wrong belief (Tomás 4, 11, 1, 1; Amara 5, 8, 2,
+2). Browser: Paper theme, 3D view, Priya: neuron colours match the chips. Replay blends the same mean.

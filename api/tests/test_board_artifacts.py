@@ -158,3 +158,13 @@ def test_turn_id_with_a_different_model_is_a_conflict(env, monkeypatch):
     assert first.status_code == 200
     again = client.post(f"/learning/sessions/{sid}/tutor/turns", json={**body, "model": "spark-1.2"})
     assert again.status_code == 409
+
+
+def test_plot_spec_names_its_axes_within_bounds():
+    from learning.tutor_moves import PlotSpec
+
+    base = {"expr": "a*x", "x": [0, 1], "params": {"a": {"min": 0, "max": 1, "value": 0.5}}}
+    assert PlotSpec.model_validate({**base, "xLabel": "time (s)", "yLabel": "height (m)"}).xLabel == "time (s)"
+    assert PlotSpec.model_validate(base).yLabel == ""  # earlier graphs carry no names
+    with pytest.raises(ValueError):
+        PlotSpec.model_validate({**base, "xLabel": "x" * 41})

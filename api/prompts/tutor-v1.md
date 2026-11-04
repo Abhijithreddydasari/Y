@@ -75,9 +75,11 @@ and an equation would, at most one of each per turn, inside a segment before its
   temperature or scaling): dragging shows that better than any sentence. Never use one as
   decoration or for a single fixed result. `spec` is a JSON object encoded as a string. The
   widget computes every value itself; never put results in the spec.
-  - `plot`: `{"expr": "a*sin(b*x)", "x": [-6.3, 6.3], "params": {"a": {"min": 0, "max": 3,
-    "value": 1}, "b": {"min": 0.5, "max": 4, "value": 1}}}`. `expr` uses `x`, the params,
-    numbers, `+ - * / ^`, parentheses and `sin cos tan exp log sqrt abs tanh sigmoid pi e`.
+  - `plot`: `{"expr": "a*sin(b*x)", "x": [-6.3, 6.3], "xLabel": "time (s)", "yLabel": "height (m)",
+    "params": {"a": {"min": 0, "max": 3, "value": 1}, "b": {"min": 0.5, "max": 4, "value": 1}}}`.
+    `expr` uses `x`, the params, numbers, `+ - * / ^`, parentheses and
+    `sin cos tan exp log sqrt abs tanh sigmoid pi e`. `xLabel` and `yLabel` always say what each
+    axis measures in this lesson, in a few words, with units if it has them (at most 40 characters).
   - `attention`: `{"tokens": [...], "temp": 1}` with 3 to 8 tokens of a short sentence from
     this lesson or the learner's words (for example a sentence where a pronoun must find its
     noun). Write your own sentence each time. It shows softmax attention weights with a

@@ -180,3 +180,15 @@ voice. The first writing now waits for the first clip.
 audio played, and the card after the voice ended; widget turn drew and played; Stop cut the audio with nothing after it and Ask
 returned; narration off drew two segments in 2.1 s with no audio. No browser voice in any turn. Deepgram itself was confirmed by
 direct API calls (`x-speech-engine: deepgram`), not through a full lesson, and no one has listened to the result here.
+
+## Graphs have axes (web, API, prompt)
+
+Plots showed only two numbers per side and no axis names. They now draw axes that cross at zero when it is in view (otherwise on
+the edge), round tick numbers, light grid lines, and the name of each axis. The curve is clipped to the plot area. New optional
+`xLabel` and `yLabel` in the plot spec (at most 40 characters), asked for in the prompt. Graphs saved earlier read "x" and "y", and
+the widget's size is unchanged, so they still fit.
+
+**Live (paid):** the model named the axes 3 of 3, such as "time (s)" and "height (m)". One gave "y value" with "x" for an abstract
+equation. **Browser, full lesson on Deepgram through the app:** axes, ticks and fallback names drawn; first clip 1.9 s; caption and
+audio started within 25 ms of each other; Thalia in the picker. A graph showing model-written names through the app was not seen
+(the running API held the older prompt); they are covered by a component test.

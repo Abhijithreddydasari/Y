@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { controlsLive, renderEmbeddable, validateEmbeddable, widgetOf } from "./WidgetHost";
 import { parseWidget, widgetSize, WIDGET_SCHEME } from "./widget-spec";
-import PlotWidget from "./PlotWidget";
+import PlotWidget, { niceTicks } from "./PlotWidget";
 import AttentionWidget from "./AttentionWidget";
 
 const plot = { expr: "a*sin(x)", x: [-3, 3], params: { a: { min: 0, max: 2, value: 1 } } };
@@ -62,6 +62,27 @@ describe("widget host", () => {
 });
 
 describe("widgets update locally", () => {
+  it("plot draws axes with round ticks and names what each axis measures", () => {
+    const { unmount } = render(<PlotWidget spec={{ ...plot, xLabel: "time (s)", yLabel: "height (m)" } as never} />);
+    expect(screen.getByTestId("x-name").textContent).toBe("time (s)");
+    expect(screen.getByTestId("y-name").textContent).toBe("height (m)");
+    expect(screen.getByTestId("x-axis")).toBeTruthy();
+    expect(screen.getByTestId("y-axis")).toBeTruthy();
+    expect(screen.getAllByText("0").length).toBeGreaterThanOrEqual(2); // zero is marked on both axes
+    unmount();
+    render(<PlotWidget spec={plot as never} />);
+    expect(screen.getByTestId("x-name").textContent).toBe("x"); // graphs saved before axis names
+    expect(screen.getByTestId("y-name").textContent).toBe("y");
+  });
+
+  it("keeps axis names from a spec, trimmed, and picks round ticks", () => {
+    const parsed = parseWidget("plot", { ...plot, xLabel: " time ", yLabel: "y".repeat(60) });
+    expect(parsed?.spec).toMatchObject({ xLabel: "time", yLabel: "y".repeat(40) });
+    expect(niceTicks(0.1, 3)).toEqual([0.5, 1, 1.5, 2, 2.5, 3]);
+    expect(niceTicks(-4.05, 20.2)).toEqual([0, 5, 10, 15, 20]);
+    expect(niceTicks(-6.3, 6.3)).toEqual([-6, -4, -2, 0, 2, 4, 6]);
+  });
+
   it("plot slider redraws the curve", () => {
     render(<PlotWidget spec={plot as never} />);
     const path = () => screen.getByTestId("plot-path").getAttribute("d");

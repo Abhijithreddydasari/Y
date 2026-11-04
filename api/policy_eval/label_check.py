@@ -129,10 +129,10 @@ async def naming_case(case, store, labeler, writer, owner, sem) -> dict:
     async with sem:
         response, _raw = await labeler.label(state, asked)
         observation, _trace, _ = observations.merge_labels(row, response, labeler.provider_name)
-        marked = consolidate.flagged([observation])
         answers = {str(observation.observation_id): {"q": case["q"], "answer": case["answer"]}}
+        marked = consolidate.flagged([observation], answers)
         raw, _info = await writer.write(consolidate.evidence_payload([observation], answers, []))
-    named, dropped = consolidate.keep_named(raw, [observation])
+    named, dropped = consolidate.keep_named(raw, [observation], answers)
     return {"id": case["id"], "group": case["group"], "answer": case["answer"], "flagged": bool(marked),
             "named": [n["description"] for n in named], "dropped": dropped, "belief": case["mis"]}
 

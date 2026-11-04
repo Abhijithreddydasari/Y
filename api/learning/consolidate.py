@@ -20,6 +20,7 @@ import httpx
 
 from .decisions import ProviderFailure
 from .learner_contracts import Observation, TeachingNote
+from .observations import number_of
 from .profile import credit, weight
 from .tutor_models import BASETEN_BASE
 
@@ -64,20 +65,38 @@ SYSTEM = (
 )
 
 
-def flagged(observations: list[Observation]) -> dict[str, tuple[str, float]]:
-    """Observation id -> (concept, mass) for answers that show a wrong belief, listed or not."""
-    out = {}
+def _bare_number(o: Observation, answers: dict[str, dict] | None) -> bool:
+    """A number typed or spoken as the whole answer: no options or reasoning to tell a belief from a slip."""
+    text = ((answers or {}).get(str(o.observation_id)) or {}).get("answer", "")
+    return bool(text) and o.sources[0].modality != "tap" and number_of(text) is not None
+
+
+def flagged(observations: list[Observation], answers: dict[str, dict] | None = None) -> dict[str, tuple[str, float]]:
+    """Observation id -> (concept, mass) for answers that show a wrong belief, listed or not.
+
+    A lone bare number flagged only as "another misconception" is held back: Spark Open would invent a reason for
+    a slip (`54` for 7 x 8 became a belief, live 2026-11-04). A second flagged answer on the concept releases it.
+    """
+    out, held, concepts = {}, {}, []
     for o in observations:
         listed = sum(o.misconception_p.values()) if o.misconception_p else 1.0 if o.misconception else 0.0
-        mass = min(1.0, listed + (o.other_misconception_p or 0.0)) * (1 - credit(o)) * weight(o)
-        if mass >= FLAG_AT * o.format_weight:
-            out[str(o.observation_id)] = (o.concept, round(mass, 6))
+        miss = (1 - credit(o)) * weight(o)
+        mass = min(1.0, listed + (o.other_misconception_p or 0.0)) * miss
+        if mass < FLAG_AT * o.format_weight:
+            continue
+        concepts.append(o.concept)
+        entry = (o.concept, round(mass, 6))
+        if _bare_number(o, answers) and listed * miss < FLAG_AT * o.format_weight:
+            held[str(o.observation_id)] = entry
+        else:
+            out[str(o.observation_id)] = entry
+    out.update({key: entry for key, entry in held.items() if concepts.count(entry[0]) > 1})
     return out
 
 
 def evidence_payload(observations: list[Observation], answers: dict[str, dict], beliefs: list[dict],
                      known: tuple[str, ...] = ()) -> dict:
-    marked = flagged(observations)
+    marked = flagged(observations, answers)
     return {"known_concepts": sorted(set(known))[:60], "observations": [{
         "id": str(o.observation_id), "concept": o.concept, "dimension": o.dimension, "outcome": o.outcome,
         "misconception": o.misconception, "miss_class": o.miss_class, "answered_by": o.sources[0].modality,
@@ -88,10 +107,10 @@ def evidence_payload(observations: list[Observation], answers: dict[str, dict], 
     } for o in observations], "beliefs_after_session": beliefs}
 
 
-def keep_named(raw: object, observations: list[Observation]) -> tuple[list[dict], int]:
+def keep_named(raw: object, observations: list[Observation], answers: dict[str, dict] | None = None) -> tuple[list[dict], int]:
     """(misconceptions for the reducer, names dropped). A name must cite flagged answers; each answer joins one name.
     Its concept is the one most of its answers share (tutors sometimes vary a concept id within a session)."""
-    marked = flagged(observations)
+    marked = flagged(observations, answers)
     kept, dropped = [], 0
     for item in (raw or {}).get("misconceptions", []) if isinstance(raw, dict) else []:
         taken = {e for k in kept for e in k["evidence"]}

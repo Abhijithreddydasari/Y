@@ -6,7 +6,8 @@ the run: `api/policy_eval/label_cases.json`. Raw results: [capture-check.json](c
 ## Verdict
 
 - **Right or wrong, and which belief:** good on this test.
-- **One bug found:** a single arithmetic slip can become a named "belief" in the learner's profile.
+- **One bug found and fixed in code, not deployed:** a single arithmetic slip could become a named "belief" in the
+  learner's profile. Production still has the old behaviour until the API is redeployed.
 - **Still untested:** real stylus handwriting, and how transcription errors affect spoken answers.
 
 ## 1. Deployed path (https://ask-y-event.vercel.app, one session)
@@ -66,9 +67,23 @@ not accuracy, since mistake types were not hand labeled. It also called "I don't
 | `26.2` for √512 | "overestimates square root magnitude without checking by squaring" | invented |
 | `74` for conv parameters (76) | "counts bias per input channel (2) instead of per filter (4)" | plausible: 72 + 2 = 74 |
 
-The effect: the next session's brief can treat a typo as a possible misconception. **Not fixed**: this is
-learner-facing and it is past the freeze. A fix would keep a single bare-number answer out of naming until a second
-answer shows the same belief, with a regression test on these 4 cases.
+The effect: the next session's brief can treat a typo as a possible misconception.
+
+**The fix (`consolidate.flagged`), not deployed.** A number typed or spoken as the whole answer, flagged only as
+"another misconception", is held out of naming until a second flagged answer appears on the same concept. It is
+still flagged if the labeler matched a known belief, and tapped options and worded answers are unaffected.
+
+Live re-run with the fix, same 12 answers:
+
+| Answers | Flagged for naming | Named as a belief |
+|---|---|---|
+| New real misconceptions | 6 of 6 | 6 of 6, all accurate |
+| Bare numeric slips | 0 of 4 | 0 of 4 |
+| Injection attempts | 2 of 2 | 0 of 2 |
+
+**The cost of the fix:** a real misconception shown only by one bare number now waits for a second answer before it
+is named. It can still be picked up sooner if the labeler matches it to a known belief. Two separate slips on one
+concept are released to Spark Open, which may still name them; that case was not run live.
 
 ## Limits
 

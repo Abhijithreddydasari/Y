@@ -39,6 +39,8 @@ const OPENED_SLOP = 40;
 const SETTLE_MS = 150;
 /** The lesson's own closing scroll animates for about this long; a reveal made sooner would be overridden. */
 const ARRIVAL_MS = 450;
+/** The board card must hold its place this long before a new question scrolls it into view. */
+const STILL_MS = 250;
 
 type Place = { left: number; top: number; maxHeight: number } | "away" | "arriving" | null;
 
@@ -69,6 +71,7 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
   const sectionRef = useRef<HTMLElement | null>(null);
   const heightRef = useRef(TYPICAL_HEIGHT);
   const revealedRef = useRef(false);
+  const stillRef = useRef({ top: Number.NaN, since: 0 });
   // Set by "Back to it": on a short screen the card may not fit under its anchor, so stay until the learner pans away.
   const openedRef = useRef<{ at: number; top: number | null } | null>(null);
 
@@ -101,7 +104,10 @@ export default function TutorQuestionCard({ question, busy, cardRect, onAnswer, 
           : "away";
         // A new question arrives in view once, with room to answer; after that the learner's scrolling is respected.
         if (!revealedRef.current) {
-          if (performance.now() - arrived < ARRIVAL_MS) next = "arriving";
+          // Wait for the lesson's closing scroll to finish: a reveal made during it would be overridden.
+          const now = performance.now();
+          if (stillRef.current.top !== rect.top) stillRef.current = { top: rect.top, since: now };
+          if (now - arrived < ARRIVAL_MS || now - stillRef.current.since < STILL_MS) next = "arriving";
           else {
             revealedRef.current = true;
             if (next === "away") { reveal(); next = "arriving"; }

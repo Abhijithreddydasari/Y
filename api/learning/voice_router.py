@@ -30,7 +30,7 @@ log = logging.getLogger("y.voice")
 HOURLY_TRANSCRIPTIONS, HOURLY_TRANSCRIPTIONS_GLOBAL = limit("TRANSCRIBE_OWNER", 120), limit("TRANSCRIBE_GLOBAL", 600)
 HOURLY_SPEECH, HOURLY_SPEECH_GLOBAL = limit("SPEECH_OWNER", 600), limit("SPEECH_GLOBAL", 6000)
 DEEPGRAM_URL = "https://api.deepgram.com/v1/speak"
-DEEPGRAM_SECONDS = 4.0  # past this Kokoro answers instead
+DEEPGRAM_SECONDS = 10.0  # past this Kokoro answers instead. A whole sentence takes 2.5-3 s, a long one more.
 # The picker keeps its Kokoro ids; each maps to the nearest Aura voice.
 AURA_VOICES = {"kokoro_af_heart": "aura-2-thalia-en", "kokoro_am_michael": "aura-2-apollo-en"}
 STATUS = {"transcribe_not_configured": 503, "transcribe_auth_failed": 502, "transcribe_rate_limited": 429,

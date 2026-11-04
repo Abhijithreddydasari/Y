@@ -156,3 +156,27 @@ still scored 0.67 and could not reach "solid" at 0.7.
 **Fix.** Due for review no longer changes the colour; the evidence sheet and Review still show it. The state uses all of a
 concept's answers under one prior. Priya now reads 5 solid, 8 learning, 2 shaky, 1 wrong belief (Tomás 4, 11, 1, 1; Amara 5, 8, 2,
 2). Browser: Paper theme, 3D view, Priya: neuron colours match the chips. Replay blends the same mean.
+
+## Voice and writing together (web, API timeout)
+
+**Cause, voice.** Lines were cut at commas into separate clips, each synthesized alone, so the intonation restarted mid-sentence;
+this is the likely cause of the robotic sound (inferred, audio was not heard). A clip late by 3.5 s also switched the rest of the
+turn to the browser voice. Locally the API had no Deepgram key, so Kokoro spoke, and a clip came within about 0.2 s of that limit.
+
+**Cause, sync.** A segment's writing finished before its voice began: the line appeared 1.9 s (production) and 3.5 s (Kokoro)
+before the audio. The question could appear before the last explanation ended.
+
+**Fix.** One clip per sentence (a sentence over 28 words splits at its central comma). Deepgram measured from here: about 1.5 s a
+clause, 2.7 s a sentence, 6 s a whole line. The browser voice now only follows a real failure or a 20 s wait. A segment's heading
+shows at once; the rest waits for the first clip (at most 6 s) and is then written across the voice's length, using the clip's
+real rate. A question appears after the voice ends. With the voice off, everything is written at board speed. Removed the unused
+`segmentsAhead` option. Server timeout for Deepgram went from 4 s to 10 s: a 21-word sentence took 4.9 s and would have fallen to
+Kokoro mid-lesson.
+
+**Limit.** The voice paraphrases the board, so words do not match one for one; each segment's writing starts and ends with its
+voice. The first writing now waits for the first clip.
+
+**Browser (1280×800, local web against an API on Kokoro, 5 paid turns):** frames showed the heading, then writing while the
+audio played, and the card after the voice ended; widget turn drew and played; Stop cut the audio with nothing after it and Ask
+returned; narration off drew two segments in 2.1 s with no audio. No browser voice in any turn. Deepgram itself was confirmed by
+direct API calls (`x-speech-engine: deepgram`), not through a full lesson, and no one has listened to the result here.

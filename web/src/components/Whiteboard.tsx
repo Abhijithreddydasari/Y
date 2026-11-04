@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import type {
+  AppState,
   BinaryFiles,
   ExcalidrawImperativeAPI,
 } from "@excalidraw/excalidraw/types";
@@ -10,12 +11,17 @@ import type {
   ExcalidrawElement,
 } from "@excalidraw/excalidraw/element/types";
 import type { InterfaceMode } from "@/lib/interface-mode";
+import { BoardController } from "@/lib/board-controller";
+import { installFrameProbe } from "@/lib/frame-probe";
+import { toolOf, toolSettings, type ToolId } from "@/lib/board-tools";
+import { installPenPinch } from "@/lib/pen-pinch";
+import { renderEmbeddable, validateEmbeddable } from "@/components/widgets/WidgetHost";
+import type { Actor } from "@/lib/board-api";
 import "@excalidraw/excalidraw/index.css";
 
-const Excalidraw = dynamic(
-  async () => (await import("@excalidraw/excalidraw")).Excalidraw,
-  { ssr: false },
-);
+const Excalidraw = dynamic(() => import("@/components/BoardCanvas"), { ssr: false });
+/** Routine save states stay quiet; the chip shows only while restoring or when work needs attention. */
+const QUIET = new Set(["Board saved", "Saving board…"]);
 
 // Dynamic export scale. The model's vision encoder downsamples to a fixed
 // resolution, so what matters is pixels-per-content, not a fixed multiplier.
@@ -63,8 +69,9 @@ function computeExportScale(elements: readonly ExcalidrawElement[]): number {
 }
 
 export interface WhiteboardHandle {
+  board?: BoardController;
   exportPng: () => Promise<Blob | null>;
-  appendElements: (els: readonly ExcalidrawElement[]) => void;
+  appendElements: (els: readonly ExcalidrawElement[], actor?: Actor) => void;
   /**
    * Patch a single existing element in place. Used by the lesson player to
    * progressively reveal a text element word-by-word in lockstep with TTS.
@@ -72,7 +79,7 @@ export interface WhiteboardHandle {
    */
   mutateElement: (id: string, patch: Record<string, unknown>) => void;
   addFiles: (files: BinaryFiles) => void;
-  clearAll: () => void;
+  clearAll: (actor?: Actor) => void;
   getElements: () => readonly ExcalidrawElement[];
   /** Pan only when the newest tutor element would otherwise be off-screen. */
   ensureElementVisible: (id: string) => void;
@@ -85,7 +92,20 @@ export interface WhiteboardHandle {
    * can't be found or the canvas isn't mounted.
    */
   getElementScreenRect: (id: string) => DOMRect | null;
+  /** Scroll so an element sits near the top of the view, leaving room below it. Zoom is unchanged. */
+  revealElement: (id: string) => void;
+  /** Y's tool dock: pick a tool (with its pen style) and follow tool changes made elsewhere (shortcuts). */
+  setTool: (tool: ToolId, ink: string, width?: number) => void;
+  onToolChange: (listener: (tool: ToolId | null) => void) => () => void;
+  /** Set the current stroke style without changing tool. */
+  setStyle: (ink: string, width: number) => void;
+  /** The learner changed colour or thickness in Excalidraw's own style panel. */
+  onStyleChange: (listener: (tool: ToolId | null, color: string, width: number) => void) => () => void;
 }
+
+/** Screen pixels kept above a revealed element: clears the tool dock. */
+const REVEAL_TOP = 72;
+const STYLE_QUIET_MS = 120;
 
 interface Props {
   onReady?: (handle: WhiteboardHandle) => void;
@@ -96,8 +116,14 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
   const apiRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [ready, setReady] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("Restoring board…");
+  const [retry, setRetry] = useState(0);
+  const boardRef = useRef<BoardController | null>(null);
+  const styleQuietUntil = useRef(0);
 
   const buildHandle = useCallback((): WhiteboardHandle => ({
+    board: boardRef.current ?? undefined,
     async exportPng() {
       const api = apiRef.current;
       if (!api) return null;
@@ -121,11 +147,12 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       });
       return blob;
     },
-    appendElements(els) {
+    appendElements(els, actor = "model") {
       const api = apiRef.current;
       if (!api) return;
       const current = api.getSceneElements();
-      api.updateScene({ elements: [...current, ...els] });
+      if (actor === "model") boardRef.current?.validateOutput(els);
+      boardRef.current?.mutate(actor, () => api.updateScene({ elements: [...current, ...els] }), boardRef.current.generationSource?.revision ?? boardRef.current.state.revision);
     },
     mutateElement(id, patch) {
       const api = apiRef.current;
@@ -144,17 +171,17 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
         } as typeof el;
       });
       if (!touched) return;
-      api.updateScene({ elements: next });
+      boardRef.current?.mutate("model", () => api.updateScene({ elements: next }), boardRef.current.generationSource?.revision ?? boardRef.current.state.revision);
     },
     addFiles(files) {
       const api = apiRef.current;
       if (!api) return;
       api.addFiles(Object.values(files));
     },
-    clearAll() {
+    clearAll(actor = "human") {
       const api = apiRef.current;
       if (!api) return;
-      api.updateScene({ elements: [] });
+      boardRef.current?.mutate(actor, () => api.updateScene({ elements: api.getSceneElementsIncludingDeleted().map(e => ({ ...e, isDeleted: true, version: e.version + 1 })) }));
     },
     getElements() {
       const api = apiRef.current;
@@ -221,22 +248,102 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
       const h = el.height * z;
       return new DOMRect(x, y, w, h);
     },
+    revealElement(id) {
+      const api = apiRef.current;
+      const el = api?.getSceneElements().find((e) => e.id === id);
+      if (!api || !el) return;
+      const state = api.getAppState();
+      const z = state.zoom?.value ?? 1;
+      const left = (el.x + state.scrollX) * z;
+      const offside = left < 12 || left + el.width * z > state.width - 12;
+      api.updateScene({ appState: {
+        scrollY: REVEAL_TOP / z - el.y,
+        scrollX: offside ? (state.width / z - el.width) / 2 - el.x : state.scrollX,
+      } });
+    },
+    setTool(tool, ink, width) {
+      const api = apiRef.current;
+      if (!api) return;
+      const { type, style } = toolSettings(tool, ink, width);
+      // Switching tools rewrites the style: that must not read as the learner choosing a new one for the old tool.
+      styleQuietUntil.current = performance.now() + STYLE_QUIET_MS;
+      if (style) api.updateScene({ appState: style as Pick<AppState, "currentItemStrokeColor"> });
+      api.setActiveTool({ type } as Parameters<ExcalidrawImperativeAPI["setActiveTool"]>[0]);
+    },
+    setStyle(ink, width) {
+      styleQuietUntil.current = performance.now() + STYLE_QUIET_MS;
+      apiRef.current?.updateScene({ appState: { currentItemStrokeColor: ink, currentItemStrokeWidth: width } as Pick<AppState, "currentItemStrokeColor"> });
+    },
+    onStyleChange(listener) {
+      const api = apiRef.current;
+      if (!api) return () => {};
+      // Only a change counts: Excalidraw's starting style must not overwrite what the dock has saved.
+      const start = api.getAppState();
+      let color = start.currentItemStrokeColor, width = start.currentItemStrokeWidth;
+      return api.onChange((_elements, appState) => {
+        if (appState.currentItemStrokeColor === color && appState.currentItemStrokeWidth === width) return;
+        color = appState.currentItemStrokeColor; width = appState.currentItemStrokeWidth;
+        if (performance.now() > styleQuietUntil.current) listener(toolOf(appState.activeTool.type, appState.currentItemOpacity), color, width);
+      });
+    },
+    onToolChange(listener) {
+      const api = apiRef.current;
+      if (!api) return () => {};
+      // onChange fires on every scene change (each pen point); report only when the tool itself changes.
+      let last: ToolId | null | undefined;
+      return api.onChange((_elements, appState) => {
+        const tool = toolOf(appState.activeTool.type, appState.currentItemOpacity);
+        if (tool !== last) { last = tool; listener(tool); }
+      });
+    },
   }), []);
 
+  // `?fps=1` frame-time probe and `?glass=0` opaque chrome, for the glass performance check.
+  useEffect(() => installFrameProbe(window.location.search), []);
+
   useEffect(() => {
-    if (ready && apiRef.current && onReady) {
+    if (!ready || !apiRef.current || !containerRef.current) return;
+    return installPenPinch(apiRef.current as unknown as Parameters<typeof installPenPinch>[0], containerRef.current);
+  }, [ready]);
+
+  useEffect(() => {
+    if (loaded && apiRef.current && onReady) {
       onReady(buildHandle());
     }
-  }, [ready, onReady, buildHandle]);
+  }, [loaded, onReady, buildHandle]);
+
+  useEffect(() => {
+    if (!ready || !apiRef.current) return;
+    let live = true;
+    const controller = new BoardController(apiRef.current, message => { if (live) setSaveStatus(message); });
+    boardRef.current = controller;
+    void controller.initialize().then(() => { if (live) setLoaded(true); }).catch(() => {
+      if (live) setSaveStatus("Board restoration failed. Retry to recover your work before editing.");
+    });
+    const unsubscribe = apiRef.current.onChange((elements, state, files) => controller.observe(elements, state, files));
+    const reconnect = () => { void controller.flush().catch(() => {}); };
+    window.addEventListener("online", reconnect);
+    const hidden = () => { if (document.visibilityState === "hidden") void controller.flush().catch(() => {}); };
+    document.addEventListener("visibilitychange", hidden);
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (controller.hasUnsaved) { event.preventDefault(); event.returnValue = ""; } };
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => { live = false; unsubscribe(); window.removeEventListener("online", reconnect); window.removeEventListener("beforeunload", beforeUnload); document.removeEventListener("visibilitychange", hidden); controller.dispose(); };
+  }, [ready, retry]);
 
   return (
     <div
       ref={containerRef}
+      onDropCapture={() => boardRef.current?.markImport()}
+      onChangeCapture={event => { const target = event.target as HTMLInputElement; if (target.type === "file" && target.files?.length) boardRef.current?.markImport(); }}
       className={mode === "mobile"
         ? "absolute inset-x-0 bottom-[calc(5.6rem+env(safe-area-inset-bottom))] top-[calc(6.65rem+env(safe-area-inset-top))]"
         : "absolute inset-0"}
     >
       <Excalidraw
+        onPaste={() => { boardRef.current?.markImport(); return true; }}
+        viewModeEnabled={!loaded || saveStatus.toLowerCase().includes("conflict")}
+        validateEmbeddable={validateEmbeddable}
+        renderEmbeddable={renderEmbeddable}
         excalidrawAPI={(api) => {
           apiRef.current = api;
           setReady(true);
@@ -247,7 +354,14 @@ export default function Whiteboard({ onReady, mode = "studio" }: Props) {
             currentItemStrokeColor: "#111111",
           },
         }}
+        onBackup={loaded ? () => { void boardRef.current?.exportRecovery(); } : undefined}
       />
+      {(!loaded || !QUIET.has(saveStatus)) && <div className="pointer-events-auto absolute bottom-2 right-3 z-20 max-w-md rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs text-slate-700" role="status">
+        {saveStatus}
+        {!loaded && saveStatus.includes("failed") && <button className="ml-2 underline" onClick={() => { setLoaded(false); setRetry(value => value + 1); }}>Retry restore</button>}
+        {loaded && !saveStatus.includes("saved") && <button className="ml-2 underline" onClick={() => { void boardRef.current?.flush().catch(() => {}); }}>Retry save</button>}
+        {loaded && <button className="ml-2 underline" onClick={() => { void boardRef.current?.exportRecovery(); }}>Export backup</button>}
+      </div>}
     </div>
   );
 }

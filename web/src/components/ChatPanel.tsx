@@ -136,7 +136,7 @@ export default function ChatPanel({
 
   return (
     <div className={variant === "mobile"
-      ? "pointer-events-none fixed bottom-[calc(6.9rem+env(safe-area-inset-bottom))] right-3 z-[60] flex flex-col items-end gap-3"
+      ? "pointer-events-none fixed bottom-[calc(10.4rem+env(safe-area-inset-bottom))] right-3 z-[60] flex flex-col items-end gap-3"
       : "pointer-events-none fixed bottom-20 right-5 z-50 flex flex-col items-end gap-3 sm:bottom-20 sm:right-6"}
     >
       {open && (

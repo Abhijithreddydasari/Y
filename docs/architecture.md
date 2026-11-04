@@ -1,157 +1,179 @@
-# Y v2 architecture
+# Y: shared-board tutor architecture
 
-## Boundaries
+Status: target architecture, 2026-11-01, delivered through the [roadmap](builds/ROADMAP.md).
+Planned components are not claims of implemented behavior. [Workflow](workflow.md)
+records the current boundary. The old architecture is preserved in
+[legacy/learner-adapter-architecture.md](legacy/learner-adapter-architecture.md).
 
-Y deliberately separates three models:
-
-1. The teacher/drawing model reads the canvas, plans pedagogy, and emits the
-   existing primitive protocol. This is GPT-5.6-sol in cloud mode or Gemma 4
-   locally.
-2. GPT-5.6-terra is the evidence observer. It grades a checkpoint into a
-   validated probability distribution and confidence fields.
-3. The learner adapter models the learner. Its global parameters are shared;
-   rank-4 LoRA fast weights are private to one user. Teacher parameters are
-   never updated per user.
-
-## Lesson and assessment sequence
+## Interactive path
 
 ```mermaid
-sequenceDiagram
-    participant L as Learner
-    participant W as Whiteboard UI
-    participant T as Teacher LLM
-    participant A as Learner adapter
-    participant S as Kokoro speech
-
-    L->>W: Draw question + ?
-    W->>T: POST /lesson (PNG, conversation, hashed safety id)
-    T-->>W: SSE primitive stream
-    W->>W: draw immediately on an independent queue
-    T-->>W: personalized checkpoint
-    W->>S: ordered POST /speech queue, two segments prefetched
-    S-->>W: WAV narration (never blocks drawing)
-    A->>A: one representation-consistency step + replay guard
-    Note over A: Help changes representation/activity, not mastery
-    L->>W: Draw checkpoint answer
-    W->>T: POST /assess
-    T-->>A: validated LearningEvidence
-    alt strong checkpoint evidence
-        A->>A: representation step + three mastery steps
-    else ambiguous or helped
-        A->>A: representation step only
-    end
-    A-->>T: deterministic probabilistic profile
-    T-->>W: corrective primitives + next checkpoint
+flowchart TD
+    Pen[Pen edits and marks] --> Saved[Revisioned board and provenance]
+    Voice[Push-to-talk] --> STT[Transcription adapter]
+    Text[Typed question] --> Turn[Authenticated tutor turn]
+    STT --> Turn
+    Saved --> Focus[Question-aware focus resolver]
+    Turn --> Focus
+    Focus --> Packet[Bounded task document]
+    Packet --> Route{Native or visual context}
+    Route -->|Native or cached| Tutor[Meta tutor adapter]
+    Route -->|Legible crops| Tutor
+    Route -->|Consequential ambiguity| Reader[Targeted reader or clarification]
+    Reader --> Tutor
+    Tutor --> Validate[Validated typed actions]
+    Validate --> Layout[Placement and source-version checks]
+    Layout --> Player[Segmented visual and audio player]
+    Player --> Saved
+    Player --> Wait[Wait for learner or continue when requested]
+    Saved -. meaningful response .-> Evidence[Source-linked evidence jobs]
+    Evidence --> Rubric[Deterministic checks and Baseten or TypeSafe]
+    Rubric --> Observations[Provisional observations]
+    Observations --> Close[Session close and consolidation]
+    Close --> Profile[Versioned evidence-backed learner profile]
+    Profile -. bounded retrieval in later session .-> Packet
 ```
 
-## Learner adapter
+Use explicit workflow states, not independently chatting agents. Code handles
+extraction, selection, layout, authorization and state transitions. Models handle
+visual perception, explanation and rubric interpretation.
 
-Default configuration:
+Four loops at four timescales: the live turn (seconds; the only latency-critical path),
+evidence labeling (async per answer), reflection (once per session close) and policy
+improvement (offline GEPA). Measured choices for each — model, effort, wire format — are
+recorded in [harness decisions](decisions/2026-11-01-harness.md).
 
-| Component | Shape |
-| --- | --- |
-| Event embedding | frozen `nomic-embed-text`, 768 |
-| Numeric evidence | 8 values |
-| Event projection | 776 to 512 |
-| Causal encoder | 4 blocks, width 512, 8 heads, FFN 1024 |
-| Posterior | 256-dimensional mean and log variance |
-| Concept query | arbitrary concept text, 768 to 256 |
-| Decoder | concatenated latent/query to 256 to probability |
-| Global parameters | 9,433,857 |
-| Representation fast parameters | rank-4 LoRA in blocks 3-4 |
-| Mastery fast parameters | rank-4 LoRA in decoder |
+## Model routing
 
-The event stream is causal. For an arbitrary concept query, 16 posterior
-samples produce mastery mean and uncertainty. The UI reports a 95% interval
-and evidence context, never a categorical declaration of ability.
+| Job | Model |
+|---|---|
+| Live tutor, board vision, pointing | `muse-spark-1.3`, `reasoning_effort=minimal`, strict JSON moves |
+| Voice in | Muse Voice Transcribe (`muse-voice-transcribe-1.0`) |
+| Voice out | Kokoro, browser speech fallback (no Meta TTS exists) |
+| Evidence labels | Baseten decision model (Elephant default) + deterministic verifiers |
+| Session consolidation notes | `meta-models/muse-spark-open-1026` on Baseten, strict JSON |
+| Illustrations | `muse-image-1.0`, async |
+| Offline judge / GEPA reflection | `muse-spark-1.3` at medium or high effort |
 
-### Two-speed online update guards
+## Contracts and ownership
 
-Every interaction builds two deterministic masked/noisy views of recent history
-and takes one posterior-consistency step over Transformer LoRA only. Strong
-checkpoint evidence (`evidence_strength >= 0.65`) additionally takes three
-mastery steps over representation and decoder LoRA using soft correctness
-(`P(correct) + 0.5 P(partial)`). Both paths use replay, clipping, L2 anchoring,
-and independent 5% degradation rollback guards and counters.
+- **TutorTurn** (planned): request ID, question/transcript, input kind, saved board
+  revision, focus hints and prior-turn reference. Server resolves ownership.
+- **BoardSource / ContextPacket** (existing): immutable sources, exact text/specs,
+  bounded relationships/crops, authorship, assistance and coverage. Extend versioned
+  contracts; do not replace them with an untraceable paragraph.
+- **Interpretation** (existing): reading, ambiguity and source references, separate
+  from original content. A correction appends an attributed record.
+- **TutorAction / segment** (planned extension): validated draw/equation/diagram,
+  narrate, ask, wait and widget specs. Reuse the primitive protocol internally.
+  Segment IDs align narration with visuals and cancellation.
+- **LearningEvent / Observation** (planned extension): source, assistance, proposed
+  concept, result, uncertainty and model/policy version. Exposure is not success.
+- **ProfileRevision** (B08): finalized-session result with supporting observations.
+  Keep the subject graph distinct from this learner's evidence overlay.
 
-When no promoted global checkpoint exists, neural updates are disabled and the
-state is derived from the honest Bayesian path. The adapter reports
-`untrained-base`; seeded random weights are never presented as learned state.
+The browser owns interaction and local recovery. The API owns identity, budgets,
+source loading, model calls and durable transitions. Never trust client-selected
+owners, grades, profile facts or hashes; enforce ownership on asset retrieval.
 
-## Durable state
+## Context selection and fidelity
 
-```text
-data/learners/<safe-id>/
-  profile.json                 schema, legacy sessions, evidence, states, checkpoints
-  fast_weights.safetensors     only this learner's LoRA A/B tensors
-```
+1. Save pending work; bind the question and recent interaction to that revision.
+2. Resolve explicit references, recent annotation targets and connected work. Fall
+   back to current view when no stronger signal exists. Regions are optional.
+3. Extract exact native text, equations and specs. Include whole strokes, labels,
+   arrow endpoints and relevant off-screen context; preserve spatial structure.
+4. Send native/cached content directly to the tutor. For visuals, use focused crops
+   plus structured context; a separate OCR/reader pass is not mandatory every turn.
+5. Permit a bounded focused reading or targeted clarification before explaining a
+   consequential uncertain symbol. Do not grade a guessed transcription as verified.
+6. Persist normalized interpretations when assessment needs them; they identify
+   exact sources and completeness. Do not delay unrelated explanations for this.
 
-Both files use temporary-file plus `os.replace` writes. Loading validates
-tensor names/shapes against the global adapter. Reset removes fast weights and
-replaces the v2 state with an empty profile; an original legacy
-`<safe-id>.json` remains preserved but is not re-migrated.
+Every stateless request receives sufficient current context. Bound prior-turn
+summaries and profile facts within an explicit total prompt budget; the 24 KiB
+board limit must not leave conversation history unbounded.
 
-`profile.json` also stores a monotonic revision, last activity, separate
-representation/mastery counters, evidence deltas, and concept relations.
+Retain 200 detailed elements / 24 KiB and at most two crops per reading call, each
+1,600 pixels on its long edge and two million pixels maximum. Allow at most one
+focused re-read. Insufficient coverage means incomplete assessment or clarification,
+never silent truncation. Preserve the complete scene in storage.
 
-## Teacher providers
+## State, placement and cancellation
 
-`teacher.Teacher` is the provider boundary. All implementations support lesson
-streaming, evidence extraction, checkpoint generation, and assessment feedback.
+Planned states: saving -> preparing -> responding -> playing -> waiting -> done,
+with cancelled/failed exits. Clarification returns control to the learner. Initially
+allow one active interactive turn per session, with request idempotency.
 
-- `OpenAITeacher`: Responses API, base64 PNG `input_image`, streamed output
-  text deltas, medium reasoning for teaching and low reasoning for evidence.
-- `OllamaTeacher`: local Gemma 4 path; keeps the primitive/parser contract.
-- `CloudTeacher`: retained Google AI Studio compatibility path.
+Check relevant source revisions before applying actions. Referenced-work edits stop
+stale output; unrelated edits need not. Cancellation invalidates a turn locally
+immediately and propagates upstream. Keep completed model-authored work; discard
+pending actions/audio. Stream validated actions without buffering the full lesson.
+Layout code reserves response space and protects learner ink from model coordinates.
 
-The model registry prefers OpenAI when `OPENAI_API_KEY` is configured; otherwise
-the UI remains on `gemma4:e4b`. The toolbar does not hide the privacy boundary.
+## Visual and speech tools
 
-## SSE ordering
+Keep Excalidraw for ink/text/static diagrams; reuse KaTeX, primitive validation,
+renderer and player. Mermaid from the tutor converts to native Excalidraw elements.
+Interactive widgets are typed specs rendered through Excalidraw embeddables (fallback: a
+board-anchored overlay), with saved state, touch handling and an export fallback. Widgets
+derive their own numbers from small specs so the model cannot supply inconsistent data.
+No arbitrary generated HTML/JavaScript; sandboxed model-written sims are deferred. Slider
+calculations run locally. Generated images are illustrations only.
 
-`POST /lesson`:
+Transcription and synthesis are separate adapters. Start with push-to-talk and
+segmented speech with Stop/Continue; do not infer hosted TTS or full-duplex voice
+support from an ASR endpoint. Visible text remains usable when speech fails.
 
-```text
-token/primitive* -> educator_notes? -> learner_update -> learner_state -> checkpoint -> done
-```
+## Storage and scaling
 
-`POST /assess`:
+Retain immutable edit batches, expected-revision conflicts, materialized current
+scene, checkpoints, hashed assets and IndexedDB outbox. Existing limits: 5,000 live
+elements, 1 MiB batches, 2 MiB images, 32 MiB assets/session. Ordinary loads do not
+reconstruct full history. Preserve mixed authorship, imports and semantic metadata.
 
-```text
-evidence -> token/primitive* -> learner_state -> checkpoint -> done
-```
+Use maps/indexes and batched version checks. No inference or repeated full-scene
+serialization per stroke. Use short transactions, shared provider clients,
+DB-backed claims/budgets, bounded concurrency; never await inference in a transaction.
 
-Every stream may terminate with `error`. Frontend contracts are mirrored in
-`web/src/lib/types.ts`. The frontend applies `learner_state` directly and
-rejects any SSE or GET snapshot whose revision is older than the displayed one.
+Target deployment: Vercel web/proxy, Modal CPU API, shared Postgres, hosted models.
+Own GPUs and AWS are not prerequisites. SQLite is local-only. An asset interface
+allows object storage later without changing board records. Background jobs need
+shared leases, idempotency and recovery; in-memory tasks alone are not durable.
 
-## Speech boundary
+Before public deployment verify SSE/timeouts, cold starts, secure cookies, ownership,
+migrations and DB pools. Isolate legacy unowned learner endpoints. Guest identity is
+not cross-device account recovery. Retention and broader public-service hardening
+remain explicit release work; deployment/capacity is not yet verified.
 
-`api/speech.py` exposes only two identifiers. Moonshine's asset downloader is
-called only through an allowlisted Kokoro id. `prefetch_speech.py` loads both,
-rejects paths containing Piper, ZipVoice, or eSpeak, and writes hashes. WAV
-responses are cached by normalized text, voice, speed, and model version.
-The frontend owns one ordered narration queue, aborts stale voice prefetches,
-and preserves word-resume semantics when Heart/Michael changes.
+## Adaptation
 
-## Research data flow
+Before H5 keep `profile_updated=false`. H4 records observations (concept, dimension —
+recall, understand, apply, analyze, transfer — outcome, misconception, miss class,
+assistance, confidence). H5 consolidates once per finalized session: a deterministic
+reducer updates Beta beliefs per concept × dimension, recall half-lives and a misconception
+ledger; Muse Spark Open proposes teaching notes that must cite events. A ≤ 600-token brief
+is retrieved for the next session; `because` chips must cite brief ids. No per-stroke
+grading or online weight training. H10 uses GEPA offline on simulated-learner scenarios,
+promoting a versioned pedagogy policy only after held-out evaluation. Never silently mutate
+live tutor policy or original learner evidence.
 
-```mermaid
-flowchart LR
-    G["GSM8K MIT"] --> L["GPT-5.6-terra item labels"]
-    O["OpenBookQA Apache-2.0"] --> L
-    L --> SIM["Known-state learner simulator"]
-    SIM --> SPLIT["Learner + concept cluster + domain splits"]
-    SPLIT --> TRAIN["Mixed-precision global adapter training"]
-    TRAIN --> EVAL["Prequential ablations and calibration"]
-```
+## Study loop and progress representation
 
-ASSISTments is not part of this pipeline. It is optional research-only input
-under separate terms and must never be redistributed with the checkpoint.
+Use a small versioned topic-pack registry for concepts/propositions, scoped
+prerequisites, tasks, rubrics, verifiers, widgets and review-item templates. Broad
+explanations can work outside a pack; verified assessment coverage remains explicit.
 
-## Deferred SVG phase
+Short prediction/retrieval/exit questions capture original answers and assistance
+inside the board workflow. A session-end reflection is learner-reported evidence,
+not proof of mastery. Consolidation produces suggested teaching notes and due review
+items with provenance; retain actual timestamps to distinguish transfer from retention.
 
-The primitive renderer is unchanged for v2. The next paper phase can add native
-SVG generation and report DINO similarity, SVG structural validity, OCR/math
-equivalence, and graph-edit distance without confounding the learner-adaptation
-study.
+Expose the Constellation (3D concept map, lazy-loaded) and a review queue over existing
+records, not a separate graph database or ability-scoring service. Distinguish encountered, assisted,
+supported and unknown nodes. Open a node to its sources and next suggested task.
+Resume entry points list saved sessions and canvases; interrupted work is recoverable.
+
+The selected hackathon implementation, including deployment and verification, must
+finish by November 3 at 22:00 IST. The roadmap's dated gates govern scope; optional
+visuals/optimization must not consume the final integration block.

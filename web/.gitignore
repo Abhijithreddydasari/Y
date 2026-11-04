@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Local landing-page exploration (separate from the production app)
+/landing-lab/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

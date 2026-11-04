@@ -1,0 +1,84 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "api\\.venv\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "learning.app:app",
+        "--app-dir",
+        "api",
+        "--env-file",
+        ".env",
+        "--port",
+        "8111"
+      ],
+      "port": 8111
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_API_BASE=http://127.0.0.1:8111&& npm --prefix web run dev -- --port 3011"
+      ],
+      "port": 3011
+    },
+    {
+      "name": "web-h7",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_API_BASE=http://127.0.0.1:8112&& npm --prefix web run start -- -H 127.0.0.1 --port 3014"
+      ],
+      "port": 3014
+    },
+    {
+      "name": "api-h7",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_DATABASE_URL=sqlite:///C:/Users/abhij/AppData/Local/Temp/claude/C--Users-abhij-OneDrive-Desktop-Brain-Labs-Coding-Y/800ee9eb-978d-4ce4-a74e-7971e6d83abf/scratchpad/h7-journey.sqlite3&& api\\.venv\\Scripts\\python.exe -m uvicorn learning.app:app --app-dir api --env-file .env --port 8112"
+      ],
+      "port": 8112
+    },
+    {
+      "name": "api-h8",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_DATABASE_URL=sqlite:///C:/Users/abhij/AppData/Local/Temp/claude/C--Users-abhij-OneDrive-Desktop-Brain-Labs-Coding-Y/64745a01-6043-4503-bfdf-3f31593824dc/scratchpad/h8-journey.sqlite3&& api\\.venv\\Scripts\\python.exe -m uvicorn learning.app:app --app-dir api --env-file .env --port 8113"
+      ],
+      "port": 8113
+    },
+    {
+      "name": "web-h8",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_API_BASE=http://127.0.0.1:8113&& npm --prefix web run start -- --port 3015"
+      ],
+      "port": 3015
+    },
+    {
+      "name": "api-personas",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_DATABASE_URL=sqlite:///C:/Users/abhij/AppData/Local/Temp/claude/C--Users-abhij-OneDrive-Desktop-Brain-Labs-Coding-Y/eb5ec390-b9a7-4c7e-8fbd-7c3ad2ab3bd1/scratchpad/personas-journey.sqlite3&& api\\.venv\\Scripts\\python.exe -m uvicorn learning.app:app --app-dir api --env-file .env --port 8116"
+      ],
+      "port": 8116
+    },
+    {
+      "name": "web-personas",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "set LEARNING_API_BASE=http://127.0.0.1:8116&& npm --prefix web run start -- --port 3018"
+      ],
+      "port": 3018
+    }
+  ]
+}

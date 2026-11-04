@@ -85,3 +85,9 @@ tested; the user should confirm pinch and palm rejection there.
 - **Voice names (API).** The picker said Heart and Michael, "Kokoro", while Deepgram's Thalia and Apollo actually speak. With
   `DEEPGRAM_API_KEY` set it now names those. Ids are unchanged, so saved choices hold. Kokoro remains the fallback.
 - **Thinking bulb (web).** A small yellow bulb shakes beside "Thinking…" in the status line; still under reduced motion.
+
+## Logo: the Fold (web, board only)
+
+The user picked the Fold draft in `#FFC400` from the design canvas. `YMark.tsx` draws it: yellow on the dark Y button, ink on a
+yellow tile in the Mobile header and Classic toolbar. `app/app/icon.svg` is a dark tile for the `/app` browser tab. The landing
+page keeps its own logo and `favicon.ico`, as asked (checked: its HTML links only `favicon.ico`).

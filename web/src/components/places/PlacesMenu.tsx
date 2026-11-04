@@ -12,6 +12,7 @@ import TraceView, { preloadTrace } from "@/components/trace/TraceView";
 import type { useInterfaceMode } from "@/hooks/useInterfaceMode";
 import type { TutorSession } from "@/hooks/useTutorSession";
 import { firstName, usePersonas } from "@/lib/personas";
+import YMark from "@/components/YMark";
 
 type Place = "mind" | "canvases" | "review" | "trace" | "settings";
 
@@ -52,8 +53,8 @@ export default function PlacesMenu({ session, interfaceMode, variant = "studio" 
         // Studio: bottom-right corner, fanning left and up. Mobile: from the bottom bar, fanning up and right.
         from={variant === "mobile" ? -95 : 180} to={variant === "mobile" ? -15 : 270} radius={variant === "mobile" ? 150 : 132}
         className={variant === "mobile" ? "relative" : "fixed bottom-16 right-5"}
-        button={<span className="relative grid h-10 w-10 place-items-center rounded-full bg-slate-900 text-lg font-black text-amber-200">
-          Y{(fresh || due > 0) && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-amber-400" />}
+        button={<span className="relative grid h-10 w-10 place-items-center rounded-full bg-[#17140A]">
+          <YMark size={26} />{(fresh || due > 0) && <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-amber-400" />}
         </span>} />
       {place === "mind" && <MindView onClose={close} />}
       {place === "canvases" && <CanvasDialog onClose={close} onNew={tutor.newSession} />}

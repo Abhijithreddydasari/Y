@@ -1,6 +1,7 @@
 "use client";
 
 import { type ChangeEvent, useState } from "react";
+import YMark from "@/components/YMark";
 
 export type ModelChoice = "openai" | "edge" | "edge-ft" | "cloud";
 
@@ -78,7 +79,7 @@ export default function Toolbar({
     <div className="pointer-events-none absolute right-3 top-20 z-30 min-[1100px]:right-4 min-[1100px]:top-4">
       <div className="pointer-events-auto w-[260px] y-glass rounded-2xl p-3">
         <div className="flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber-400 font-black text-slate-950">Y</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#FFC400]"><YMark size={22} tone="ink" /></span>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-bold text-slate-950">Studio</p>
             <p className="truncate text-[11px] text-slate-500" aria-live="polite">{status}</p>

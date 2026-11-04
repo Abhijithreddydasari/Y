@@ -147,7 +147,7 @@ def build_event(out: Path, event: set[str]) -> None:
         listing = Path(folder, "paths.txt")
         listing.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         result = subprocess.run(["uvx", "git-filter-repo", "--force", "--paths-from-file", str(listing), "--prune-empty", "always",
-                                 "--prune-degenerate", "always"], cwd=out, capture_output=True, text=True)
+                                 "--prune-degenerate", "auto"], cwd=out, capture_output=True, text=True)
     if result.returncode:
         sys.exit(f"git-filter-repo failed:\n{result.stderr[-800:]}")
     git("branch", "-M", "main", cwd=out)

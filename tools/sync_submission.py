@@ -186,7 +186,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
-    if git("status", "--porcelain", "--", ".", ":!submission/foundation.json", ":!submission/.gitignore"):
+    if git("status", "--porcelain", "--", ".", ":!submission/foundation.json", ":!submission/.gitignore", ":!.claude"):
         sys.exit("Commit or set aside your changes first: the sync reads committed files only.")
     foundation, event = split_paths()
     base, tag = build_foundation(foundation)

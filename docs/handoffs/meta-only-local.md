@@ -70,9 +70,27 @@ extra (79 s setup, 90 MB venv); older assessor off unless selected; a voice that
 | Live | Muse Image | Call returned 200; illustration not inspected, it sat behind the question card |
 | Live | Every outgoing provider request (test-only log) | 7 of 7 to `api.meta.ai` or `inference.baseten.co` |
 
-The fresh copy fetched the foundation from this folder, since the tag was not pushed then. **Not run:** a clone from GitHub, macOS, Linux,
-a real microphone, heard audio, Review and Trace clicked through (their routes returned 200), and Canvases. Windows needed the SQLAlchemy
-workaround in the README.
+The table above fetched the foundation from this folder, before anything was pushed.
+
+### From GitHub, after pushing (2026-11-05)
+
+Clone of `ask-Y` with setup fetching the foundation tag from `Y`, and an env file holding only the two keys.
+
+| Kind | Check | Result |
+|---|---|---|
+| Setup | `npm run setup` | Exit 0, 40 s with uv and npm caches warm. All 75 foundation files match the tag byte for byte |
+| Mocked | Backend pytest; `npm test`; `tsc`; lint; build | 419 passed, 2 skipped; 195 passed; exit 0; exit 0; exit 0. Built CSS holds the board classes |
+| Live, browser | Question, wrong typed answer, label 4.1 s (incorrect 0.92, other 0.92), feedback, Trace, End session | Revision 1: an accurate active belief, strength 0.88, and 2 notes |
+| Live, browser | Canvases, Review warm-up, Mind, Try as Tomás (revision 7, 32 beliefs) | All worked; no API or web server errors |
+| Live, browser | Muse Image | Illustration rendered on the board |
+| Live | Every outgoing provider request | 7 of 7 to `api.meta.ai` or `inference.baseten.co` |
+
+**Found, not fixed:** text typed in the composer while a card is open always counts as the answer, though the placeholder says "or ask
+something else". A request typed during a warm-up was recorded as the answer. The labeler scored it unanswered at 0.95, so the learner
+model was not credited, but the tutor said "You remembered the key idea".
+
+**Not run:** macOS, Linux, a real microphone, heard audio, and real stylus ink. Windows on this laptop needed the SQLAlchemy workaround in
+the README. Speech-in was checked only before pushing, with a synthesized clip.
 
 ### Non-Meta paths
 

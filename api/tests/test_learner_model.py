@@ -102,6 +102,42 @@ def test_brief_cites_evidence_ranks_by_topic_and_stays_bounded():
     assert profile.compile_brief(None, {}, "anything") is None
 
 
+def test_a_focused_brief_holds_only_this_topic_and_names_the_rest():
+    mid = "stat.equipartition/kt-always"
+    items = [obs(concept="attention.softmax"), obs("incorrect", concept="stat.equipartition", misconception=mid, miss_class="discrimination")]
+    note = TeachingNote(text="Confront the equipartition idea next time.", cites=(items[1].observation_id,))
+    on_note = TeachingNote(text="Build on their softmax picture.", cites=(items[0].observation_id,))
+    rev, idx = profile.reduce(None, {}, items, S1, notes=[note, on_note])
+
+    off = profile.compile_brief(rev, idx, "Give me a graph so I can understand RoPE embeddings", now="2026-11-01T12:00:00Z", focused=True)
+    assert off.items == () and off.refs == frozenset()
+    assert off.other_concepts == ("attention.softmax", "stat.equipartition")
+    text = profile.render_brief(off)
+    assert "Nothing from earlier sessions is on this topic" in text and "kt" not in text and "Confront" not in text
+
+    on = profile.compile_brief(rev, idx, "How does softmax work?", now="2026-11-01T12:00:00Z", focused=True)
+    assert {i.concept for i in on.items} == {"attention.softmax", None}
+    assert [i.text for i in on.items if i.kind == "note"] == ["Build on their softmax picture."]  # through its citation
+    assert on.other_concepts == ("stat.equipartition",)
+
+
+def test_a_turn_continues_or_starts_a_topic():
+    from learning.tutor_router import current_topic
+    rope = {"kind": "question", "status": "done", "input": {"text": "Explain RoPE embeddings"}}
+    failed = {"kind": "question", "status": "failed", "input": {"text": "What is entropy?"}}
+    assert current_topic([], "Explain RoPE embeddings") == ("Explain RoPE embeddings", None)
+    for follow_up in ("Can you give me a graph?", "And the heads?", "Why is it sinusoidal?", ""):
+        assert current_topic([rope, failed], follow_up) == ("Explain RoPE embeddings", "Explain RoPE embeddings")
+    assert current_topic([rope], "How does photosynthesis work?") == ("How does photosynthesis work?", None)
+    assert current_topic([], "Can you give me a graph?") == ("", None)
+
+
+def test_request_words_are_not_a_subject():
+    assert profile.subject_words("Can you give me a graph please?") == set()
+    assert profile.subject_words("Answer the question I wrote on the board. If it shows my working, check it step by step.") == set()
+    assert profile.subject_words("RoPE embeddings") == {"rope", "embedding"}
+
+
 def test_brief_marks_due_recall_and_respects_the_budget():
     rev, idx = profile.reduce(None, {}, [obs(), obs(), obs()], S1)
     due = profile.compile_brief(rev, idx, "softmax", now="2026-11-05T00:00:00Z")

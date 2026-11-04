@@ -153,7 +153,8 @@ FOLLOW_UP = {
 }
 
 
-def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None, concept: str | None = None) -> dict:
+def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None, concept: str | None = None,
+              continues: str | None = None) -> dict:
     if turn.kind == "exit":
         return {"kind": "exit_ticket", "concept": concept,
                 "instruction": "The learner is ending the session. Write ONE short segment (a seg and at most one "
@@ -162,8 +163,10 @@ def this_turn(turn: TurnInput, question: dict | None, outcome: dict | None, conc
                                "Reuse that concept id. No teaching beyond one sentence."}
     if turn.kind == "question":
         value = {"kind": "question", "text": turn.text.strip()}
+        if continues:
+            value["continues_question"] = continues
         if question:
-            value["note"] = f"The open question was not answered: {question['q']}"
+            value["note"] = f"The learner left this open question unanswered; do not return to it: {question['q']}"
         return value
     value = {"kind": "answer", "question": {k: question[k] for k in ("kind", "q", "options", "key")},
              "learner_answer": outcome["answer"], "confidence": turn.confidence, "result": outcome["result"]}

@@ -90,6 +90,8 @@ class LearnerBrief(Contract):
     topic: str = Field(min_length=1, max_length=160)
     profile_revision: int = Field(ge=0)
     items: tuple[BriefItem, ...] = Field(max_length=24)
+    # Names of concepts studied on other topics: for reusing their ids, never teaching material.
+    other_concepts: tuple[str, ...] = Field(default=(), max_length=60)
 
     @model_validator(mode="after")
     def bounded(self):

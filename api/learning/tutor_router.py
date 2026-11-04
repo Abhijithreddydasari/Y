@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from uuid import UUID
 
@@ -44,6 +45,9 @@ MESSAGES = {
     "provider_output_truncated": "The explanation was cut short. What was drawn is kept; ask again to continue.",
 }
 FALLBACK = "The tutor is unavailable right now. Your question and board are kept; ask again."
+# A short question opening on a connective or pointing back with a pronoun continues the topic before it.
+_FOLLOW_UP = re.compile(r"^\s*(and|also|but|so|then|ok|okay)\b|\b(it|its|that|this|these|those|they|them)\b", re.I)
+FOLLOW_UP_WORDS = 10
 
 
 def get_tutor_store(store=Depends(get_store)):
@@ -88,17 +92,27 @@ class HintInput(Contract):
     level: int = Field(ge=1, le=2)
 
 
-def session_brief(profiles, owner: str, sid: str, topic: str) -> tuple[LearnerBrief | None, bool]:
-    """(brief for this turn, memory on). The session's first brief stands; Memory off reads nothing."""
+def current_topic(history: list[dict], text: str = "") -> tuple[str, str | None]:
+    """(what this turn is about, the earlier question it continues). A question naming a subject starts its own topic;
+    "give me a graph", "and the heads?", "why is it sinusoidal?" and answers continue the latest one that named one."""
+    earlier = next((t["input"].get("text", "") for t in reversed(history) if t["kind"] == "question"
+                    and t["status"] != "failed" and profile.subject_words(t["input"].get("text", ""))), "")
+    if profile.subject_words(text) and not (earlier and _FOLLOW_UP.search(text) and len(text.split()) <= FOLLOW_UP_WORDS):
+        return text, None
+    return earlier, earlier or None
+
+
+def session_brief(profiles, owner: str, sid: str, topic: str, fresh: bool = False) -> tuple[LearnerBrief | None, bool]:
+    """(brief for this turn, memory on). A new topic compiles its own brief; Memory off reads nothing."""
     state = profiles.memory(owner, sid)
     if state["status"] != "open":
         raise StoreError(409, "session_closed")
     if not state["memory"]:
         return None, False
-    if state["brief"]:
+    if state["brief"] and not fresh:
         return LearnerBrief.model_validate(state["brief"]), True
     revision, index = profiles.latest(owner)
-    brief = profile.compile_brief(revision, index, topic)
+    brief = profile.compile_brief(revision, index, topic, focused=True)
     if brief is not None:
         profiles.keep_brief(sid, brief)
         brief = LearnerBrief.model_validate(profiles.memory(owner, sid)["brief"])
@@ -406,9 +420,8 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
     if not tutor.configured and body.kind != "review":
         raise HTTPException(503, "tutor_not_configured")
     history = await call_store(store.history, owner, str(sid))
-    topic = body.text if body.kind == "question" else next((t["input"].get("text", "") for t in history
-                                                             if t["kind"] == "question"), "")
-    brief, memory_on = await call_store(session_brief, profiles, owner, str(sid), topic)
+    topic, continues = current_topic(history, body.text if body.kind == "question" else "")
+    brief, memory_on = await call_store(session_brief, profiles, owner, str(sid), topic, body.kind == "question" and not continues and bool(topic))
     question = open_question(history)
     if body.kind == "answer" and (question is None or question["qid"] != body.question_id):
         raise HTTPException(409, "tutor_question_not_open")
@@ -443,7 +456,7 @@ async def turn(sid: UUID, body: TurnInput, request: Request, owner=Depends(requi
                     sent.append(crop.model_dump(mode="json"))
         await call_store(store.reserve, owner)
         messages = build_messages(profile.render_brief(brief), session_memory(history), board_focus(packet),
-                                  this_turn(body, question, outcome, concept), images)
+                                  this_turn(body, question, outcome, concept, continues), images)
         run = TurnRun(tutor, messages, TurnValidator(brief.refs if brief else frozenset(), len(images)),
                       reserve=lambda: call_store(store.reserve, owner), started=started)
         run.timing["context_ms"] = (time.perf_counter() - started) * 1000

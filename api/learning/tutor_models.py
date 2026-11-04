@@ -38,6 +38,8 @@ OPTIONS: tuple[TutorOption, ...] = (
 DEFAULT_OPTION = OPTIONS[0]
 _BY_ID = {option.id: option for option in OPTIONS}
 VOICE_OPTIONS = (("kokoro_af_heart", "Heart", "Kokoro, warm"), ("kokoro_am_michael", "Michael", "Kokoro, calm"))
+# With Deepgram configured, these two ids speak with Aura first (voice_router.AURA_VOICES); Kokoro is only the fallback.
+HOSTED_VOICES = {"kokoro_af_heart": ("Thalia", "Warm and clear"), "kokoro_am_michael": ("Apollo", "Calm and steady")}
 
 
 class OptionUnavailable(ValueError):
@@ -78,8 +80,10 @@ def tutor_options() -> list[dict]:
 def voice_options(engine) -> list[dict]:
     ready = bool(engine and engine.available)
     reason = None if ready else "Kokoro is not installed on this server"
+    hosted = os.environ.get("DEEPGRAM_API_KEY", "").strip()
+    named = [(vid, *HOSTED_VOICES[vid]) if hosted else (vid, label, note) for vid, label, note in VOICE_OPTIONS]
     voices = [{"id": vid, "label": label, "note": note, "default": vid == "kokoro_af_heart", "available": ready,
-               "reason": reason} for vid, label, note in VOICE_OPTIONS]
+               "reason": reason} for vid, label, note in named]
     return voices + [{"id": "browser", "label": "Browser voice", "note": "Instant, sounds robotic", "default": False,
                       "available": True, "reason": None},
                      {"id": "off", "label": "Off", "note": "Captions only", "default": False, "available": True,

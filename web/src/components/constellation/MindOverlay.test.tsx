@@ -83,6 +83,51 @@ describe("MindOverlay", () => {
     expect(localStorage.getItem("y_mind_theme")).toBe("light");
   });
 
+  it("counts neurons by state in chips that filter the map, with the rarer marks behind the ?", async () => {
+    stillMotion(true);
+    serve(HISTORY);
+    render(<MindOverlay onClose={() => {}} />);
+    const neuron = await screen.findByRole("button", { name: "Softmax" });
+    const wrong = screen.getByRole("button", { name: "Wrong belief 1" });
+    expect(screen.getByRole("button", { name: "Solid 0" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Solid 0" }));
+    expect(neuron).toHaveAttribute("opacity", "0.14");
+    fireEvent.click(wrong);
+    expect(wrong).toHaveAttribute("aria-pressed", "true");
+    expect(neuron).toHaveAttribute("opacity", "1");
+    expect(screen.queryByRole("group", { name: "What the other marks mean" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "What the other marks mean" }));
+    expect(screen.getByRole("group", { name: "What the other marks mean" })).toHaveTextContent("Gold ring: wrong belief fixed");
+  });
+
+  it("finds a concept, and Escape clears the search before it closes the map", async () => {
+    stillMotion(true);
+    serve(HISTORY);
+    const onClose = vi.fn();
+    render(<MindOverlay onClose={onClose} />);
+    const neuron = await screen.findByRole("button", { name: "Softmax" });
+    const search = screen.getByRole("textbox", { name: "Find a concept" });
+    fireEvent.change(search, { target: { value: "zzz" } });
+    expect(neuron).toHaveAttribute("opacity", "0.14");
+    fireEvent.change(search, { target: { value: "SOFT" } });
+    expect(neuron).toHaveAttribute("opacity", "1");
+    fireEvent.keyDown(search, { key: "Escape" });
+    expect(search).toHaveValue("");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("explains a state in plain words, offers what changed, and has no full-screen button", async () => {
+    stillMotion(true);
+    serve(HISTORY);
+    render(<MindOverlay onClose={() => {}} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Softmax" }));
+    expect(await screen.findByRole("complementary", { name: "Softmax evidence" })).toHaveTextContent("A wrong idea keeps showing up in the answers here.");
+    expect(screen.queryByRole("button", { name: "Full screen" })).toBeNull();
+    const changed = screen.getByRole("button", { name: /changed last session/ });
+    fireEvent.click(changed);
+    expect(changed).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("closes on Escape", async () => {
     stillMotion(true);
     serve(HISTORY);

@@ -91,3 +91,17 @@ tested; the user should confirm pinch and palm rejection there.
 The user picked the Fold draft in `#FFC400` from the design canvas. `YMark.tsx` draws it: yellow on the dark Y button, ink on a
 yellow tile in the Mobile header and Classic toolbar. `app/app/icon.svg` is a dark tile for the `/app` browser tab. The landing
 page keeps its own logo and `favicon.ico`, as asked (checked: its HTML links only `favicon.ico`).
+
+## Mind: legend, search, what changed (web)
+
+Agreed on the design canvas. Chips above the footer count neurons by state and filter the map; the rarer marks sit behind a `?`.
+"Find a concept" narrows the map and flies there at 3 matches or fewer; Escape clears it before closing Mind. The footer's "N
+changed" is now a button that lights those neurons. The evidence sheet opens with the state in plain words. Filters dim neurons
+only: synapses, spikes and replay are unchanged, as asked. The header lost its hint line and revision number.
+
+**Full-screen button removed.** On the live site the request neither resolved nor rejected in the in-app browser, leaving a dead
+button with no feedback; that may be specific to that embedded view. Mind already fills the window, so the button only hid the
+browser's own bars.
+
+**Browser (1280×800, local web, sample map, 3D view):** chips with counts, filter dims and labels matching neurons, `?` key,
+"2 changed" button, no full-screen button. Not run: Mobile width, Paper theme by eye, search fly-to by eye (tested with mocks).

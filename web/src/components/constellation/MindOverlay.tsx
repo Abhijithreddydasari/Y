@@ -4,12 +4,12 @@
 // and closing it unmounts the scene, so it never renders behind ink.
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import type { ProfileHistory } from "@/lib/learner-contracts";
+import type { NodeState, ProfileHistory } from "@/lib/learner-contracts";
 import { LEARNING_DIMENSIONS } from "@/lib/learner-contracts";
 import { blend, fromHistory, type MindFrame, type MindLink, type MindMap, type MindNode } from "./map-model";
 import type { Level, MindControl } from "./MindScene";
 import MindStatic from "./MindStatic";
-import { CHROME, PALETTES, STATE_WORDS, THEME_KEY, valueColor, type MindTheme, type Palette } from "./palette";
+import { CHROME, PALETTES, STATE_MEANINGS, STATE_WORDS, THEME_KEY, stateColor, valueColor, type MindTheme, type Palette } from "./palette";
 import { sampleMap } from "./sample";
 import { SEEN_KEY } from "./seen";
 
@@ -19,6 +19,12 @@ const REPLAY_MS = 4500;
 // Notes sometimes quote the observation id they cite; the learner sees "that answer" instead.
 const UUID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
 const DIM_WORDS = ["Recall", "Understand", "Apply", "Analyze", "Transfer"];
+/** The legend's chips: a count of the learner's neurons in each state, and a filter. */
+const CHIPS: { state: NodeState; name: string }[] = [
+  { state: "solid", name: "Solid" }, { state: "learning", name: "Learning" }, { state: "shaky", name: "Shaky" }, { state: "misconception", name: "Wrong belief" },
+];
+/** Search flies to its matches only when they are few enough to be what the learner meant. */
+const FLY_TO_MATCHES = 3;
 
 function prefersStill() {
   if (typeof window === "undefined") return false;
@@ -59,7 +65,7 @@ function Sheet({ node, frame, map, palette, onClose }: { node: MindNode; frame: 
   const events = node.evidence.map((id) => map.events[id]).filter(Boolean).slice(-4).reverse();
   const other = (l: MindLink) => frame.nodes[l.source === node.id ? l.target : l.source]?.label ?? (l.source === node.id ? l.target : l.source);
   return (
-    <aside aria-label={`${node.label} evidence`} className="pointer-events-auto absolute bottom-[76px] right-3 top-[76px] w-[min(300px,calc(100%-24px))] overflow-y-auto rounded-2xl border border-[var(--mind-line)] bg-[var(--mind-glass)] p-4 text-[12px] text-[var(--mind-muted)] shadow-2xl backdrop-blur-xl">
+    <aside aria-label={`${node.label} evidence`} className="pointer-events-auto absolute bottom-[124px] right-3 top-[76px] w-[min(300px,calc(100%-24px))] overflow-y-auto rounded-2xl border border-[var(--mind-line)] bg-[var(--mind-glass)] p-4 text-[12px] text-[var(--mind-muted)] shadow-2xl backdrop-blur-xl">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="text-[16px] font-semibold text-[var(--mind-text)]">{node.label}</h3>
@@ -67,6 +73,7 @@ function Sheet({ node, frame, map, palette, onClose }: { node: MindNode; frame: 
         </div>
         <button type="button" onClick={onClose} aria-label="Close evidence" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--mind-line)] text-[var(--mind-text-2)]">✕</button>
       </div>
+      <p className="mt-3 rounded-xl bg-[var(--mind-track)] px-3 py-2 text-[var(--mind-text)]">{STATE_MEANINGS[node.state]}</p>
       <div className="mt-3 space-y-1.5">
         {LEARNING_DIMENSIONS.map((d, i) => {
           const v = node.dims[i];
@@ -124,22 +131,12 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
   const [level, setLevel] = useState<Level>("brain");
   const [still] = useState(prefersStill);
   const [theme, setTheme] = useState<MindTheme>(initialTheme);
-  const [full, setFull] = useState(false);
-  const [fullBlocked, setFullBlocked] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState<NodeState | null>(null);
+  const [query, setQuery] = useState("");
+  const [showChanged, setShowChanged] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const palette = PALETTES[theme];
   const switchTheme = () => setTheme((t) => { const next = t === "dark" ? "light" : "dark"; try { localStorage.setItem(THEME_KEY, next); } catch { /* storage blocked */ } return next; });
-  const canFull = typeof document !== "undefined" && !!document.documentElement.requestFullscreen;
-  const toggleFull = () => {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
-    // Embedded views (iframes, app panes) may refuse; then the button goes away rather than doing nothing.
-    else void root.current?.requestFullscreen?.().catch(() => setFullBlocked(true));
-  };
-  useEffect(() => {
-    const sync = () => setFull(document.fullscreenElement === root.current);
-    document.addEventListener("fullscreenchange", sync);
-    return () => { document.removeEventListener("fullscreenchange", sync); if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}); };
-  }, []);
   const labels = useRef<Record<string, HTMLElement | null>>({});
   const regionLabels = useRef<Record<string, HTMLElement | null>>({});
   const control = useRef<MindControl | null>(null);
@@ -198,9 +195,27 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
   }, [map, k, u]);
   const order = useMemo(() => (frame ? Object.values(frame.nodes).sort((a, b) => a.region.localeCompare(b.region) || a.label.localeCompare(b.label)).map((n) => n.id) : []), [frame]);
 
+  // What a filter, search or the "changed" button keeps lit. Null means nothing is narrowing the map.
+  const asked = query.trim().toLowerCase();
+  const changedIds = map?.frames[k]?.changed;
+  const focus = useMemo(() => {
+    if (!frame || (!filter && !asked && !showChanged)) return null;
+    const changed = new Set(changedIds);
+    return new Set(Object.values(frame.nodes).filter((n) => (!filter || n.state === filter)
+      && (!asked || n.label.toLowerCase().includes(asked)) && (!showChanged || changed.has(n.id))).map((n) => n.id));
+  }, [frame, filter, asked, showChanged, changedIds]);
+  // A search narrow enough to mean something flies there.
+  const flyTo = asked && focus && focus.size > 0 && focus.size <= FLY_TO_MATCHES ? [...focus].sort().join("|") : "";
+  useEffect(() => { if (flyTo) control.current?.frame(flyTo.split("|")); }, [flyTo]);
+  const counts = useMemo(() => {
+    const out: Partial<Record<NodeState, number>> = {};
+    for (const n of Object.values(frame?.nodes ?? {})) out[n.state] = (out[n.state] ?? 0) + 1;
+    return out;
+  }, [frame]);
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { if (document.fullscreenElement) return; e.preventDefault(); if (selected) setSelected(null); else onClose(); }
+      if (e.key === "Escape") { e.preventDefault(); if (selected) setSelected(null); else onClose(); }
       else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && order.length && !(e.target instanceof HTMLInputElement)) {
         e.preventDefault();
         const i = selected ? order.indexOf(selected) : -1;
@@ -215,11 +230,11 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
   const last = map ? map.frames.length - 1 : 0;
   const shown = map?.frames[k];
   return (
-    <div ref={root} role="dialog" aria-modal="true" aria-label="Mind" style={CHROME[theme] as CSSProperties} data-theme={theme} className="pointer-events-auto fixed inset-0 z-[1000] overflow-hidden bg-[var(--mind-bg)] text-[var(--mind-text)]" data-mind-map>
+    <div role="dialog" aria-modal="true" aria-label="Mind" style={CHROME[theme] as CSSProperties} data-theme={theme} className="pointer-events-auto fixed inset-0 z-[1000] overflow-hidden bg-[var(--mind-bg)] text-[var(--mind-text)]" data-mind-map>
       <div className="absolute inset-0">
         {state === "ready" && map && frame && (still
-          ? <MindStatic map={map} frame={frame} selected={selected} onSelect={setSelected} palette={palette} />
-          : <MindScene key={theme} palette={palette} map={map} frame={frame} replay={u == null || !shown ? null : { path: shown.path, u }} selected={selected}
+          ? <MindStatic map={map} frame={frame} selected={selected} onSelect={setSelected} palette={palette} focus={focus} />
+          : <MindScene key={theme} palette={palette} map={map} frame={frame} focus={focus} replay={u == null || !shown ? null : { path: shown.path, u }} selected={selected}
               onSelect={setSelected} onLevel={setLevel} labels={labels} regionLabels={regionLabels} control={control} />)}
         {state === "loading" && <p className="absolute inset-0 grid place-items-center text-sm text-[var(--mind-muted)]">Loading your map…</p>}
         {state === "error" && (
@@ -249,26 +264,48 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
       )}
       <header className="absolute inset-x-3 top-3 flex h-12 items-center gap-2 rounded-2xl border border-[var(--mind-line)] bg-[var(--mind-glass)] px-3 backdrop-blur-xl">
         <span className="whitespace-nowrap text-[15px] font-semibold">Mind</span>
-        {shown && <span className="rounded-full border border-[var(--mind-line)] px-2.5 py-0.5 text-[12px] text-[var(--mind-muted)] whitespace-nowrap"><span className="hidden sm:inline">Session {k + 1} · </span>revision {shown.revision}</span>}
+        {shown && <span className="hidden rounded-full border border-[var(--mind-line)] px-2.5 py-0.5 text-[12px] text-[var(--mind-muted)] whitespace-nowrap sm:inline">Session {k + 1}</span>}
         {map?.sample && <span className="rounded-full bg-[var(--mind-good-bg)] px-2.5 py-0.5 text-[12px] text-[var(--mind-good)]">Sample</span>}
         {!still && <span className="hidden rounded-full border border-[var(--mind-line)] px-2.5 py-0.5 text-[12px] text-[var(--mind-muted)] sm:inline">{level === "brain" ? "Whole brain" : level === "region" ? "Region" : "Neurons"}</span>}
         <span className="flex-1" />
-        <span className="hidden text-[12px] text-[var(--mind-faint)] md:inline">{still ? "Tap a neuron for its evidence" : "Scroll to zoom · drag to turn · tap a region or neuron"}</span>
+        <label className="flex h-9 min-w-0 flex-[0_1_260px] items-center gap-1.5 rounded-lg border border-[var(--mind-line)] px-2.5">
+          <svg aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="shrink-0 text-[var(--mind-muted)]"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></svg>
+          <input aria-label="Find a concept" placeholder="Find a concept" value={query} onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } }}
+            className="w-full min-w-0 bg-transparent text-[13px] text-[var(--mind-text)] outline-none placeholder:text-[var(--mind-muted)]" />
+        </label>
         <button type="button" onClick={switchTheme} aria-label={theme === "dark" ? "Switch to light (paper) theme" : "Switch to dark theme"} title={theme === "dark" ? "Paper" : "Night"} className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--mind-line)]">
           {theme === "dark"
             ? <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></svg>
             : <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" /></svg>}
         </button>
-        {canFull && !fullBlocked && (
-          <button type="button" onClick={toggleFull} aria-label={full ? "Exit full screen" : "Full screen"} title={full ? "Exit full screen" : "Full screen"} className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--mind-line)]">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              {full ? <path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /> : <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />}
-            </svg>
-          </button>
-        )}
         <button ref={closeRef} type="button" onClick={onClose} aria-label="Close Mind" className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--mind-line)]">✕</button>
       </header>
       {node && frame && map && <Sheet node={node} frame={frame} map={map} palette={palette} onClose={() => setSelected(null)} />}
+      {showKey && (
+        <div role="group" aria-label="What the other marks mean" className="absolute bottom-[116px] left-3 grid w-[min(290px,calc(100%-24px))] grid-cols-[22px_minmax(0,1fr)] items-center gap-2 rounded-2xl border border-[var(--mind-line)] bg-[var(--mind-glass)] p-3 text-[12px] text-[var(--mind-text-2)] backdrop-blur-xl">
+          <span className="h-3 w-3 rounded-full border-2" style={{ borderColor: palette.resolved }} /><span>Gold ring: wrong belief fixed</span>
+          <span className="h-3 w-3 rounded-full border-2 border-dashed" style={{ borderColor: palette.learning }} /><span>Dashed: early read, few answers</span>
+          <span className="h-3 w-3 rounded-full" style={{ background: palette.unseen }} /><span>Grey: not practised yet</span>
+          <span className="h-0.5" style={{ background: palette.synapse }} /><span>Violet line: one idea built on another</span>
+          <span className="h-0.5" style={{ background: palette.misfire }} /><span>Red line: two ideas mixed up</span>
+        </div>
+      )}
+      {map && frame && (
+        <div role="group" aria-label="Filter by state" className="absolute inset-x-3 bottom-[68px] flex flex-wrap items-center gap-1.5">
+          {CHIPS.map((c) => (
+            <button key={c.state} type="button" aria-pressed={filter === c.state} title={`${STATE_MEANINGS[c.state]} Press to show only these.`}
+              onClick={() => setFilter(filter === c.state ? null : c.state)}
+              className={`flex min-h-10 items-center gap-1.5 rounded-full border bg-[var(--mind-glass)] px-3 text-[12px] backdrop-blur-xl ${filter === c.state ? "border-[var(--mind-text)]" : "border-[var(--mind-line)]"}`}>
+              <span aria-hidden="true" className="h-2.5 w-2.5 rounded-full" style={c.state === "misconception"
+                ? { background: stateColor(c.state, palette), outline: `2px solid ${palette.misconception}` } : { background: stateColor(c.state, palette) }} />
+              {c.name} <span className="text-[var(--mind-muted)]">{counts[c.state] ?? 0}</span>
+            </button>
+          ))}
+          <button type="button" aria-label="What the other marks mean" aria-pressed={showKey} onClick={() => setShowKey(!showKey)}
+            className="grid h-10 w-10 place-items-center rounded-full border border-[var(--mind-line)] bg-[var(--mind-glass)] text-[14px] backdrop-blur-xl">?</button>
+        </div>
+      )}
       {map && (
         <footer className="absolute inset-x-3 bottom-3 flex h-12 items-center gap-2 rounded-2xl border border-[var(--mind-line)] bg-[var(--mind-glass)] px-2 backdrop-blur-xl">
           {!still && <>
@@ -278,7 +315,12 @@ export default function MindOverlay({ onClose }: { onClose(): void }) {
           </>}
           <input type="range" min={0} max={last} step={1} value={k} disabled={last < 1} aria-label="Revision"
             onChange={(e) => { cancelAnimationFrame(raf.current); setU(null); setK(Number(e.target.value)); }} className="min-w-0 flex-1 accent-[var(--mind-accent)]" />
-          <span className="hidden min-w-[150px] text-right text-[12px] text-[var(--mind-muted)] sm:inline" aria-live="polite">{u != null ? "Replaying…" : shown ? `After session ${k + 1}${shown.changed.length ? ` · ${shown.changed.length} changed` : ""}` : ""}</span>
+          {u == null && shown && shown.changed.length > 0
+            ? <button type="button" aria-pressed={showChanged} onClick={() => setShowChanged(!showChanged)}
+                className={`h-9 shrink-0 whitespace-nowrap rounded-lg border border-[var(--mind-line)] px-3 text-[12px] ${showChanged ? "bg-[var(--mind-good-bg)] text-[var(--mind-good)]" : "text-[var(--mind-text-2)]"}`}>
+                {shown.changed.length} changed {k === last ? "last session" : `in session ${k + 1}`}
+              </button>
+            : <span className="hidden min-w-[110px] text-right text-[12px] text-[var(--mind-muted)] sm:inline" aria-live="polite">{u != null ? "Replaying…" : shown ? `After session ${k + 1}` : ""}</span>}
         </footer>
       )}
     </div>

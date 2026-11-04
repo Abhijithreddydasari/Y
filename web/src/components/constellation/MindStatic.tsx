@@ -17,8 +17,8 @@ function project(p: Vec3): [number, number, number] {
   return [W / 2 + x * s * k, H / 2 - y * s * k, s];
 }
 
-export default function MindStatic({ map, frame, selected, onSelect, palette: p = PALETTES.dark }: {
-  map: MindMap; frame: MindFrame; selected: string | null; onSelect(id: string): void; palette?: Palette;
+export default function MindStatic({ map, frame, selected, onSelect, palette: p = PALETTES.dark, focus = null }: {
+  map: MindMap; frame: MindFrame; selected: string | null; onSelect(id: string): void; palette?: Palette; focus?: ReadonlySet<string> | null;
 }) {
   const placed = useMemo(() => layout(map), [map]);
   const dots = useMemo(() => {
@@ -49,6 +49,7 @@ export default function MindStatic({ map, frame, selected, onSelect, palette: p 
         const halo = n.misconceptions.find((m) => m.status === "active") ?? n.misconceptions.find((m) => m.status === "suspected") ?? n.misconceptions[0];
         return (
           <g key={n.id} role="button" tabIndex={0} aria-label={`${n.label}${selected === n.id ? ", selected" : ""}`} data-node={n.id}
+            opacity={focus && !focus.has(n.id) ? 0.14 : 1}
             onClick={() => onSelect(n.id)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(n.id); } }}
             className="cursor-pointer outline-none [&:focus-visible>circle.focus]:opacity-100">
             {n.dims.map((v, i) => {

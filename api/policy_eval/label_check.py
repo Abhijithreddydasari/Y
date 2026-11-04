@@ -102,15 +102,16 @@ async def run_case(case, store, labeler, owner, sid, sem) -> dict:
     if row is None:
         return {"id": case["id"], "group": case["group"], "error": "not_pending"}
     state, asked = observations.label_request(row, [], case.get("earlier"))
-    started = time.perf_counter()
     try:
         async with sem:
+            started = time.perf_counter()  # the provider call alone, not the wait for a slot
             response, _raw = await labeler.label(state, asked)
+            elapsed = time.perf_counter() - started
     except (ProviderFailure, TimeoutError) as exc:
         return {"id": case["id"], "group": case["group"], "error": getattr(exc, "code", type(exc).__name__)}
     observation, trace, _ = observations.merge_labels(row, response, labeler.provider_name)
     return {**score_case(case, observation, trace["fields"], trace["distributions"]),
-            "ms": round((time.perf_counter() - started) * 1000), "usage": trace["usage"]}
+            "ms": round(elapsed * 1000), "usage": trace["usage"]}
 
 
 NAMING_POSITIVE, NAMING_NEGATIVE = ("d1", "d2", "d3", "d4", "d5", "d6"), ("e1", "e2", "e3", "e4", "i1", "i2")

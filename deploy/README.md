@@ -34,18 +34,18 @@ Create `deploy\.env.modal`. The file is git-ignored; never commit it. Put these 
 ```text
 MODEL_API_KEY=
 BASETEN_API_KEY=
-OPENAI_API_KEY=
 DEEPGRAM_API_KEY=
 LEARNING_DATABASE_URL=
 LEARNING_PROXY_SECRET=
-EVIDENCE_LABEL_PROVIDER=openai
 META_MODEL=muse-spark-1.3
 DECISION_PROVIDER=
 BASETEN_DECISION_MODEL=
 ```
 
 Copy `DECISION_PROVIDER` and `BASETEN_DECISION_MODEL` from your local `.env` if you set them there; otherwise
-leave them out. Then create the secret:
+leave them out. Evidence labels use Muse Spark Open on `BASETEN_API_KEY` by default, so leave out
+`EVIDENCE_LABEL_PROVIDER` and `OPENAI_API_KEY`: a leftover `EVIDENCE_LABEL_PROVIDER=openai` still selects OpenAI.
+Then create the secret:
 
 ```bat
 python -m modal secret create y-learning --from-dotenv deploy\.env.modal

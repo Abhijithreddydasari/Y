@@ -129,7 +129,9 @@ def test_provider_is_selected_explicitly_from_the_environment(monkeypatch):
     for name in ("EVIDENCE_LABEL_PROVIDER", "EVIDENCE_LABEL_MODEL", "OPENAI_BASE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("OPENAI_API_KEY", "sk-x")
-    assert isinstance(evidence_labeler(), BasetenEvidenceLabeler)  # default unchanged
+    assert not isinstance(evidence_labeler(), OpenAIEvidenceLabeler)  # a key alone never selects a non-Meta labeler
+    monkeypatch.setenv("EVIDENCE_LABEL_PROVIDER", "baseten")
+    assert isinstance(evidence_labeler(), BasetenEvidenceLabeler)
     monkeypatch.setenv("EVIDENCE_LABEL_PROVIDER", "openai")
     chosen = evidence_labeler()
     assert isinstance(chosen, OpenAIEvidenceLabeler) and chosen.configured and chosen.model == "gpt-6-luna"

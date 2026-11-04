@@ -31,7 +31,7 @@ export async function fetchTrace(session: string, signal?: AbortSignal): Promise
 
 const NAMES: [RegExp, string][] = [
   [/muse-spark-open/, "Muse Spark Open"], [/muse-spark-1\.3/, "Muse Spark 1.3"], [/muse-spark-1\.2/, "Muse Spark 1.2"],
-  [/muse-image/, "Muse Image"], [/gpt-6-luna/, "OpenAI Decisions"], [/elephant/, "Baseten Elephant"],
+  [/muse-spark-1\.1/, "Muse Spark 1.1"], [/muse-image/, "Muse Image"], [/gpt-6-luna/, "OpenAI Decisions"], [/elephant/, "Baseten Elephant"],
 ];
 
 /** A judge-readable model name: "Muse Spark 1.3 · minimal". */

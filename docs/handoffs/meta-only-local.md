@@ -5,7 +5,7 @@ Branch `feature/meta-only-local`, cut from `main` at `543d991`. Not pushed, not 
 ## Part 1: Meta evidence labeler (done)
 
 Default labeler is now Muse Spark Open at `reasoning_effort=minimal`, on `BASETEN_API_KEY`, with no setting needed. The wiring is
-kept: `EVIDENCE_LABEL_PROVIDER` also takes `meta` (Muse Spark on `MODEL_API_KEY`), and `openai` and `baseten` stay opt-in. No
+kept: `EVIDENCE_LABEL_PROVIDER` also takes `meta` (Muse Spark on `MODEL_API_KEY`), and `baseten` stays opt-in. The OpenAI labeler was later removed (below). No
 fallback between providers. Full measurements: [report](../reports/meta-labeler.md).
 
 **Provider timeout is 15 s** for this labeler (8 s for the others); the rest of the limits are unchanged.
@@ -123,3 +123,15 @@ the README. Speech-in was checked only before pushing, with a synthesized clip.
 | `policy_eval` cross-judge | `gpt-6-luna` | Offline only, never the app | Left. H10's gate used the Spark Open judge; the OpenAI score was a cross-check |
 | `main.py`, `learner.py`, training, `modal_app.py`, `modal_demo.py`, `modal_train_learner.py` | Ollama, OpenAI, Google | Not in `ask-Y` | Remain in `Y` only |
 | `deploy/modal_learning.py` production secret | `EVIDENCE_LABEL_PROVIDER=openai` | Production only | User action, above |
+
+## OpenAI labeler removed; production (2026-11-05)
+
+**Reported:** Trace on the deployed site showed "OpenAI Decisions". **Cause:** it was accurate. Updating the Modal secret does not reach a
+running container, and a deploy with no code change keeps it, so production stayed on `gpt-6-luna` after the secret changed.
+
+**Fix:** `OpenAIEvidenceLabeler` is gone from the app, and `EVIDENCE_LABEL_PROVIDER=openai` or a `gpt-` model now gets Muse Spark Open, so an old
+secret or `.env` cannot route an answer to OpenAI. Trace no longer has an OpenAI name. Answers labeled earlier keep their true model in Trace,
+as `gpt-6-luna`: provenance is not rewritten. The `openai` value stays in the `Observation.labeler` contract so those rows still load.
+`gpt-6-luna` remains only in the offline evaluation scripts (`policy_eval`, `eval_learning.py`), never in the app.
+
+**Lesson for production:** after changing a Modal secret, a redeploy alone may not apply it; it needs a code change or a container restart.

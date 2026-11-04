@@ -12,12 +12,14 @@ import time
 import httpx
 
 from learning.consolidate import NOTES_MODEL
-from learning.decisions import OPENAI_BASE, OPENAI_DECISION_MODEL, ProviderFailure
+from learning.decisions import ProviderFailure
 from learning.tutor_models import BASETEN_BASE, META_BASE
 from learning.tutor_provider import MetaTutor
 
 from .budget import Budget
 
+# H10's offline cross-judge only: it never runs in the app.
+OPENAI_BASE, OPENAI_DECISION_MODEL = "https://api.openai.com/v1", "gpt-6-luna"
 TUTOR_MODEL, TUTOR_EFFORT = "muse-spark-1.3", "minimal"
 REFLECT_EFFORT = "medium"
 OPEN_MODEL = NOTES_MODEL  # Muse Spark Open on Baseten: student and judge

@@ -173,3 +173,20 @@ def test_ink_answer_is_labeled_end_to_end_with_provider_and_model_on_the_row(env
     assert stored["status"] == "labeled" and stored["observation"]["outcome"] == "partial"
     assert stored["observation"]["labeler"] == "baseten" and stored["fields"]["outcome"]["source"] == "baseten"
     assert stored["observation"]["outcome_p"]["partial"] == 1
+
+
+def test_leftover_openai_settings_get_the_meta_labeler(monkeypatch):
+    """Nothing can route an answer to OpenAI now: an old secret or .env still gets Muse Spark Open."""
+    monkeypatch.setenv("EVIDENCE_LABEL_PROVIDER", "openai")
+    monkeypatch.setenv("EVIDENCE_LABEL_MODEL", "gpt-6-luna")
+    monkeypatch.setenv("OPENAI_API_KEY", "o")
+    monkeypatch.setenv("BASETEN_API_KEY", "b")
+    chosen = evidence_labeler()
+    assert isinstance(chosen, ChatEvidenceLabeler) and chosen.model == SPARK_OPEN_LABEL_MODEL
+    assert chosen.endpoint.startswith(BASETEN_CHAT_BASE)
+
+
+def test_an_unknown_provider_is_refused(monkeypatch):
+    monkeypatch.setenv("EVIDENCE_LABEL_PROVIDER", "gemini")
+    with pytest.raises(ValueError):
+        evidence_labeler()

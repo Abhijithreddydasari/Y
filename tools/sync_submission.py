@@ -36,6 +36,8 @@ FOUNDATION_API = {
     "api/scripts/prefetch_speech.py", "api/scripts/test_teacher.py", "api/tests/test_speech.py",
     "THIRD_PARTY_NOTICES.md", "docs/architecture.md",
 }
+# Created during the event and later removed: kept in the filter so earlier commits, and their hashes, stay the same.
+EVENT_REMOVED = ["api/tests/test_openai_labeler.py"]
 DROP_WEB = {"web/README.md", "web/scripts/test_sse_parser.mjs"}
 IGNORE_BASE = """node_modules/
 .venv/
@@ -142,7 +144,7 @@ def build_event(out: Path, event: set[str]) -> None:
     git("clone", "-q", "--no-local", "--single-branch", "--branch", branch, str(ROOT), str(out), cwd=ROOT.parent)
     overlay = sorted(git("ls-tree", "-r", "--name-only", "HEAD", "--", OVERLAY).splitlines())
     # A rename line alone does not keep a path, so each overlay file is listed to keep it, then to move it.
-    lines = sorted(event) + overlay + [f"{path}==>{path[len(OVERLAY):]}" for path in overlay]
+    lines = sorted(event) + EVENT_REMOVED + overlay + [f"{path}==>{path[len(OVERLAY):]}" for path in overlay]
     with tempfile.TemporaryDirectory() as folder:
         listing = Path(folder, "paths.txt")
         listing.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")

@@ -94,6 +94,7 @@ Updated by whichever session finishes or integrates a slice. Details live in tha
 | H9 Deployment (Vercel + Modal + Neon, Deepgram narration) | deployed; live check partial (branch `feature/deploy`) | `36144f5`, `75ebe94`, `35eb728` | [H9](handoffs/H9.md) |
 | H10 Policy improvement with GEPA (offline) | done; gate not passed, nothing promoted (branch `feature/policy-eval`) | `31c57f7` + docs commit | [H10](handoffs/H10.md) |
 | Live fixes (topic focus, merges, question card, tools, Mind, logo) | done locally, not deployed (branch `fix/live-board-and-context`) | see handoff | [live fixes](handoffs/live-fixes.md) |
+| Meta-only labeler and local run | labeler done, local run not started, not deployed (branch `feature/meta-only-local`) | see handoff | [meta-only-local](handoffs/meta-only-local.md) |
 
 ## Earlier handoff — 2026-11-01
 

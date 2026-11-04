@@ -95,9 +95,14 @@ def tree_of(ref: str, paths: set[str]) -> str:
             entries.append(f"{mode} {sha}\t{path}")
     with tempfile.TemporaryDirectory() as folder:
         env = {"GIT_INDEX_FILE": str(Path(folder, "index"))}
-        subprocess.run(["git", "update-index", "--add", "--index-info"], cwd=ROOT, input="\n".join(entries) + "\n", text=True,
-                       encoding="utf-8", env={**os.environ, **env}, check=True)
-        return git("write-tree", env=env)
+        # Bytes, not text: on Windows text mode would end each line in \r and git would drop every path.
+        subprocess.run(["git", "update-index", "--add", "--index-info"], cwd=ROOT, input=("\n".join(entries) + "\n").encode("utf-8"),
+                       env={**os.environ, **env}, check=True)
+        tree = git("write-tree", env=env)
+    count = len(git("ls-tree", "-r", "--name-only", tree).splitlines())
+    if count != len(paths):
+        sys.exit(f"foundation tree has {count} files, expected {len(paths)}")
+    return tree
 
 
 def commit(tree: str, parent: str, date: str, message: str) -> str:
@@ -142,7 +147,7 @@ def build_event(out: Path, event: set[str]) -> None:
     lines = sorted(event) + [f"{path}==>{path[len(OVERLAY):]}" for path in overlay]
     with tempfile.TemporaryDirectory() as folder:
         listing = Path(folder, "paths.txt")
-        listing.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        listing.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         result = subprocess.run(["uvx", "git-filter-repo", "--force", "--paths-from-file", str(listing), "--prune-empty", "always",
                                  "--prune-degenerate", "always"], cwd=out, capture_output=True, text=True)
     if result.returncode:
@@ -161,6 +166,9 @@ def verify(out: Path, foundation: set[str]) -> None:
     leaked = ((ever | now) & (old | foundation)) - allowed
     secrets = {p for p in now if Path(p).name in (".env", ".env.modal")}
     problems = []
+    absent = {"README.md", ".env.example", ".gitignore", "foundation.json", "package.json", "scripts/setup.mjs", "api/learning/app.py"} - now
+    if absent:
+        problems.append(f"required files missing from the output: {sorted(absent)}")
     if early:
         problems.append(f"commits from before kickoff:\n{early}")
     if leaked:

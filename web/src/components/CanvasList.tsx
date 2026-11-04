@@ -68,8 +68,9 @@ export function CanvasDialog({ onClose, onNew }: { onClose: () => void; onNew?: 
                       <button type="button" onClick={() => resume(canvas.session_id)} aria-current={here}
                         className={`flex h-full w-full flex-col overflow-hidden rounded-[20px] border bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${here ? "border-violet-400 ring-2 ring-violet-200" : "border-slate-200"}`}>
                         {/* A board-like header: the opening question in the board's hand, on its dotted grid. */}
-                        <span className="relative block h-28 border-b border-slate-100 bg-[#fbfbf8] bg-[radial-gradient(rgba(15,23,42,.08)_1px,transparent_1.2px)] bg-[length:14px_14px] px-4 pt-3">
-                          <span className="line-clamp-3 block pr-14 font-[Excalifont,Virgil,'Segoe_Print',cursive] text-[17px] leading-6 text-slate-800">{titleOf(canvas)}</span>
+                        <span className="relative block h-28 overflow-hidden border-b border-slate-100 bg-[#fbfbf8] bg-[radial-gradient(rgba(15,23,42,.08)_1px,transparent_1.2px)] bg-[length:14px_14px] px-4 pt-3">
+                          {/* line-clamp sets its own display: adding `block` here turns the clamp off. */}
+                          <span title={titleOf(canvas)} data-testid="canvas-title" className="line-clamp-3 pr-14 font-[Excalifont,Virgil,'Segoe_Print',cursive] text-[17px] leading-6 text-slate-800">{titleOf(canvas)}</span>
                           <span className={`absolute right-3 top-3 rounded-full px-2 py-0.5 text-[11px] font-bold ${here ? "bg-violet-100 text-violet-800" : canvas.sealed ? "bg-indigo-50 text-indigo-700" : "bg-emerald-50 text-emerald-700"}`}>
                             {here ? "This board" : canvas.sealed ? "Sealed" : "Open"}
                           </span>

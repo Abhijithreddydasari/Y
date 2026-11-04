@@ -1,5 +1,8 @@
 # Y — a whiteboard tutor that learns with you
 
+> **Meta Global AI Developer Hackathon submission:** see [ask-Y](https://github.com/Abhijithreddydasari/ask-Y). This older
+> repository is what it builds on; its setup fetches only the tag pinned in its `foundation.json`.
+
 Current development starts with [AGENTS.md](AGENTS.md),
 [product goals](docs/GOALS.md), and the [thin-slice roadmap](docs/builds/ROADMAP.md).
 See [the handoff](docs/workflow.md) for implemented versus planned behavior.

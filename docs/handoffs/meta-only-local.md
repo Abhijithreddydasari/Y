@@ -35,11 +35,55 @@ default with no setting, no fallback, and one ink answer end to end with provena
 
 A half-right worded answer can be named as a belief at close. See the report.
 
-## Part 2: runs locally on two keys
+## Part 2: event repository, on two keys
 
-Not started. Findings so far, unverified until a fresh clone runs:
+**Why:** organizers require a repository created on or after Oct 26, holding only event work, with pre-event code as a dependency
+fetched at a pinned commit. `Y` was created May 6, and 44% of its code lines predate kickoff.
 
-- `uv sync` installs `torch` although `learning.app` does not import it.
-- The web proxy defaults to port 8000 while the docs run the API on 8101.
-- `README.md` still describes Ollama.
-- `DECISION_PROVIDER` defaults to Elephant for the older assessor on the classic Practice panel.
+**How:** `tools/sync_submission.py` builds it and never pushes. Re-run it after any change.
+- Foundation: a tag on `Y`, built on `9f0ca92` (last pre-event commit). One commit keeps 75 old files the app uses; the next adds this
+  week's edits to them.
+- `ask-Y`: the real event commits with original dates and messages, filtered to files created during the event, plus `submission/*`
+  moved to the root. It stops if a pre-event commit or file reaches the output.
+- `npm run setup` fetches the tag, checks the commit hash, lays the files in, installs and creates `.env`.
+
+**History:** 121 of this branch's commits at last count, first dated Oct 29, 13 of 14 pull request merges. Left out: commits touching
+only old files, and the Oct 27 merge of pre-event work. All of it remains in `Y`.
+
+**Re-sync caveat:** deleting an event file, or adding a path that had a different history, rewrites earlier commits, and `ask-Y` then
+needs a force push. Adding and editing files only appends.
+
+**Trap found live:** do not list foundation files in `.gitignore`. Tailwind skips ignored files (also `.git/info/exclude`, and an
+explicit `@source` did not help), so the board's `h-dvh` was missing and its canvas had height 0, while tests and the build passed.
+They show as untracked instead.
+
+**First-run fixes:** web proxy defaults to 8101; legacy service called only when named; `torch` and `safetensors` moved to a `legacy`
+extra (79 s setup, 90 MB venv); older assessor off unless selected; a voice that cannot speak is left out of the picker.
+
+### Checks
+
+| Kind | Check | Result |
+|---|---|---|
+| Mocked, fresh copy | Backend pytest; `npm test`; `tsc`; lint; build | 419 passed, 2 skipped (Kokoro, policy optimizer); 195 passed; exit 0; exit 0; exit 0 (run before the Tailwind fix; rerun on `Y` after it) |
+| Live, fresh copy, two keys, browser | Question, wrong answer, label, End session, Mind, Try as Priya, a turn citing her history | All worked. Label 2.6 s; revision 1 with one belief; 22 earlier items used |
+| Live, through the web proxy | Real speech (synthesized WAV) to Muse Voice Transcribe | Accurate, 2.9 s |
+| Live | Muse Image | Call returned 200; illustration not inspected, it sat behind the question card |
+| Live | Every outgoing provider request (test-only log) | 7 of 7 to `api.meta.ai` or `inference.baseten.co` |
+
+The fresh copy fetched the foundation from this folder, since the tag was not pushed then. **Not run:** a clone from GitHub, macOS, Linux,
+a real microphone, heard audio, Review and Trace clicked through (their routes returned 200), and Canvases. Windows needed the SQLAlchemy
+workaround in the README.
+
+### Non-Meta paths
+
+| Path | Model | Reachable with default settings | Done |
+|---|---|---|---|
+| `EVIDENCE_LABEL_PROVIDER=openai` | `gpt-6-luna` | No | Kept opt-in |
+| `EVIDENCE_LABEL_PROVIDER=baseten` | Elephant | No (403 on these keys anyway) | Kept opt-in |
+| `DECISION_PROVIDER`, older Practice assessor | Elephant, or TypeSafe `jev` | **Was yes** on the Practice flow; now no | Default changed to off |
+| `voice_router` with `DEEPGRAM_API_KEY` | Deepgram Aura | No | **User decision**: kept, hidden without the key |
+| `speech.py` | Kokoro, local open model | No: not installed by setup, left out of the picker | **User decision**: kept |
+| `/board/teach`, classic board `model_choice` | Ollama Gemma by default; OpenAI or Google if chosen and keyed | Only from the classic view; fails without Ollama | Left; **user decision** whether to remove |
+| `policy_eval` cross-judge | `gpt-6-luna` | Offline only, never the app | Left. H10's gate used the Spark Open judge; the OpenAI score was a cross-check |
+| `main.py`, `learner.py`, training, `modal_app.py`, `modal_demo.py`, `modal_train_learner.py` | Ollama, OpenAI, Google | Not in `ask-Y` | Remain in `Y` only |
+| `deploy/modal_learning.py` production secret | `EVIDENCE_LABEL_PROVIDER=openai` | Production only | User action, above |

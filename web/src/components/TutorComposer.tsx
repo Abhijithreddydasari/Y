@@ -43,6 +43,12 @@ export default function TutorComposer({ tutor, blocked = false, onStop, variant 
       {(tutor.caption || notice || status) && (
         <p className={`mb-1.5 w-fit max-w-full rounded-xl px-3 py-1.5 text-xs shadow-sm ${notice ? "bg-rose-50 text-rose-700 ring-1 ring-rose-200" : "y-glass text-slate-600"}`}
           role={notice ? "alert" : "status"} aria-live="polite">
+          {!notice && !tutor.caption && status.startsWith("Thinking") && (
+            <svg data-testid="thinking-bulb" aria-hidden="true" viewBox="0 0 24 24" width="15" height="15" fill="#FFC400" stroke="#8A6A00" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+              className="y-thinking-bulb mr-1.5 inline-block align-[-3px]">
+              <path d="M9 17h6M10 20.5h4M12 3a6.5 6.5 0 0 0-4 11.6c.6.5 1 1.2 1 2.4h6c0-1.2.4-1.9 1-2.4A6.5 6.5 0 0 0 12 3Z" />
+            </svg>
+          )}
           {notice || (tutor.caption ? `Y: ${tutor.caption}` : status)}
         </p>
       )}

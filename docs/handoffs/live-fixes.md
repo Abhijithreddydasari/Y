@@ -78,3 +78,10 @@ Excalidraw's style panel. New thickness control on the dock. Pen mode is lifted 
 **Browser (1280×800, local web):** red and thick survived Eraser and back, and a reload. With synthetic stylus and touch events
 on the real board (pointer capture stubbed), a two-finger spread on the pen tool went 100% to 280%. A real tablet is not
 tested; the user should confirm pinch and palm rejection there.
+
+## Small board items
+
+- **Device button removed (web).** It worked but changed nothing visible on a desktop. A first visit on a phone still picks Mobile.
+- **Voice names (API).** The picker said Heart and Michael, "Kokoro", while Deepgram's Thalia and Apollo actually speak. With
+  `DEEPGRAM_API_KEY` set it now names those. Ids are unchanged, so saved choices hold. Kokoro remains the fallback.
+- **Thinking bulb (web).** A small yellow bulb shakes beside "Thinking…" in the status line; still under reduced motion.

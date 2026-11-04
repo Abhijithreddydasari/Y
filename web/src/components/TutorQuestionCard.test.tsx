@@ -147,6 +147,15 @@ describe("Study loop (H7)", () => {
     expect(screen.getByRole("textbox", { name: "Ask the tutor" })).not.toBeDisabled();
   });
 
+  it("shows the shaking bulb only while thinking", () => {
+    const { rerender } = render(<TutorComposer tutor={tutor()} onStop={vi.fn()} status="Thinking…" />);
+    expect(screen.getByTestId("thinking-bulb")).toHaveClass("y-thinking-bulb");
+    rerender(<TutorComposer tutor={tutor()} onStop={vi.fn()} status="Explaining…" />);
+    expect(screen.queryByTestId("thinking-bulb")).toBeNull();
+    rerender(<TutorComposer tutor={tutor({ error: "The tutor is busy." })} onStop={vi.fn()} status="Thinking…" />);
+    expect(screen.queryByTestId("thinking-bulb")).toBeNull();
+  });
+
   it("offers the exit ticket or a plain end", () => {
     const state = tutor({ exit: { offered: true, take: vi.fn(), skip: vi.fn() } });
     render(<TutorComposer tutor={state} onStop={vi.fn()} />);

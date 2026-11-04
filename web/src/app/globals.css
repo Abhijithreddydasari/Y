@@ -83,10 +83,21 @@ body {
 .chat-markdown a { color: #2563eb; text-decoration: underline; text-underline-offset: 2px; }
 .chat-markdown .katex-display { margin: .65rem 0; overflow-x: auto; overflow-y: hidden; padding: .2rem 0; }
 
+@keyframes y-thinking-bulb {
+  0%, 100% { transform: rotate(-11deg); }
+  50% { transform: rotate(11deg); }
+}
+
+.y-thinking-bulb {
+  transform-origin: 50% 90%;
+  animation: y-thinking-bulb 0.42s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-panel-enter,
   .chat-orb,
-  .chat-thinking-dot {
+  .chat-thinking-dot,
+  .y-thinking-bulb {
     animation: none;
   }
 }

@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/api", () => ({ fetchHealth: vi.fn().mockResolvedValue(null), fetchLearner: vi.fn().mockResolvedValue(null),
   resetLearner: vi.fn(), streamAssessment: vi.fn(), streamChat: vi.fn(), streamLesson: vi.fn() }));
-vi.mock("@/lib/tts", () => ({ cancelSpeech: vi.fn() }));
+vi.mock("@/lib/tts", () => ({ cancelSpeech: vi.fn(), installSpeechUnlock: vi.fn(() => () => {}) }));
 vi.mock("@/lib/board-api", async (original) => ({ ...await original<object>(), boardSession: vi.fn().mockResolvedValue("sid") }));
 vi.mock("@/lib/tutor-turn", async (original) => ({ ...await original<object>(),
   fetchTutorState: mocks.fetchTutorState, streamTutorTurn: mocks.streamTutorTurn, fetchReview: mocks.fetchReview,

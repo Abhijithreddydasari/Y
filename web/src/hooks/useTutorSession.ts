@@ -10,7 +10,7 @@ import { getAnswerRegion, getStudentBbox } from "@/lib/layout";
 import { LessonPlayer } from "@/lib/lesson-player";
 import { cardNote } from "@/lib/renderer";
 import { applyLearnerSnapshot, applyLearnerState } from "@/lib/learner-state";
-import { cancelSpeech } from "@/lib/tts";
+import { cancelSpeech, installSpeechUnlock } from "@/lib/tts";
 import type { ChatMessage, Checkpoint, EducatorNotes, LearnerSnapshot, LearningEvidence, PrimitiveTag } from "@/lib/types";
 import { boardSession, startNextBoardSession, streamBoardTeach, type ContextRequest, type Packet } from "@/lib/board-api";
 import { belowCard, drawPoint } from "@/lib/board-pointing";
@@ -670,6 +670,8 @@ export function useTutorSession(): TutorSession {
       setTutorBusy(false);
     }
   }, [busy, question, tutorBusy, tutorOptions]);
+
+  useEffect(() => installSpeechUnlock(), []);
 
   const closeNow = useCallback(() => {
     setEnding(true); setTutorError(""); setExitOffered(false);

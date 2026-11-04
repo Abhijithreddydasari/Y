@@ -85,6 +85,24 @@ Clone of `ask-Y` with setup fetching the foundation tag from `Y`, and an env fil
 | Live, browser | Muse Image | Illustration rendered on the board |
 | Live | Every outgoing provider request | 7 of 7 to `api.meta.ai` or `inference.baseten.co` |
 
+### Voice on iPad, and a lesson that never finished (2026-11-05)
+
+**Reported on the deployed site, iPad:** no sound with any voice, Ask stayed red as Stop, and the check card never came.
+
+**Cause (from the code; not reproduced on an iPad).** One bug: a question is drawn only after the voice ends, and `speak()` resolved only on the
+browser's end event. iPad Safari allows audio only from a tap, but a lesson speaks later, after the model replies, and it can drop the
+speech with no event. Hosted clips failed `play()`, fell back to the browser voice, and hung the same way.
+
+**Fix (`lib/tts.ts`).**
+- The end of a tap or a key press starts silent speech and audio, and hosted clips reuse that unlocked element.
+- A browser voice that has not started in 3 s is given up on; later lines skip at once until the next tap.
+- Time limits on a clip or voice that never starts or never ends. The lesson and the card always continue.
+- No cancel right before speaking, device voices preferred over network ones.
+
+**Checks.** Mocked: 8 new tests in `lib/tts.test.ts`. Browser, Chrome on Windows, 2 paid turns: with `speechSynthesis.speak` stubbed to do
+nothing, the lesson finished, the card came and Ask returned; with real speech, 2 clips played to their natural end, then the card.
+**Not run: an iPad or any Safari.** Whether sound now plays there still needs checking on the device.
+
 **Found, not fixed:** text typed in the composer while a card is open always counts as the answer, though the placeholder says "or ask
 something else". A request typed during a warm-up was recorded as the answer. The labeler scored it unanswered at 0.95, so the learner
 model was not credited, but the tutor said "You remembered the key idea".

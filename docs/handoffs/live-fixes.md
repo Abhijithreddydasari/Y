@@ -134,3 +134,14 @@ deploy\vercel-prod.cmd
 
 Then check `/health`, run one turn, and End one session. `feature/figure-breakdown` is not on this branch, so Break it down stays
 off the live site.
+
+## Found while testing locally (web)
+
+- **Canvases card overflow.** The title had `line-clamp-3` and `block`; `block` overrode the clamp's display. Titles now clamp to
+  three lines, with the full text as a tooltip. Browser: two cards measured 72 px, inside their header.
+- **"Fractional indices invariant" console error.** Saved records come back sorted by id, and restore used that order, so a box's
+  randomly named label could land far from its box, and z-order changed on reload. `stackingOrder` now restores the saved stack
+  with each label right after its box. The validation is development-only; the wrong order affected production too.
+  Browser, one paid turn: all 4 diagram labels sat ahead of their boxes in saved order. After a reload, plus a scene change past
+  Excalidraw's 60 s validation throttle, no error was logged and the labels showed.
+  `feature/figure-breakdown` has a smaller `stackingOrder` in this file; keep this version when merging.

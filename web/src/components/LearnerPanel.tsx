@@ -25,7 +25,7 @@ interface Props {
 
 interface Point { x: number; y: number }
 
-const ORB_SIZE = 72;
+const ORB_SIZE = 56;
 const EDGE = 12;
 const STORAGE_KEY = "y_learner_orb_position_v1";
 const DIMENSIONS: Array<{
@@ -326,7 +326,8 @@ export default function LearnerPanel({ snapshot: liveSnapshot, onReset }: Props)
 
   const clampPosition = useCallback((point: Point): Point => ({
     x: clamp(point.x, EDGE, Math.max(EDGE, window.innerWidth - ORB_SIZE - EDGE)),
-    y: clamp(point.y, EDGE, Math.max(EDGE, window.innerHeight - ORB_SIZE - 28)),
+    // Keep clear of the board's zoom and undo bar along the bottom edge.
+    y: clamp(point.y, EDGE, Math.max(EDGE, window.innerHeight - ORB_SIZE - 84)),
   }), []);
 
   useEffect(() => {
@@ -413,7 +414,7 @@ export default function LearnerPanel({ snapshot: liveSnapshot, onReset }: Props)
   return (
     <div className="pointer-events-none fixed z-40" style={{ left: position.x, top: position.y, opacity: ready ? 1 : 0 }}>
       {open && (
-        <aside ref={panelRef} id="learner-space" style={{ left: panelPosition.x, top: panelPosition.y }} className="pointer-events-auto fixed w-[420px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl bg-white/95 shadow-2xl ring-1 ring-indigo-200/70 backdrop-blur-xl dark:bg-zinc-900/95 dark:ring-indigo-800/60">
+        <aside ref={panelRef} id="learner-space" style={{ left: panelPosition.x, top: panelPosition.y }} className="y-glass-strong pointer-events-auto fixed w-[420px] max-w-[calc(100vw-24px)] overflow-hidden rounded-[22px]">
           <div className="flex items-center justify-between border-b border-zinc-100 px-3 py-2.5 dark:border-zinc-800">
             <span>
               <span className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">Your knowledge atlas</span>
@@ -451,14 +452,22 @@ export default function LearnerPanel({ snapshot: liveSnapshot, onReset }: Props)
         aria-expanded={open}
         aria-controls="learner-space"
         aria-label="Open learner knowledge atlas; drag to move"
-        title="Drag learner orb · click to explore"
-        className="pointer-events-auto group relative grid h-[72px] w-[72px] touch-none place-items-center rounded-full outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 motion-reduce:transition-none"
+        title="Knowledge atlas · drag to move"
+        className="y-glass pointer-events-auto group relative grid h-14 w-14 touch-none place-items-center rounded-full text-indigo-950 outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 motion-reduce:transition-none"
       >
-        <span className="absolute inset-0 animate-[pulse_3s_ease-in-out_infinite] rounded-full blur-lg motion-reduce:animate-none" style={{ backgroundColor: `hsla(${hue},82%,58%,${0.25 + (1 - meanUncertainty) * 0.2})` }} />
-        <span className="absolute inset-[5px] animate-[spin_9s_linear_infinite] rounded-full border border-indigo-300/60 border-r-emerald-400/80 motion-reduce:animate-none dark:border-indigo-500/50 dark:border-r-emerald-300/80"><span className="absolute -right-1 top-1/2 h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]" /></span>
-        <span className="absolute inset-[10px] overflow-hidden rounded-full border border-white/60 shadow-[inset_-9px_-10px_18px_rgba(30,41,59,.35),inset_7px_7px_15px_rgba(255,255,255,.6),0_8px_24px_rgba(79,70,229,.35)]" style={{ background: `radial-gradient(circle at 33% 27%,rgba(255,255,255,.95) 0 5%,hsla(${hue},90%,72%,.95) 20%,hsla(${hue + 30},78%,48%,.95) 58%,rgba(30,41,59,.96) 100%)` }}><span className="absolute left-1/2 top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/85 shadow-[0_0_12px_4px_rgba(255,255,255,.65)]" /></span>
-        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-zinc-950 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow dark:bg-white dark:text-zinc-950">{observations}</span>
-        <span className="absolute -bottom-4 whitespace-nowrap text-[9px] font-medium text-zinc-600 opacity-80 dark:text-zinc-300">knowledge atlas</span>
+        {/* The ring fills with how certain the profile is; its colour follows the learner's state. */}
+        <svg aria-hidden="true" viewBox="0 0 56 56" className="absolute inset-0 -rotate-90">
+          <circle cx="28" cy="28" r="25" fill="none" stroke="rgba(79,70,229,.14)" strokeWidth="3" />
+          <circle cx="28" cy="28" r="25" fill="none" stroke={`hsl(${hue},70%,52%)`} strokeWidth="3" strokeLinecap="round"
+            strokeDasharray={`${(1 - meanUncertainty) * 157} 157`} />
+        </svg>
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 6.5 6.5 16M12 6.5 17.5 16M6.5 16h11" opacity=".55" />
+          <circle cx="12" cy="5" r="2.2" fill="currentColor" stroke="none" />
+          <circle cx="6" cy="17" r="2.2" /><circle cx="18" cy="17" r="2.2" /><circle cx="12" cy="13" r="1.4" fill="currentColor" stroke="none" />
+        </svg>
+        <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-indigo-600 px-1.5 py-0.5 text-[10px] font-bold text-white shadow ring-2 ring-white">{observations}</span>
+        <span className="pointer-events-none absolute -bottom-5 whitespace-nowrap text-[10px] font-semibold text-slate-600">Atlas</span>
       </button>
     </div>
   );

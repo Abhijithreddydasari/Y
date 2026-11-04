@@ -73,7 +73,7 @@ def test_speech_asset_audit_rejects_forbidden_and_modified_files(tmp_path) -> No
 def test_native_initialization_failure_disables_optional_engine(
     tmp_path, monkeypatch
 ) -> None:
-    import moonshine_voice
+    moonshine_voice = pytest.importorskip("moonshine_voice")
 
     engine = MoonshineSpeechEngine()
     engine.asset_root = tmp_path / "assets"

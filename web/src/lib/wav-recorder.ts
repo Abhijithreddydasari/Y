@@ -1,6 +1,30 @@
 export interface WavRecording {
   stop: () => Promise<Blob>;
   cancel: () => Promise<void>;
+  /** Milliseconds captured so far. */
+  elapsedMs: () => number;
+  /** Loudness of the latest chunk, 0 (silence) to 1, for a live meter. */
+  level: () => number;
+}
+
+export interface RecordingOptions {
+  /** Hard cap; `onLimit` fires once when it is reached so the caller can stop and send. */
+  maxMs?: number;
+  onLimit?: () => void;
+}
+
+/** Why a recording could not start: the learner blocked the mic, there is none, or something else broke. */
+export class RecorderError extends Error {
+  constructor(readonly reason: "denied" | "unavailable" | "failed", message: string) { super(message); }
+}
+
+function recorderError(error: unknown): RecorderError {
+  const name = (error as { name?: string })?.name ?? "";
+  if (name === "NotAllowedError" || name === "SecurityError") return new RecorderError("denied", "Microphone access was blocked.");
+  if (name === "NotFoundError" || name === "OverconstrainedError" || name === "NotReadableError") {
+    return new RecorderError("unavailable", "No microphone is available.");
+  }
+  return new RecorderError("failed", (error as Error)?.message || "The microphone could not start.");
 }
 
 function mergeBuffers(buffers: Float32Array[]): Float32Array {
@@ -57,11 +81,19 @@ function encodePcmWav(samples: Float32Array, sampleRate = 16_000): Blob {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-/** Capture mono PCM directly so the local STT path needs no FFmpeg codec. */
-export async function startWavRecording(): Promise<WavRecording> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-  });
+/** Capture mono PCM directly so transcription needs no codec; output is 16 kHz 16-bit WAV. */
+export async function startWavRecording(options: RecordingOptions = {}): Promise<WavRecording> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    throw new RecorderError("unavailable", "This browser cannot record audio.");
+  }
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (error) {
+    throw recorderError(error);
+  }
   const context = new AudioContext();
   await context.resume();
   const source = context.createMediaStreamSource(stream);
@@ -72,8 +104,18 @@ export async function startWavRecording(): Promise<WavRecording> {
   const silent = context.createGain();
   silent.gain.value = 0;
   const buffers: Float32Array[] = [];
+  const maxSamples = options.maxMs ? Math.ceil(options.maxMs / 1000 * context.sampleRate) : Infinity;
+  let samples = 0, limited = false, level = 0;
   processor.onaudioprocess = (event) => {
-    buffers.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    if (samples >= maxSamples) return;
+    const chunk = event.inputBuffer.getChannelData(0);
+    let energy = 0;
+    for (let index = 0; index < chunk.length; index += 1) energy += chunk[index] * chunk[index];
+    // Speech RMS sits around 0.02-0.2; a square root spreads that over the meter's range.
+    level = Math.min(1, Math.sqrt(Math.sqrt(energy / chunk.length) * 6));
+    buffers.push(new Float32Array(chunk.subarray(0, Math.min(chunk.length, maxSamples - samples))));
+    samples += chunk.length;
+    if (samples >= maxSamples && !limited) { limited = true; options.onLimit?.(); }
   };
   source.connect(processor);
   processor.connect(silent);
@@ -97,5 +139,7 @@ export async function startWavRecording(): Promise<WavRecording> {
       return encodePcmWav(resample(mergeBuffers(buffers), context.sampleRate));
     },
     cancel: cleanup,
+    elapsedMs: () => Math.min(samples, maxSamples) / context.sampleRate * 1000,
+    level: () => level,
   };
 }

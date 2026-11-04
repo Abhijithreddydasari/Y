@@ -13,12 +13,17 @@ dependencies = [
     "sse-starlette>=2.1",
     "pillow>=11",
     "httpx>=0.28.1",
+    "sqlalchemy>=2.0.36,<3",
     "numpy>=2.0",
-    "torch>=2.5",
-    "safetensors>=0.5",
 ]
 
 [project.optional-dependencies]
+# Only the older main:app learner adapter imports these; the tutor service (learning.app) does not.
+legacy = [
+    "torch>=2.5",
+    "safetensors>=0.5",
+]
+postgres = ["psycopg[binary]>=3.2,<4"]
 # Pull these in when serving the "Cloud (Gemma 4 31B)" toolbar option:
 #   uv pip install -e .[cloud]
 cloud = [
@@ -29,6 +34,10 @@ speech = [
 ]
 stt = [
     "moonshine-voice==0.0.69",
+]
+# H10 offline policy evaluation (api/policy_eval); not used by the live service or the Modal image.
+policy-eval = [
+    "gepa==0.1.4",
 ]
 training = [
     "datasets>=3.0",

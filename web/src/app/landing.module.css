@@ -1,8 +1,7 @@
 .page { position:relative; background:#fbfbf9; color:#121212; min-height:100vh; color-scheme:light; font:400 16px/1.6 "Plus Jakarta Sans",system-ui,sans-serif; overflow:hidden; }
 .content { position:relative; z-index:1; max-width:1240px; margin:auto; padding:0 clamp(28px,5vw,64px) 0 clamp(110px,12vw,150px); }
 .header { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:26px 0; }
-.logo { font-size:36px; font-weight:850; letter-spacing:-3px; text-decoration:none; }
-.logo span { color:#d97706; }
+.logo { display:inline-flex; align-items:center; text-decoration:none; }
 .header nav { display:flex; align-items:center; gap:28px; font-size:14px; }
 .navLink { color:#57534e; text-decoration:none; }
 .button { display:inline-flex; align-items:center; justify-content:center; gap:18px; min-height:46px; background:#f5b041; color:#1c1917; border:1px solid #e9a332; border-radius:999px; padding:11px 24px; font:inherit; font-weight:650; text-decoration:none; box-shadow:0 3px 0 #292524; cursor:pointer; transition:transform .15s; }

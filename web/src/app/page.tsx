@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import DiscoveryEnding from "@/components/DiscoveryEnding";
 import LandingFrames from "@/components/LandingFrames";
 import ScrollLine from "@/components/ScrollLine";
 import YMark from "@/components/YMark";
@@ -45,9 +46,7 @@ export default function LandingPage() {
             {topic === 0 ? <><path className={s.drawPath} pathLength="1" style={{"--delay":"0s"} as React.CSSProperties} d="M75 150H225V50Z M213 150V138H225" stroke="#292524" strokeWidth="2.5"/><g className={s.diagramLabels} fill="#292524" fontSize="15"><text x="141" y="170">b</text><text x="236" y="108">a</text><text x="133" y="93">c</text><text x="45" y="28" fill="#b45309">a² + b² = c²</text></g></> : topic === 1 ? <><path className={s.drawPath} pathLength="1" style={{"--delay":"0s"} as React.CSSProperties} d="M20 90H280" stroke="#d6d3d1"/><path className={s.drawPath} pathLength="1" style={{"--delay":".25s"} as React.CSSProperties} d={wave(x => 90 - 45 * Math.sin((x - 20) / 260 * Math.PI * 2))} stroke="#a8a29e"/><path className={s.drawPath} pathLength="1" style={{"--delay":".5s"} as React.CSSProperties} d={wave(x => 90 - 15 * Math.sin((x - 20) / 260 * Math.PI * 6))} stroke="#d97706"/><path className={s.drawPath} pathLength="1" style={{"--delay":".75s"} as React.CSSProperties} d={wave(x => 90 - 45 * Math.sin((x - 20) / 260 * Math.PI * 2) - 15 * Math.sin((x - 20) / 260 * Math.PI * 6))} stroke="#292524" strokeWidth="2.5"/></> : <><path className={s.drawPath} pathLength="1" style={{"--delay":"0s"} as React.CSSProperties} d="M20 140H280 M150 30V140" stroke="#a8a29e"/><path className={s.drawPath} pathLength="1" style={{"--delay":".35s"} as React.CSSProperties} d={wave(x => 140 - 110 * Math.exp(-(((x - 150) / 48) ** 2) / 2))} stroke="#d97706" strokeWidth="3"/><g className={s.diagramLabels}><text x="144" y="162" fill="#292524">μ</text><text x="105" y="20" fill="#78716c" fontSize="12">±1σ ≈ 68%</text></g></>}
           </svg><p>{captions[topic]}</p></div>
         </section>
-        <section className={s.end}><p className={s.eyebrow}>Bring your curiosity</p><h2>What are you stuck on?</h2><div className={s.cta}><Link className={s.button} href="/app">Ask Y ↗</Link><Link className={s.ghost} href="/app?ui=mobile">Try it on your phone</Link></div><p className={s.note}>An early prototype. Best with a tablet or a larger screen.</p></section>
       </main>
-      <footer className={s.footer}><span>© 2026 Y. Room to think.</span><a href="https://github.com/Abhijithreddydasari/ask-Y">GitHub ↗</a></footer>
-    </div></div>
+    </div><DiscoveryEnding /></div>
   );
 }

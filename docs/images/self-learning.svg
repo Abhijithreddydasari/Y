@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" role="img" aria-label="An infinity loop with the tutor at its centre. The left lobe learns the learner: teach, check, label, consolidate, every session. The right lobe learns to teach: roll out, score and critique, reflect and mutate, select and gate, offline. Its return to the tutor is dashed, because a new prompt passes only if it wins.">
+  <title>Self-learning: one infinity loop, two lobes, the tutor at the centre</title>
+  <style>
+    text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .bx{fill:#fff;stroke-width:1.6}.bx.R{stroke:#1C8558}.bx.P{stroke:#6A47DB}
+    .t{fill:#15202C;font-size:14px;font-weight:600}.s{fill:#5A6676;font-size:12px}
+    .lane{font-size:13px;font-weight:700;letter-spacing:.06em}.lane.R{fill:#1C8558}.lane.P{fill:#6A47DB}
+    .sub{font-size:14px;fill:#5A6676}
+    .note{font-size:13px;font-style:italic;fill:#5A6676}
+  </style>
+  <rect width="1000" height="500" fill="#FFFFFF"/>
+
+  <!-- Left lobe: solid. Right lobe: solid out, dashed on the gated return to the tutor. -->
+  <path fill="none" stroke="#7CCBA6" stroke-width="20" stroke-linecap="round" d="M500 250 C440 160 380 90 300 85 C170 80 45 135 45 250 C45 365 170 420 300 415 C380 410 440 340 500 250"/>
+  <path fill="none" stroke="#B3A0EE" stroke-width="20" stroke-linecap="round" d="M500 250 C560 160 620 90 700 85 C830 80 955 135 955 250 C955 365 830 420 700 415"/>
+  <path fill="none" stroke="#B3A0EE" stroke-width="20" stroke-dasharray="20 14" d="M700 415 C620 410 560 340 500 250"/>
+
+  <!-- Direction marks on the ribbon -->
+  <g fill="#FFFFFF">
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(405 138) rotate(-132)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(170 104) rotate(160)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(45 250) rotate(90)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(170 396) rotate(20)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(405 362) rotate(-48)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(595 138) rotate(-48)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(830 104) rotate(20)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(955 250) rotate(90)"/>
+    <path d="M0 -7 L10 0 L0 7z" transform="translate(830 396) rotate(160)"/>
+  </g>
+
+  <!-- Lobe titles -->
+  <text class="lane R" x="245" y="228" text-anchor="middle">LOOP 1 · LEARNS THE LEARNER</text>
+  <text class="sub" x="245" y="250" text-anchor="middle">every session, for one person</text>
+  <text class="sub" x="245" y="270" text-anchor="middle">plain code does the arithmetic</text>
+  <text class="lane P" x="755" y="228" text-anchor="middle">LOOP 2 · LEARNS TO TEACH</text>
+  <text class="sub" x="755" y="250" text-anchor="middle">offline, for everyone</text>
+  <text class="sub" x="755" y="270" text-anchor="middle">has to prove itself first</text>
+
+  <!-- Steps on the left lobe -->
+  <rect class="bx R" x="225" y="55" width="160" height="58" rx="10"/><text class="t" x="305" y="80" text-anchor="middle">Teach</text><text class="s" x="305" y="99" text-anchor="middle">moves shaped by the brief</text>
+  <rect class="bx R" x="22" y="125" width="160" height="58" rx="10"/><text class="t" x="102" y="150" text-anchor="middle">Check</text><text class="s" x="102" y="169" text-anchor="middle">predict · check · exit ticket</text>
+  <rect class="bx R" x="22" y="317" width="160" height="58" rx="10"/><text class="t" x="102" y="342" text-anchor="middle">Label</text><text class="s" x="102" y="361" text-anchor="middle">verifiers · Muse Spark Open</text>
+  <rect class="bx R" x="225" y="387" width="160" height="58" rx="10"/><text class="t" x="305" y="412" text-anchor="middle">Consolidate</text><text class="s" x="305" y="431" text-anchor="middle">reducer → profile → brief</text>
+
+  <!-- Steps on the right lobe -->
+  <rect class="bx P" x="615" y="55" width="160" height="58" rx="10"/><text class="t" x="695" y="80" text-anchor="middle">Roll out</text><text class="s" x="695" y="99" text-anchor="middle">tutor × simulated learners</text>
+  <rect class="bx P" x="818" y="125" width="160" height="58" rx="10"/><text class="t" x="898" y="150" text-anchor="middle">Score + critique</text><text class="s" x="898" y="169" text-anchor="middle">judge · probes · validity</text>
+  <rect class="bx P" x="818" y="317" width="160" height="58" rx="10"/><text class="t" x="898" y="342" text-anchor="middle">Reflect &amp; mutate</text><text class="s" x="898" y="361" text-anchor="middle">GEPA rewrites policy text</text>
+  <rect class="bx P" x="615" y="387" width="160" height="58" rx="10"/><text class="t" x="695" y="412" text-anchor="middle">Select, then gate</text><text class="s" x="695" y="431" text-anchor="middle">best variants · held-out test</text>
+
+  <!-- The tutor, where both lobes meet -->
+  <circle cx="500" cy="250" r="62" fill="#FFFFFF" stroke="#2F5BEA" stroke-width="3"/>
+  <text class="t" x="500" y="245" text-anchor="middle">Tutor</text>
+  <text class="s" x="500" y="264" text-anchor="middle">Muse Spark 1.3</text>
+
+  <!-- What each lobe hands back -->
+  <text class="note" x="330" y="472" text-anchor="middle">gives the tutor a brief about you, next session</text>
+  <text class="note" x="670" y="472" text-anchor="middle">dashed: a new prompt passes only if it wins</text>
+</svg>

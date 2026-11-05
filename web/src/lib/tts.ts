@@ -1,8 +1,10 @@
 // Backend Kokoro narration with a best-effort browser Speech fallback.
 // A speech session can be interrupted to change voice without completing the
 // surrounding lesson primitive: synthesis resumes from the next word.
+// Kokoro is served by the learning API behind the same-origin proxy, so the
+// identity cookie applies and the browser needs no public API base.
 
-import { API_BASE } from "./api";
+const SPEECH_URL = "/api/learning/speech";
 
 export interface SpeakOptions {
   rate?: number;
@@ -11,7 +13,16 @@ export interface SpeakOptions {
   onProgress?: (charsSpoken: number) => void;
   /** Already-synthesized clip from the narration look-ahead queue. */
   prepared?: Promise<PreparedSpeech | undefined>;
+  /** How long to wait for `prepared` before using the browser voice (default 450 ms). */
+  preparedWaitMs?: number;
+  /** Skip Kokoro, e.g. after it already failed in this turn, so one turn keeps one voice. */
+  browserOnly?: boolean;
+  /** The first sound of this call is playing (first-audio timing). */
+  onAudible?: (engine: "kokoro" | "browser") => void;
 }
+
+/** Which engine spoke: Kokoro, the browser fallback, or nothing (empty text, cancelled first). */
+export type SpokenWith = "kokoro" | "browser" | "none";
 
 export interface WarmSpeechOptions {
   voiceName?: string;
@@ -41,6 +52,53 @@ export interface PreparedSpeech {
 
 let activeSession: SpeechSession | null = null;
 let preferredVoiceName = "kokoro_af_heart";
+
+/** A browser voice that has not begun by now was dropped: Mac browsers do this silently, with no event at all. */
+const BROWSER_START_MS = 3_000;
+/** A hosted clip that has not begun by now will not; the browser voice takes over. */
+const AUDIO_START_MS = 5_000;
+/** Generous per-character time, so a voice that stops without saying so cannot hold the lesson. */
+const SPEECH_GUARD_MS_PER_CHAR = 200;
+const SPEECH_GUARD_MIN_MS = 6_000;
+const SILENT_WAV = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+
+// Mac browsers allow audio only from a learner's click or key, but a lesson speaks later, after the model replies.
+// Starting silent audio during the gesture unlocks speech for the page, and this one element for its later clips.
+let unlockedAudio: HTMLAudioElement | null = null;
+let browserVoiceBlocked = false;
+let speechUnlocked = false;
+
+export function unlockSpeech(): void {
+  if (typeof window === "undefined") return;
+  // Once for the page, and again after a block: a new gesture is a new chance for that voice.
+  const needed = !speechUnlocked || browserVoiceBlocked;
+  browserVoiceBlocked = false;
+  speechUnlocked = true;
+  if (needed && "speechSynthesis" in window && !window.speechSynthesis.speaking && !window.speechSynthesis.pending) {
+    try {
+      const silent = new SpeechSynthesisUtterance(" ");
+      silent.volume = 0;
+      window.speechSynthesis.resume();
+      window.speechSynthesis.speak(silent);
+    } catch { /* speech stays optional */ }
+  }
+  if (typeof Audio !== "undefined" && !unlockedAudio) {
+    try {
+      const audio = new Audio(SILENT_WAV);
+      unlockedAudio = audio;
+      void audio.play()?.catch(() => { if (unlockedAudio === audio) unlockedAudio = null; });
+    } catch { /* speech stays optional */ }
+  }
+}
+
+/** Unlock on every click or key press from now on. Returns the function that stops listening. */
+export function installSpeechUnlock(): () => void {
+  if (typeof window === "undefined") return () => {};
+  // The end of a tap, not its start: iPad Safari does not let pointerdown or touchstart start audio.
+  const events = ["pointerup", "touchend", "click", "keydown"] as const;
+  events.forEach((name) => window.addEventListener(name, unlockSpeech, { capture: true, passive: true }));
+  return () => events.forEach((name) => window.removeEventListener(name, unlockSpeech, { capture: true }));
+}
 
 export function ttsAvailable(): boolean {
   return typeof window !== "undefined" && (
@@ -73,7 +131,9 @@ export function cancelSpeech(): void {
     session.controller?.abort();
     session.interrupt?.();
   }
-  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+  // Only when something is playing: a cancel right before a speak makes some browsers drop the new speech.
+  if (typeof window !== "undefined" && "speechSynthesis" in window
+    && (window.speechSynthesis.speaking || window.speechSynthesis.pending)) {
     window.speechSynthesis.cancel();
   }
 }
@@ -86,8 +146,9 @@ export async function prepareSpeech(
   const clean = text.trim().slice(0, 500);
   if (!clean || opts.signal?.aborted) return undefined;
   const voiceName = opts.voiceName ?? preferredVoiceName;
-  const response = await fetch(`${API_BASE}/speech`, {
+  const response = await fetch(SPEECH_URL, {
     method: "POST",
+    credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       text: clean,
@@ -139,13 +200,18 @@ async function playKokoroSegment(
     const prepared = baseOffset === 0 && opts.prepared
       ? await Promise.race([
           opts.prepared,
-          new Promise<"speech-warming">((resolve) =>
-            window.setTimeout(() => resolve("speech-warming"), 450),
-          ),
+          new Promise<"speech-warming">((resolve) => {
+            window.setTimeout(() => resolve("speech-warming"), opts.preparedWaitMs ?? 450);
+            controller.signal.addEventListener("abort", () => resolve("speech-warming"), { once: true });
+          }),
         ])
       : undefined;
     if (prepared === "speech-warming") {
       throw new Error("prepared speech is still warming");
+    }
+    // The warm-up already failed (no Kokoro on this server): do not ask again for the same line.
+    if (baseOffset === 0 && opts.prepared && !prepared) {
+      throw new Error("prepared speech failed");
     }
     if (session.cancelled || revision !== session.revision) {
       return { ended: false, charsSpoken: 0 };
@@ -157,8 +223,9 @@ async function playKokoroSegment(
     ) {
       blob = prepared.blob;
     } else {
-      const response = await fetch(`${API_BASE}/speech`, {
+      const response = await fetch(SPEECH_URL, {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
@@ -189,13 +256,15 @@ async function playKokoroSegment(
   }
 
   const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
+  const audio = unlockedAudio ?? new Audio();
+  audio.src = url;
   session.audio = audio;
 
   return new Promise<SegmentResult>((resolve, reject) => {
     let charsSpoken = 0;
     let frame = 0;
     let settled = false;
+    let guard = 0;
 
     const reportProgress = () => {
       if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
@@ -209,6 +278,8 @@ async function playKokoroSegment(
 
     const cleanup = () => {
       if (frame) cancelAnimationFrame(frame);
+      window.clearTimeout(guard);
+      audio.onplaying = audio.onloadedmetadata = audio.onended = audio.onerror = null;
       audio.pause();
       audio.removeAttribute("src");
       audio.load();
@@ -233,6 +304,16 @@ async function playKokoroSegment(
       frame = requestAnimationFrame(animateProgress);
     };
     session.interrupt = interruptAudio;
+    // Neither a clip that never starts nor one that never reports its end may hold the lesson.
+    guard = window.setTimeout(() => finish(false, new Error("audio did not start")), AUDIO_START_MS);
+    audio.onplaying = () => {
+      if (baseOffset === 0) opts.onAudible?.("kokoro");
+      window.clearTimeout(guard);
+      guard = window.setTimeout(() => {
+        charsSpoken = text.length;
+        finish(true);
+      }, Math.max(SPEECH_GUARD_MIN_MS, text.length * SPEECH_GUARD_MS_PER_CHAR));
+    };
     audio.onloadedmetadata = () => {
       reportProgress();
       frame = requestAnimationFrame(animateProgress);
@@ -264,36 +345,65 @@ async function playBrowserSegment(
     return { ended: true, charsSpoken: text.length };
   }
   const revision = session.revision;
+  // Already found blocked: skip until the next click or key press, so each sentence does not wait again.
+  if (browserVoiceBlocked) {
+    opts.onProgress?.(baseOffset + text.length);
+    return { ended: true, charsSpoken: text.length };
+  }
   const voices = await loadBrowserVoices();
   if (session.cancelled || revision !== session.revision) {
     return { ended: false, charsSpoken: 0 };
   }
   return new Promise<SegmentResult>((resolve) => {
+    const speech = window.speechSynthesis;
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = opts.rate ?? 1.0;
     const isMichael = session.voiceName === "kokoro_am_michael";
     utterance.pitch = opts.pitch ?? (isMichael ? 0.82 : 1.08);
-    const preferredNames = isMichael
-      ? ["guy", "david", "mark", "george", "male"]
-      : ["aria", "jenny", "zira", "samantha", "female"];
-    const browserVoice = voices.find((voice) => {
-      const name = voice.name.toLowerCase();
-      return preferredNames.some((candidate) => name.includes(candidate));
-    }) ?? voices.find((voice) => voice.lang.toLowerCase().startsWith("en"));
-    if (browserVoice) utterance.voice = browserVoice;
+    const browserVoice = pickBrowserVoice(voices, isMichael);
+    if (browserVoice) {
+      utterance.voice = browserVoice;
+      utterance.lang = browserVoice.lang;
+    }
     let charsSpoken = 0;
     let settled = false;
+    let started = false;
+    let guard = 0;
     const finish = (ended: boolean) => {
       if (settled) return;
       settled = true;
+      window.clearTimeout(guard);
       if (session.interrupt === interruptBrowser) session.interrupt = null;
       resolve({ ended, charsSpoken });
     };
     const interruptBrowser = () => {
-      window.speechSynthesis.cancel();
+      speech.cancel();
       finish(false);
     };
+    // The line is done as far as the lesson is concerned: the next move and the question card go ahead without sound.
+    const giveUp = () => {
+      speech.cancel();
+      charsSpoken = text.length;
+      opts.onProgress?.(baseOffset + text.length);
+      finish(true);
+    };
+    const guardSpeaking = () => {
+      guard = window.setTimeout(giveUp, Math.max(SPEECH_GUARD_MIN_MS, text.length * SPEECH_GUARD_MS_PER_CHAR));
+    };
+    guard = window.setTimeout(() => {
+      if (started) return;
+      if (speech.speaking && !speech.pending) { guardSpeaking(); return; }
+      browserVoiceBlocked = true;
+      console.warn("[tts] the browser voice did not start");
+      giveUp();
+    }, BROWSER_START_MS);
     session.interrupt = interruptBrowser;
+    utterance.onstart = () => {
+      started = true;
+      window.clearTimeout(guard);
+      guardSpeaking();
+      opts.onAudible?.("browser");
+    };
     utterance.onboundary = (event) => {
       charsSpoken = Math.max(charsSpoken, event.charIndex ?? 0);
       opts.onProgress?.(baseOffset + charsSpoken);
@@ -306,8 +416,22 @@ async function playBrowserSegment(
     utterance.onerror = () => finish(
       !session.cancelled && revision === session.revision,
     );
-    window.speechSynthesis.speak(utterance);
+    speech.resume(); // Safari can hold the queue paused after the tab has been in the background
+    speech.speak(utterance);
   });
+}
+
+/** An English voice, preferring ones on this device: Chrome's network voices on a Mac can stay silent. */
+function pickBrowserVoice(voices: SpeechSynthesisVoice[], male: boolean): SpeechSynthesisVoice | undefined {
+  const names = male ? ["guy", "david", "mark", "george", "daniel", "alex", "fred"]
+    : ["aria", "jenny", "zira", "samantha", "karen", "moira", "tessa"];
+  const english = voices.filter((voice) => voice.lang.toLowerCase().startsWith("en"));
+  const local = english.filter((voice) => voice.localService);
+  for (const pool of [local, english]) {
+    const named = names.map((name) => pool.find((voice) => voice.name.toLowerCase().includes(name))).find(Boolean);
+    if (named) return named;
+  }
+  return local[0] ?? english[0];
 }
 
 async function loadBrowserVoices(): Promise<SpeechSynthesisVoice[]> {
@@ -333,9 +457,9 @@ async function loadBrowserVoices(): Promise<SpeechSynthesisVoice[]> {
   return speech.getVoices();
 }
 
-export async function speak(text: string, opts: SpeakOptions = {}): Promise<void> {
+export async function speak(text: string, opts: SpeakOptions = {}): Promise<SpokenWith> {
   const clean = text.trim().slice(0, 500);
-  if (!clean || !ttsAvailable()) return;
+  if (!clean || !ttsAvailable()) return "none";
   cancelSpeech();
   const requestedVoice = opts.voiceName ?? preferredVoiceName;
   preferredVoiceName = requestedVoice;
@@ -349,7 +473,7 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
   };
   activeSession = session;
   let cursor = 0;
-  let browserFallback = false;
+  let browserFallback = Boolean(opts.browserOnly);
 
   try {
     while (cursor < clean.length && !session.cancelled) {
@@ -360,13 +484,13 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
           ? await playBrowserSegment(session, remaining, cursor, opts)
           : await playKokoroSegment(session, remaining, cursor, opts);
       } catch {
-        if (session.cancelled) return;
+        if (session.cancelled) return browserFallback ? "browser" : "none";
         // A backend or media failure is non-blocking. Continue the same
         // unfinished segment through the browser's speech engine.
         browserFallback = true;
         continue;
       }
-      if (session.cancelled) return;
+      if (session.cancelled) break;
       if (result.ended) {
         cursor = clean.length;
       } else {
@@ -375,6 +499,7 @@ export async function speak(text: string, opts: SpeakOptions = {}): Promise<void
         opts.onProgress?.(cursor);
       }
     }
+    return browserFallback ? "browser" : "kokoro";
   } finally {
     session.controller?.abort();
     session.interrupt?.();

@@ -10,7 +10,10 @@
 import type { BinaryFileData, BinaryFiles, DataURL } from "@excalidraw/excalidraw/types";
 import type { FileId } from "@excalidraw/excalidraw/element/types";
 import type { ExcalidrawElementSkeleton } from "@excalidraw/excalidraw/data/transform";
+import { WIDGET_SCHEME, parseWidget, widgetSize } from "@/components/widgets/widget-spec";
 import { renderLatexToImage } from "./katex";
+import { placeholderId } from "./board-images";
+import { diagramLabels, mermaidToBoard } from "./mermaid-board";
 import { parseSvg, rasterSvgToPng, type ParsedSvg } from "./svg";
 import type { PrimitiveTag } from "./types";
 
@@ -42,6 +45,8 @@ export interface RenderResult {
     height: number;
     caption?: string;
   };
+  /** Ids of placeholder rectangles the player turns into widget embeddables after conversion. */
+  embeddables?: string[];
 }
 
 const COL_WIDTH = 620;
@@ -58,6 +63,12 @@ const GRAPH_GAP_X = 60;
 const GRAPH_GAP_Y = 80;
 const GRAPH_COLS = 3;
 const STROKE = "#111111";
+const CHIP_FONT = 14;
+const CARD_CHARS = 52;
+const CARD_NOTE_LINES = 3;
+const CHIP_H = 30;
+const CHIP_STROKE = "#4338ca";
+const CHIP_FILL = "#eef2ff";
 
 interface Origin {
   x: number;
@@ -150,6 +161,16 @@ export class LessonRenderer {
         return this.renderDraw(tag.args);
       case "draw_part":
         return this.renderDrawPart(tag.args);
+      case "card":
+        return this.renderCard(tag.args);
+      case "chip":
+        return this.renderChip(asStr(tag.args.text));
+      case "diagram":
+        return this.renderDiagram(asStr(tag.args.mermaid));
+      case "widget":
+        return this.renderWidget(asStr(tag.args.kind), asStr(tag.args.spec));
+      case "image":
+        return this.renderImagePlaceholder(asStr(tag.args.id), asStr(tag.args.alt));
       default:
         return { skeletons: [] };
     }
@@ -222,6 +243,7 @@ export class LessonRenderer {
       const offsetX = (COL_WIDTH - drawW) / 2;
       const skel: ExcalidrawElementSkeleton = {
         type: "image",
+        customData: { ySemantic: { kind: "equation", latex } },
         fileId: id,
         x: this.narrationX + offsetX,
         y: this.narrationY,
@@ -252,6 +274,28 @@ export class LessonRenderer {
       this.graphRow += 1;
     }
     return { x, y };
+  }
+
+  /** A small label saying why the tutor chose a step (a `because` move citing the learner brief). */
+  private renderChip(text: string): RenderResult {
+    if (!text) return { skeletons: [] };
+    const label = `↺ ${text.length > 80 ? `${text.slice(0, 79)}…` : text}`;
+    const width = Math.min(COL_WIDTH, Math.ceil(label.length * CHIP_FONT * 0.6) + 28);
+    const skel: ExcalidrawElementSkeleton = {
+      type: "rectangle",
+      id: makeRevealId(),
+      x: this.narrationX,
+      y: this.narrationY,
+      width,
+      height: CHIP_H,
+      strokeColor: CHIP_STROKE,
+      backgroundColor: CHIP_FILL,
+      fillStyle: "solid",
+      roundness: { type: 3 },
+      label: { text: label, fontSize: CHIP_FONT, strokeColor: CHIP_STROKE },
+    } as ExcalidrawElementSkeleton;
+    this.advanceNarration(CHIP_H);
+    return { skeletons: [skel] };
   }
 
   private renderBox(args: Record<string, string | number>): RenderResult {
@@ -381,6 +425,7 @@ export class LessonRenderer {
     const imageId = makeRevealId();
     const imageSkel: ExcalidrawElementSkeleton = {
       type: "image",
+      customData: { ySemantic: { kind: "diagram", svg: parsed.outerSvg, caption: partName } },
       id: imageId,
       fileId,
       x: session.x,
@@ -452,6 +497,7 @@ export class LessonRenderer {
       id: imageId,
       fileId,
       x,
+      customData: { ySemantic: { kind: "diagram", svg: parsed.outerSvg, caption } },
       y,
       width: w,
       height: h,
@@ -490,6 +536,75 @@ export class LessonRenderer {
     return result;
   }
 
+  /**
+   * A predict/check card: a framed question with lettered options, drawn beside the work.
+   * The frame keeps the given id so the answer controls can anchor to it after a refresh.
+   */
+  private renderCard(args: Record<string, string | number>): RenderResult {
+    const id = asStr(args.id);
+    const q = asStr(args.q);
+    if (!id || !q) return { skeletons: [] };
+    const options = asStr(args.options).split("\n").filter(Boolean);
+    // The board is plain text: drop inline-math dollar signs rather than show them.
+    const body = [wrapText(`${asStr(args.label, "Check")}: ${q.replace(/\$/g, "")}`, CARD_CHARS),
+      ...options.map((option, i) => wrapText(`${String.fromCharCode(65 + i)}. ${option}`, CARD_CHARS))].join("\n");
+    const lines = body.split("\n").length;
+    const pad = 16;
+    const height = Math.ceil(NARRATION_FONT * NARRATION_LINE_H * lines) + pad * 2;
+    const x = this.narrationX, y = this.narrationY;
+    this.advanceNarration(height + 8);
+    return { skeletons: [
+      { type: "rectangle", id, x, y, width: COL_WIDTH, height, strokeColor: "#6d28d9", backgroundColor: "#f5f3ff",
+        fillStyle: "solid", roundness: { type: 3 } } as ExcalidrawElementSkeleton,
+      { type: "text", id: `${id}-text`, x: x + pad, y: y + pad, text: body, fontSize: NARRATION_FONT, fontFamily: 1,
+        strokeColor: STROKE, width: COL_WIDTH - pad * 2, height: height - pad * 2, autoResize: false } as ExcalidrawElementSkeleton,
+    ] };
+  }
+
+  private async renderDiagram(source: string): Promise<RenderResult> {
+    if (!source) return { skeletons: [] };
+    try {
+      const diagram = await mermaidToBoard(source, { x: this.narrationX, y: this.narrationY }, COL_WIDTH);
+      this.advanceNarration(diagram.height + 10);
+      return { skeletons: diagram.skeletons, files: Object.keys(diagram.files).length ? diagram.files : undefined };
+    } catch (error) {
+      // Never show a broken diagram: write its labels as one line instead.
+      console.warn("[tutor] diagram fell back to text", error);
+      const labels = diagramLabels(source);
+      return labels.length ? this.renderText(labels.join(" → ")) : { skeletons: [] };
+    }
+  }
+
+  private renderWidget(kind: string, raw: string): RenderResult {
+    const widget = parseWidget(kind, raw);
+    if (!widget) return this.renderText("(This interactive widget could not load.)");
+    const { width, height } = widgetSize(widget);
+    const id = `y-widget-${Date.now().toString(36)}-${(_textIdCounter += 1)}`;
+    const x = this.narrationX + Math.max(0, (COL_WIDTH - width) / 2), y = this.narrationY;
+    this.advanceNarration(height + 10);
+    return {
+      skeletons: [{ type: "rectangle", id, x, y, width, height, strokeColor: "#c4b5fd", backgroundColor: "#ffffff",
+        fillStyle: "solid", strokeWidth: 1, roughness: 0, roundness: { type: 3 }, link: `${WIDGET_SCHEME}${id}`,
+        customData: { yWidget: widget } } as ExcalidrawElementSkeleton],
+      embeddables: [id],
+    };
+  }
+
+  /** A dashed frame where the illustration will appear; board-images.ts swaps it for the image. */
+  private renderImagePlaceholder(imageId: string, alt: string): RenderResult {
+    if (!/^[0-9a-f]{32}$/.test(imageId)) return { skeletons: [] };
+    const id = placeholderId(imageId), width = 420, height = 280; // Muse Image is 3:2
+    const x = this.narrationX + (COL_WIDTH - width) / 2, y = this.narrationY;
+    this.advanceNarration(height + 10);
+    return { skeletons: [
+      { type: "rectangle", id, x, y, width, height, strokeColor: "#a78bfa", backgroundColor: "#faf5ff", fillStyle: "solid",
+        strokeStyle: "dashed", roughness: 0, roundness: { type: 3 },
+        customData: { yImage: { image_id: imageId, alt, status: "pending" } } } as ExcalidrawElementSkeleton,
+      { type: "text", id: `${id}-text`, x: x + 24, y: y + height / 2 - 24, width: width - 48, height: 48, text: wrapText(`Painting an illustration… ${alt}`, 40),
+        fontSize: 16, fontFamily: 1, strokeColor: "#6d28d9", textAlign: "center", autoResize: false } as ExcalidrawElementSkeleton,
+    ] };
+  }
+
   private renderLine(args: Record<string, string | number>): RenderResult {
     const x1 = asNum(args.x1);
     const y1 = asNum(args.y1);
@@ -512,6 +627,16 @@ export class LessonRenderer {
     };
     return { skeletons: [skel] };
   }
+}
+
+/**
+ * A line added to a drawn card once it is answered: wrapped to the card's width and kept to three lines
+ * (the full answer is the server's record), with the height the card must grow by.
+ */
+export function cardNote(label: string): { text: string; extra: number } {
+  const lines = wrapText(label, CARD_CHARS).split("\n");
+  const kept = lines.length > CARD_NOTE_LINES ? [...lines.slice(0, CARD_NOTE_LINES - 1), `${lines[CARD_NOTE_LINES - 1].slice(0, CARD_CHARS - 1)}…`] : lines;
+  return { text: kept.join("\n"), extra: Math.ceil(NARRATION_FONT * NARRATION_LINE_H * (kept.length + 1)) };
 }
 
 export function wrapText(text: string, maxChars: number): string {

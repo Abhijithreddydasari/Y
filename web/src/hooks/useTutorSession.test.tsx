@@ -12,11 +12,12 @@ const api = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/api", () => api);
-vi.mock("@/lib/tts", () => ({ cancelSpeech: vi.fn() }));
+vi.mock("@/lib/tts", () => ({ cancelSpeech: vi.fn(), installSpeechUnlock: vi.fn(() => () => {}) }));
 
 describe("useTutorSession", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("NEXT_PUBLIC_API_BASE", "http://legacy.test");
     window.localStorage.clear();
     window.sessionStorage.clear();
     api.fetchLearner.mockResolvedValue(null);

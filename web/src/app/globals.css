@@ -83,10 +83,21 @@ body {
 .chat-markdown a { color: #2563eb; text-decoration: underline; text-underline-offset: 2px; }
 .chat-markdown .katex-display { margin: .65rem 0; overflow-x: auto; overflow-y: hidden; padding: .2rem 0; }
 
+@keyframes y-thinking-bulb {
+  0%, 100% { transform: rotate(-11deg); }
+  50% { transform: rotate(11deg); }
+}
+
+.y-thinking-bulb {
+  transform-origin: 50% 90%;
+  animation: y-thinking-bulb 0.42s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .chat-panel-enter,
   .chat-orb,
-  .chat-thinking-dot {
+  .chat-thinking-dot,
+  .y-thinking-bulb {
     animation: none;
   }
 }
@@ -125,6 +136,74 @@ body {
   .knowledge-node-active,
   .constellation-edge-active {
     animation: none;
+  }
+}
+
+/* Glass chrome for small fixed controls only (toolbar, composer, pills, cards, drawer). The board,
+ * ink, equations and widgets stay opaque; blur never covers a full-screen layer. A modest radius
+ * keeps the compositor cost low while the canvas repaints underneath (measured in H8). */
+.y-glass,
+.y-glass-strong {
+  /* Near "liquid glass" without refraction: a diagonal tint, a bright top-left rim and a soft inner glow. */
+  background: linear-gradient(160deg, rgba(255, 255, 255, .72), rgba(255, 255, 255, .42) 55%, rgba(255, 255, 255, .56));
+  border: 1px solid rgba(255, 255, 255, .75);
+  box-shadow: inset 1.5px 1.5px 1px rgba(255, 255, 255, .95), inset -1px -1px 1px rgba(255, 255, 255, .35),
+    0 0 0 .5px rgba(15, 23, 42, .12), 0 12px 30px -10px rgba(15, 23, 42, .28);
+  -webkit-backdrop-filter: blur(14px) saturate(1.8);
+  backdrop-filter: blur(14px) saturate(1.8);
+}
+/* Text a learner must read (a question, its options) sits on a near-opaque pane. */
+.y-glass-strong { background: linear-gradient(180deg, rgba(255, 255, 255, .95), rgba(255, 255, 255, .86)); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .y-glass, .y-glass-strong { background: #fff; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .y-glass, .y-glass-strong { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* `?glass=0` (the frame-time comparison) and the opaque fallback use the same surface. */
+:root[data-glass="off"] .y-glass,
+:root[data-glass="off"] .y-glass-strong { background: #fff; -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* Y's tool dock replaces Excalidraw's toolbar, hint line and library button (class names pinned to 0.18.1). */
+html[data-tool-dock] .excalidraw .App-toolbar-container,
+html[data-tool-dock] .excalidraw .HintViewer,
+html[data-tool-dock] .excalidraw .default-sidebar-trigger { display: none !important; }
+
+/* Places arc: items sit on a circle around the trigger; hover or focus lifts one outward along its radius. */
+.y-arc { width: 56px; height: 56px; }
+.y-arc-trigger { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 9999px; }
+.y-arc-item {
+  position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px;
+  display: grid; place-items: center; border-radius: 9999px; color: #0f172a;
+  transform: translate(var(--x), var(--y));
+  transition: transform 220ms cubic-bezier(.2, .8, .2, 1), opacity 160ms ease;
+  transition-delay: calc(var(--i) * 18ms);
+}
+.y-arc[data-open="false"] .y-arc-item { transform: translate(0, 0) scale(.4); opacity: 0; pointer-events: none; transition-delay: 0ms; }
+.y-arc-item:not(:disabled):hover,
+.y-arc-item:not(:disabled):focus-visible {
+  transform: translate(calc(var(--x) + var(--ux) * 12px), calc(var(--y) + var(--uy) * 12px)) scale(1.1);
+  transition-delay: 0ms;
+}
+.y-arc-item:disabled { opacity: .45; }
+.y-arc-label {
+  position: absolute; left: 50%; top: 50%; padding: 4px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap;
+  transform: translate(calc(-50% + var(--ux) * 96px), calc(-50% + var(--uy) * 44px));
+  opacity: 0; pointer-events: none; transition: opacity 140ms ease;
+}
+.y-arc-item:hover .y-arc-label, .y-arc-item:focus-visible .y-arc-label { opacity: 1; }
+.y-arc-badge {
+  position: absolute; right: -4px; top: -4px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  background: #f59e0b; color: #fff; font-size: 10px; font-weight: 700; line-height: 14px; border: 2px solid #fff;
+}
+
+/* Reduced motion: every app transition and animation ends at once on its final state. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -203,3 +282,8 @@ body {
   font-feature-settings: "liga";
   -webkit-font-smoothing: antialiased;
 }
+
+/* Board widgets (components/widgets/WidgetHost.tsx): controls opt into pointer input only while
+   the selection tool is active; the rest of the widget lets strokes and selection reach the canvas. */
+.y-widget[data-live="true"] :is(input, button, label, [data-control]) { pointer-events: auto; }
+.y-widget[data-live="false"] * { pointer-events: none; }

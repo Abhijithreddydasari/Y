@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 575" role="img" aria-label="Y architecture: a live turn lane on top; evidence, reflection and policy lanes below, feeding back into the live lane">
+  <title>Y architecture: four loops on four timescales</title>
+  <style>
+    text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+    .bandL{fill:#E4EBFD}.bandE{fill:#FFF1D9}.bandR{fill:#DFF3E9}.bandP{fill:#ECE6FC}
+    .bx{fill:#fff;stroke-width:1.3}.bx.L{stroke:#2F5BEA}.bx.E{stroke:#B86E00}.bx.R{stroke:#1C8558}.bx.P{stroke:#6A47DB}.bx.meta{stroke-width:2.8}
+    .t{fill:#15202C;font-size:14px;font-weight:600}.s{fill:#5A6676;font-size:12px}
+    .lane{font-size:12px;font-weight:700;letter-spacing:.06em}
+    .lane.L{fill:#2F5BEA}.lane.E{fill:#B86E00}.lane.R{fill:#1C8558}.lane.P{fill:#6A47DB}
+    .note{font-size:13px;font-style:italic;fill:#5A6676}
+    .ar{fill:none;stroke-width:1.6}.ar.L{stroke:#2F5BEA}.ar.E{stroke:#B86E00}.ar.R{stroke:#1C8558}.ar.P{stroke:#6A47DB}
+    .dash{stroke-dasharray:6 5}
+  </style>
+  <defs>
+    <marker id="aL" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="#2F5BEA" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="aE" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="#B86E00" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="aR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="#1C8558" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="aP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path fill="#6A47DB" d="M0 0L10 5L0 10z"/></marker>
+  </defs>
+  <rect width="1100" height="575" fill="#FFFFFF"/>
+
+  <rect class="bandL" x="20" y="20" width="1060" height="190" rx="14"/>
+  <text class="lane L" x="40" y="46">LIVE TURN · SECONDS</text>
+  <path class="ar L" d="M985 92 V70 H285 V90" marker-end="url(#aL)"/>
+  <rect x="470" y="56" width="330" height="20" fill="#E4EBFD"/>
+  <text class="note" x="635" y="71" text-anchor="middle">writes on the board and speaks, segment by segment</text>
+  <rect class="bx L" x="40" y="92" width="150" height="64" rx="10"/><text class="t" x="115" y="119" text-anchor="middle">Learner</text><text class="s" x="115" y="139" text-anchor="middle">pen · voice · text</text>
+  <rect class="bx L" x="210" y="92" width="150" height="64" rx="10"/><text class="t" x="285" y="119" text-anchor="middle">Board + composer</text><text class="s" x="285" y="139" text-anchor="middle">Excalidraw · check cards</text>
+  <rect class="bx L" x="380" y="92" width="150" height="64" rx="10"/><text class="t" x="455" y="119" text-anchor="middle">Context builder</text><text class="s" x="455" y="139" text-anchor="middle">focus · crops · brief</text>
+  <rect class="bx L meta" x="560" y="92" width="150" height="64" rx="10"/><text class="t" x="635" y="119" text-anchor="middle">Tutor</text><text class="s" x="635" y="139" text-anchor="middle">Muse Spark 1.3 · stream</text>
+  <rect class="bx L" x="740" y="92" width="150" height="64" rx="10"/><text class="t" x="815" y="119" text-anchor="middle">Move validator</text><text class="s" x="815" y="139" text-anchor="middle">strict JSON · one repair</text>
+  <rect class="bx L" x="910" y="92" width="150" height="64" rx="10"/><text class="t" x="985" y="119" text-anchor="middle">Player</text><text class="s" x="985" y="139" text-anchor="middle">renderer + narration</text>
+  <path class="ar L" d="M190 124 H207" marker-end="url(#aL)"/><path class="ar L" d="M360 124 H377" marker-end="url(#aL)"/>
+  <path class="ar L" d="M530 124 H557" marker-end="url(#aL)"/><path class="ar L" d="M710 124 H737" marker-end="url(#aL)"/>
+  <path class="ar L" d="M890 124 H907" marker-end="url(#aL)"/>
+
+  <rect class="bandE" x="20" y="270" width="340" height="285" rx="14"/>
+  <text class="lane E" x="40" y="298">EVIDENCE · BACKGROUND, PER ANSWER</text>
+  <rect class="bx E" x="40" y="318" width="300" height="56" rx="10"/><text class="t" x="190" y="341" text-anchor="middle">Check &amp; predict answers</text><text class="s" x="190" y="360" text-anchor="middle">tap · type · speak · deduped per question</text>
+  <rect class="bx E" x="40" y="402" width="300" height="56" rx="10"/><text class="t" x="190" y="425" text-anchor="middle">Verifiers + labeler</text><text class="s" x="190" y="444" text-anchor="middle">option, number, symbolic · Muse Spark Open</text>
+  <rect class="bx E" x="40" y="486" width="300" height="56" rx="10"/><text class="t" x="190" y="509" text-anchor="middle">Observations</text><text class="s" x="190" y="528" text-anchor="middle">probabilities · provenance · assistance</text>
+  <path class="ar E" d="M190 374 V399" marker-end="url(#aE)"/><path class="ar E" d="M190 458 V483" marker-end="url(#aE)"/>
+
+  <rect class="bandR" x="380" y="270" width="340" height="285" rx="14"/>
+  <text class="lane R" x="400" y="298">REFLECTION · PER SESSION</text>
+  <rect class="bx R" x="400" y="318" width="300" height="56" rx="10"/><text class="t" x="550" y="341" text-anchor="middle">Profile revision</text><text class="s" x="550" y="360" text-anchor="middle">learner brief · Mind map</text>
+  <rect class="bx R" x="400" y="402" width="300" height="56" rx="10"/><text class="t" x="550" y="425" text-anchor="middle">Reducer + consolidation</text><text class="s" x="550" y="444" text-anchor="middle">Beta beliefs, ledger · Muse Spark Open notes</text>
+  <rect class="bx R" x="400" y="486" width="300" height="56" rx="10"/><text class="t" x="550" y="509" text-anchor="middle">End session</text><text class="s" x="550" y="528" text-anchor="middle">seal evidence · label anything still open</text>
+  <path class="ar R" d="M550 486 V461" marker-end="url(#aR)"/><path class="ar R" d="M550 402 V377" marker-end="url(#aR)"/>
+
+  <rect class="bandP" x="740" y="270" width="340" height="285" rx="14"/>
+  <text class="lane P" x="760" y="298">POLICY · OFFLINE</text>
+  <rect class="bx P" x="760" y="318" width="300" height="56" rx="10"/><text class="t" x="910" y="341" text-anchor="middle">Held-out gate</text><text class="s" x="910" y="360" text-anchor="middle">promote only if it beats the baseline</text>
+  <rect class="bx P" x="760" y="402" width="300" height="56" rx="10"/><text class="t" x="910" y="425" text-anchor="middle">GEPA reflect &amp; mutate</text><text class="s" x="910" y="444" text-anchor="middle">Muse Spark rewrites the policy text</text>
+  <rect class="bx P" x="760" y="486" width="300" height="56" rx="10"/><text class="t" x="910" y="509" text-anchor="middle">Rollouts on simulated learners</text><text class="s" x="910" y="528" text-anchor="middle">scenarios · Muse Spark Open judge · validator</text>
+  <path class="ar P" d="M910 486 V461" marker-end="url(#aP)"/><path class="ar P" d="M910 402 V377" marker-end="url(#aP)"/>
+
+  <path class="ar E" d="M285 156 V315" marker-end="url(#aE)"/><text class="note" x="295" y="250">answers</text>
+  <path class="ar E" d="M340 514 H397" marker-end="url(#aE)"/>
+  <path class="ar R" d="M455 318 V159" marker-end="url(#aR)"/><text class="note" x="463" y="268">learner brief</text>
+  <path class="ar P dash" d="M800 318 V240 H660 V159" marker-end="url(#aP)"/><text class="note" x="690" y="234">new prompt, only if it wins</text>
+</svg>

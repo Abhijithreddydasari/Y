@@ -49,7 +49,7 @@ class Observation(Contract):
     # Learner-reported confidence from the check card; None when not asked.
     confidence: Probability | None = None
     # "seed": authored demo-persona history (personas.py), never a live model label.
-    labeler: Literal["deterministic", "baseten", "openai", "seed", "none"] = "none"
+    labeler: Literal["deterministic", "meta", "baseten", "openai", "seed", "none"] = "none"
     label_confidence: Probability | None = None
     # The decision model's full distributions (H5 soft update). `outcome_p` is None when a verifier decided.
     outcome_p: dict[Outcome, Probability] | None = None

@@ -17,7 +17,7 @@ export interface Observation {
   concept: string; dimension: LearningDimension; outcome: Outcome;
   misconception: string | null; miss_class: MissClass | null;
   assistance: Assistance & { hint_ids: string[] };
-  confidence: number | null; labeler: "deterministic" | "baseten" | "openai" | "seed" | "none"; label_confidence: number | null;
+  confidence: number | null; labeler: "deterministic" | "meta" | "baseten" | "openai" | "seed" | "none"; label_confidence: number | null;
   outcome_p?: Partial<Record<Outcome, number>> | null; misconception_p?: Record<string, number>;
   other_misconception_p?: number | null; reasoning?: number | null; reasoning_shown?: number | null;
   format_weight: number; key_status: KeyStatus;

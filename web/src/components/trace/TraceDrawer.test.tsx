@@ -15,7 +15,7 @@ const TRACE = {
       ms: { total_ms: 290 }, usage: {}, moves: 3, dropped: 0, repairs: 0, error: null, model_call: false, points: [] },
   ],
   hints: [{ stage: "hint", qid: "t.3", level: 1, at: 3, ms: 2600, tutor: { option: "spark-1.3", model: "muse-spark-1.3", effort: "minimal" }, usage: {} }],
-  labels: [{ stage: "label", qid: "t.3", status: "labeled", error: null, labeler: "openai", model: "gpt-6-luna", verifier: "option",
+  labels: [{ stage: "label", qid: "t.3", status: "labeled", error: null, labeler: "baseten", model: "meta-models/muse-spark-open-1026", verifier: "option",
     modality: "tap", images: 0, ms: { label_ms: 5300, provider_ms: 420, queue_ms: 10 } }],
   close: { stage: "close", revision: 4, ms: 5970, sealed: 2, notes_model: "meta-models/muse-spark-open-1026",
     notes: { kept: 2, named: ["m1"], links: 1 }, relabel: { requeued: 0 } },
@@ -35,8 +35,8 @@ describe("TraceDrawer", () => {
     expect(screen.getAllByText("Muse Spark 1.3 · minimal")).toHaveLength(2);
     expect(screen.getByText("Stored check (no model)")).toBeTruthy();
     expect(screen.getByText(/1 ring \(line 2, line\)/)).toBeTruthy();
-    expect(screen.getByText("OpenAI Decisions")).toBeTruthy();
-    expect(screen.getByText("Muse Spark Open")).toBeTruthy();
+    expect(screen.getAllByText("Muse Spark Open")).toHaveLength(2); // the label and the session close
+    expect(screen.queryByText(/OpenAI/)).toBeNull();
     expect(screen.getByText("First move drawn")).toBeTruthy();
     expect(screen.getByText("3.20 s")).toBeTruthy();
   });

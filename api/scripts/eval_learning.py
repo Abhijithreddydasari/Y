@@ -45,7 +45,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from learning import profile  # noqa: E402
 from learning.board_router import router as board_router  # noqa: E402
 from learning.consolidate import NOTES_MODEL  # noqa: E402
-from learning.decisions import OPENAI_BASE, OPENAI_DECISION_MODEL  # noqa: E402
+OPENAI_BASE, OPENAI_DECISION_MODEL = "https://api.openai.com/v1", "gpt-6-luna"  # this offline evaluation's judge only
 from learning.learner_contracts import Observation  # noqa: E402
 from learning.router import COOKIE, get_store, router  # noqa: E402
 from learning.storage import CaptureStore, make_engine  # noqa: E402

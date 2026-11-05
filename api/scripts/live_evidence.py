@@ -78,7 +78,7 @@ async def main(count: int) -> None:
     labeler = evidence_labeler()
     print(f"labeler {labeler.provider_name}:{labeler.model} configured={labeler.configured} (LIVE, paid calls)")
     if not labeler.configured:
-        raise SystemExit("the selected provider's key is not set (OPENAI_API_KEY or BASETEN_API_KEY)")
+        raise SystemExit("the selected provider's key is not set (BASETEN_API_KEY or MODEL_API_KEY)")
     with tempfile.TemporaryDirectory() as folder:
         capture = CaptureStore(make_engine(f"sqlite:///{Path(folder, 'live.db').as_posix()}"))
         capture.initialize()

@@ -78,12 +78,12 @@ def tutor_options() -> list[dict]:
 
 
 def voice_options(engine) -> list[dict]:
-    ready = bool(engine and engine.available)
-    reason = None if ready else "Kokoro is not installed on this server"
     hosted = os.environ.get("DEEPGRAM_API_KEY", "").strip()
+    ready = bool(hosted or (engine and engine.available))
     named = [(vid, *HOSTED_VOICES[vid]) if hosted else (vid, label, note) for vid, label, note in VOICE_OPTIONS]
-    voices = [{"id": vid, "label": label, "note": note, "default": False, "available": ready,
-               "reason": reason} for vid, label, note in named]
+    # An optional voice that cannot speak here is left out, not shown as a dead control.
+    voices = [{"id": vid, "label": label, "note": note, "default": False, "available": True,
+               "reason": None} for vid, label, note in named] if ready else []
     return voices + [{"id": "browser", "label": "Browser voice", "note": "Built into your browser, instant", "default": True,
                       "available": True, "reason": None},
                      {"id": "off", "label": "Off", "note": "Captions only", "default": False, "available": True,

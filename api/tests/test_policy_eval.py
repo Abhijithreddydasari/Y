@@ -246,6 +246,7 @@ class FakeClients:
 
 
 def test_adapter_rollout_scores_caches_and_reflects(tmp_path):
+    pytest.importorskip("gepa")  # optional extra: policy-eval
     calls = []
     runner = Runner(tmp_path / "run", cap=50, make_clients=lambda budget: FakeClients(budget, calls),
                     briefs=Briefs(tmp_path / "personas"))
@@ -301,7 +302,7 @@ def test_reflection_templates_state_each_cap():
 def test_label_cases_load_and_expected_ids():
     from policy_eval.label_check import expected_id, load_cases
     cases = load_cases()
-    assert len(cases) == 42 and len(cases) <= 50
+    assert len(cases) == 44 and len(cases) <= 50
     a1 = next(c for c in cases if c["id"] == "a1")
     assert expected_id(a1).startswith("attention.softmax/all-three")
     for c in cases:

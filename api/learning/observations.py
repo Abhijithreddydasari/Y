@@ -1,7 +1,7 @@
 """Learner evidence from answered predict/check cards: verify first, record once, label later.
 
 Deterministic verifiers grade what they can and audit the tutor's key. A typed decision model
-(OpenAI Decisions or Baseten Elephant) then labels outcome, miss class and misconception in the background; teaching never
+(Muse Spark Open by default) then labels outcome, miss class and misconception in the background; teaching never
 waits for it and a labeling failure is visible only in the evidence trace. Nothing here writes a
 learner profile (H5 reduces observations at session close).
 """

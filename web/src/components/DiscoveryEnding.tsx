@@ -164,7 +164,7 @@ export default function DiscoveryEnding() {
             </button>
           )}
         </div>
-        <h2>Every discovery started with why.</h2>
+        <h2>Every discovery started with a why.</h2>
         <div className={s.endingCta}>
           <Link className={s.button} href="/app">Ask Y ↗</Link>
           <Link className={s.endingGhost} href="/app?ui=mobile">Try it on your phone</Link>
@@ -172,8 +172,8 @@ export default function DiscoveryEnding() {
         <div className={s.endingFoot}>
           <dl className={s.definition}>
             <dt>Y <span>/waɪ/</span></dt>
-            <dd><i>I. n.</i> The question that starts everything.</dd>
-            <dd><i>II. n.</i> A tutor that asks it back.</dd>
+            <dd><i>I.</i> The question that starts everything.</dd>
+            <dd><i>II.</i> A tutor that asks it back.</dd>
           </dl>
           <div className={s.endingLinks}>
             <p>An early prototype. Best with a tablet or a larger screen.</p>
